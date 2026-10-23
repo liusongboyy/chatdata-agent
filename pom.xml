@@ -1,0 +1,217 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.0</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.liusongboyy.chatdata</groupId>
+    <artifactId>chatdata-agent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>chatdata-agent</name>
+    <url>http://maven.apache.org</url>
+    <modules>
+        <module>chatdata-agent-common</module>
+        <module>chatdata-agent-gateway</module>
+        <module>chatdata-agent-iam</module>
+        <module>chatdata-agent-iam-client</module>
+        <module>chatdata-agent-ask</module>
+        <module>chatdata-agent-ask-engine</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <spring-boot.version>4.1.0</spring-boot.version>
+        <!-- Spring Cloud -->
+        <spring-cloud.version>2025.1.2</spring-cloud.version>
+        <spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
+
+        <!-- 数据库 & ORM -->
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <mysql.version>8.0.33</mysql.version>
+
+        <!-- 工具 -->
+        <hutool.version>5.8.27</hutool.version>
+        <springdoc.version>2.6.0</springdoc.version>
+        <redisson.version>3.27.0</redisson.version>
+
+        <lombok.version>1.18.36</lombok.version>
+        <!-- 测试 -->
+        <testcontainers.version>1.21.4</testcontainers.version>
+
+        <!-- AI -->
+        <!-- 表级白名单校验用（直连模式）。只做"读出 SQL 引用了哪些表"，不改写 SQL -->
+        <jsqlparser.version>5.0</jsqlparser.version>
+        <agentscope.version>2.0.4</agentscope.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+              本工程各模块的版本统一在此管理。放在根 pom 而非 common 聚合器，
+              是因为 chatdata-agent-ask 等模块的 parent 是根 pom，
+              聚合器里的管理对它们不生效。
+            -->
+            <dependency>
+                <groupId>com.liusongboyy.chatdata</groupId>
+                <artifactId>chatdata-agent-common-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liusongboyy.chatdata</groupId>
+                <artifactId>chatdata-agent-common-mybatis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liusongboyy.chatdata</groupId>
+                <artifactId>chatdata-agent-common-redis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liusongboyy.chatdata</groupId>
+                <artifactId>chatdata-agent-ask-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liusongboyy.chatdata</groupId>
+                <artifactId>chatdata-agent-iam-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!--
+              Spring Cloud BOM。网关（chatdata-agent-gateway）用 Spring Cloud Gateway，
+              版本由它统一管理；此前没有模块用到 Spring Cloud，所以只定义了属性没导入 BOM。
+            -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!--
+              Testcontainers。Spring Boot 4.1 的 BOM 未管理其版本，故显式导入。
+              两点约束，改版本前务必先读：
+
+              1. 必须用 1.x。2.x 重构了构件坐标，org.testcontainers:mysql 与
+                 :junit-jupiter 在 2.x 下已不存在（Central 返回 404）。
+              2. 必须 >= 1.21.4。1.21.3 捆绑的 docker-java 按 Docker API 1.32 协商，
+                 而 OrbStack 的引擎（Docker 29.4.0）要求 >= 1.40，会导致
+                 "Could not find a valid Docker environment"——
+                 报错指向 Docker 环境，真实原因是客户端版本过旧，极易误诊。
+                 DOCKER_API_VERSION / api.version 都改不动（策略内写死）。
+            -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!--
+              agentscope-java。问数引擎（chatdata-agent-ask-engine）用它承担 agent 循环、
+              工具调用、结构化输出与会话持久化。
+
+              版本由本 BOM 统一管理，各模块只声明 artifactId 不写版本。
+              注意：BOM 只有 .pom 没有 .jar，这是 BOM 的正常形态，不是缺件。
+            -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-bom</artifactId>
+                <version>${agentscope.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.github.jsqlparser</groupId>
+                <artifactId>jsqlparser</artifactId>
+                <version>${jsqlparser.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-logging</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-web</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-webflux</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+   <build>
+       <pluginManagement>
+           <plugins>
+               <plugin>
+                   <groupId>org.apache.maven.plugins</groupId>
+                   <artifactId>maven-compiler-plugin</artifactId>
+                   <configuration>
+                       <source>${java.version}</source>
+                       <target>${java.version}</target>
+                       <annotationProcessorPaths>
+                           <path>
+                               <groupId>org.projectlombok</groupId>
+                               <artifactId>lombok</artifactId>
+                               <version>${lombok.version}</version>
+                           </path>
+                       </annotationProcessorPaths>
+                   </configuration>
+               </plugin>
+               <plugin>
+                   <groupId>org.springframework.boot</groupId>
+                   <artifactId>spring-boot-maven-plugin</artifactId>
+               </plugin>
+               <plugin>
+                   <groupId>org.apache.maven.plugins</groupId>
+                   <artifactId>maven-surefire-plugin</artifactId>
+                   <configuration>
+                       <argLine>@{argLine} -Xshare:off -XX:+EnableDynamicAgentLoading</argLine>
+                   </configuration>
+               </plugin>
+               <plugin>
+                   <groupId>org.jacoco</groupId>
+                   <artifactId>jacoco-maven-plugin</artifactId>
+                   <version>0.8.13</version>
+                   <executions>
+                       <execution>
+                           <id>prepare-agent</id>
+                           <goals>
+                               <goal>prepare-agent</goal>
+                           </goals>
+                       </execution>
+                       <execution>
+                           <id>report</id>
+                           <phase>verify</phase>
+                           <goals>
+                               <goal>report</goal>
+                           </goals>
+                       </execution>
+                   </executions>
+               </plugin>
+           </plugins>
+       </pluginManagement>
+       <plugins>
+           <plugin>
+               <groupId>org.jacoco</groupId>
+               <artifactId>jacoco-maven-plugin</artifactId>
+           </plugin>
+       </plugins>
+   </build>
+</project>

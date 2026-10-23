@@ -1,0 +1,119 @@
+/* ═══════════════ 设计令牌 ═══════════════
+ *
+ * 方向：**轻量友好 SaaS**（样张 C，`.scratch/ui-redesign/c-friendly.html`）。
+ *
+ * 底色是带一点蓝的浅灰（#f4f6fb），面板纯白；层级靠大圆角、柔和投影
+ * 和"白卡片浮在浅底上"的对比，而不是靠线条堆叠。
+ *
+ * 强调色是一组双色渐变：靛蓝 #5b6cff → 紫 #8b5cf6。渐变只用在
+ * **主操作、品牌标志与选中态**三处，其余仍是中性色——否则整页会变成
+ * 常见的紫色 SaaS 模板。
+ *
+ * 不加载 webfont：中文 webfont 动辄数 MB，收益只是"好看一点"。
+ * 性格靠字重、字距与圆角做。
+ */
+
+:root {
+  /* ── 色彩 ──
+   * 这一组取自样张 C 的实际取值，改这里就等于改整站。 */
+  --paper:        #f4f6fb;   /* 页面底，浅蓝灰 */
+  --surface:      #ffffff;   /* 卡片、弹窗 */
+  --surface-sunk: #f7f8fc;   /* 凹陷区：表头、输入框、次级块 */
+
+  --ink:          #1b2340;   /* 正文，深靛黑 */
+  --ink-soft:     #66708a;   /* 次要文字 */
+  --ink-faint:    #98a0b8;   /* 提示、占位、表头 */
+
+  --line:         #e7eaf3;   /* 分隔线、卡片描边 */
+  --line-strong:  #d5daea;   /* 输入框边界 */
+
+  --accent:       #5b6cff;   /* 主强调色 */
+  --accent-2:     #8b5cf6;   /* 渐变终点 */
+  --accent-deep:  #4453d8;   /* 强调色**文字**，对白底 5.6:1 */
+  --accent-soft:  #eef0ff;   /* 选中/悬停底 */
+
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-2));
+
+  --off-soft:     #f0f2f8;   /* 停用态、中性胶囊 */
+
+  --ok:           #12b76a;
+  --ok-soft:      #e8f8f0;
+  --ok-ink:       #0a8a50;
+  --warn:         #f79009;
+  --warn-soft:    #fff4e5;
+  --warn-ink:     #b54708;
+  --danger:       #d92d20;
+  --danger-soft:  #fef3f2;
+  --danger-ink:   #b42318;
+
+  /* ── 字体 ──
+   * 中文按平台优先级排；等宽只用于数字、编码与 SQL。 */
+  --font-ui: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
+             "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+  --font-display: var(--font-ui);
+
+  /* ── 字阶 ── */
+  --text-xs:   0.75rem;
+  --text-sm:   0.8125rem;
+  --text-base: clamp(0.9375rem, 0.9rem + 0.2vw, 1rem);
+  --text-lg:   clamp(1.0625rem, 1rem + 0.3vw, 1.1875rem);
+  --text-xl:   clamp(1.25rem, 1.1rem + 0.7vw, 1.5rem);
+  --text-2xl:  clamp(1.5rem, 1.2rem + 1.4vw, 2rem);
+  --text-display: clamp(2.2rem, 1.2rem + 4vw, 2.75rem);
+
+  --track-label: 0.07em;
+
+  /* ── 间距 ── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* C 方向：输入与控制件 10px，卡片 14px，大卡片/弹窗 20–22px */
+  --radius-sm: 8px;
+  --radius:    14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* ── 阴影 ──
+   * 一圈 1px 描边 + 低透明度蓝灰投影。描边让卡片在浅底上"立住"，
+   * 投影只负责层次——只给投影会显得脏。 */
+  --shadow-sm: 0 0 0 1px var(--line),
+               0 6px 18px rgba(46, 58, 120, 0.04);
+  --shadow:    0 0 0 1px var(--line),
+               0 10px 30px rgba(46, 58, 120, 0.06);
+  --shadow-lg: 0 24px 60px rgba(27, 35, 64, 0.22);
+
+  /* ── 动效 ── */
+  --duration-fast:   120ms;
+  --duration:        200ms;
+  --duration-slow:   320ms;
+  --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:     cubic-bezier(0.65, 0, 0.35, 1);
+
+  --focus-ring: 0 0 0 4px rgba(91, 108, 255, 0.14);
+}
+
+/* 尊重系统的减弱动效设置。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration: 1ms;
+    --duration-slow: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

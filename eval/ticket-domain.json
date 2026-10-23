@@ -1,0 +1,302 @@
+{
+  "name": "智能工单域基线",
+  "domainId": "1372",
+  "userId": "admin",
+  "roles": [
+    "管理员",
+    "chat2bi"
+  ],
+  "assistantId": null,
+  "cases": [
+    {
+      "id": "ticket-001",
+      "difficulty": "SIMPLE",
+      "question": "工单总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0",
+      "tags": [
+        "count"
+      ]
+    },
+    {
+      "id": "ticket-002",
+      "difficulty": "SIMPLE",
+      "question": "按状态统计工单数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY status",
+      "tags": [
+        "group",
+        "enum"
+      ]
+    },
+    {
+      "id": "ticket-003",
+      "difficulty": "SIMPLE",
+      "question": "按来源统计工单数量",
+      "goldSql": "SELECT source, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY source",
+      "tags": [
+        "group",
+        "enum"
+      ]
+    },
+    {
+      "id": "ticket-004",
+      "difficulty": "SIMPLE",
+      "question": "按优先级统计工单数量",
+      "goldSql": "SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY priority",
+      "tags": [
+        "group"
+      ]
+    },
+    {
+      "id": "ticket-005",
+      "difficulty": "SIMPLE",
+      "question": "状态为 CLOSED 的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED'",
+      "tags": [
+        "filter",
+        "enum"
+      ]
+    },
+    {
+      "id": "ticket-006",
+      "difficulty": "SIMPLE",
+      "question": "通知里未读的通知有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM notification WHERE deleted = 0 AND read_status = 0",
+      "tags": [
+        "filter"
+      ]
+    },
+    {
+      "id": "ticket-007",
+      "difficulty": "SIMPLE",
+      "question": "已发布的知识文章有多少篇？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_article WHERE deleted = 0 AND status = 1",
+      "tags": [
+        "filter"
+      ]
+    },
+    {
+      "id": "ticket-008",
+      "difficulty": "SIMPLE",
+      "question": "知识分类一共有多少个？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_category WHERE deleted = 0",
+      "tags": [
+        "count"
+      ]
+    },
+    {
+      "id": "ticket-009",
+      "difficulty": "SIMPLE",
+      "question": "工单评论里内部备注有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 AND is_internal = 1",
+      "tags": [
+        "filter"
+      ]
+    },
+    {
+      "id": "ticket-010",
+      "difficulty": "SIMPLE",
+      "question": "启用中的 SLA 策略有几条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM sla_policy WHERE deleted = 0 AND enabled = 1",
+      "tags": [
+        "filter"
+      ]
+    },
+    {
+      "id": "ticket-011",
+      "difficulty": "MEDIUM",
+      "question": "按工单 id 统计每张工单的流转次数",
+      "goldSql": "SELECT ticket_id, COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 GROUP BY ticket_id ORDER BY ticket_id",
+      "tags": [
+        "group",
+        "join"
+      ]
+    },
+    {
+      "id": "ticket-012",
+      "difficulty": "MEDIUM",
+      "question": "按工单 id 统计每张工单的评论数，没有评论的工单也要列出并把评论数记为 0",
+      "goldSql": "SELECT t.id, COUNT(c.id) AS cnt FROM ticket t LEFT JOIN ticket_comment c ON c.ticket_id = t.id AND c.deleted = 0 WHERE t.deleted = 0 GROUP BY t.id ORDER BY t.id",
+      "tags": [
+        "left-join",
+        "zero"
+      ]
+    },
+    {
+      "id": "ticket-013",
+      "difficulty": "MEDIUM",
+      "question": "2026-08-19 当天创建了多少张工单？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND DATE(created_at) = '2026-08-19'",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "ticket-014",
+      "difficulty": "MEDIUM",
+      "question": "按创建日期统计工单数量",
+      "goldSql": "SELECT DATE(created_at) AS d, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY DATE(created_at) ORDER BY d",
+      "tags": [
+        "time",
+        "group"
+      ]
+    },
+    {
+      "id": "ticket-015",
+      "difficulty": "MEDIUM",
+      "question": "流转记录里，从 IN_PROGRESS 流转到 RESOLVED 的记录有几条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 AND from_status = 'IN_PROGRESS' AND to_status = 'RESOLVED'",
+      "tags": [
+        "filter"
+      ]
+    },
+    {
+      "id": "ticket-016",
+      "difficulty": "MEDIUM",
+      "question": "按操作人 id 统计每个操作人产生了多少条流转记录",
+      "goldSql": "SELECT operator_id, COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 GROUP BY operator_id",
+      "tags": [
+        "group"
+      ]
+    },
+    {
+      "id": "ticket-017",
+      "difficulty": "MEDIUM",
+      "question": "按违规类型统计 SLA 违规记录数量",
+      "goldSql": "SELECT violation_type, COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0 GROUP BY violation_type",
+      "tags": [
+        "group"
+      ]
+    },
+    {
+      "id": "ticket-018",
+      "difficulty": "MEDIUM",
+      "question": "没有 SLA 计时记录的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket t LEFT JOIN sla_timer s ON s.ticket_id = t.id AND s.deleted = 0 WHERE t.deleted = 0 AND s.id IS NULL",
+      "tags": [
+        "left-join",
+        "anti-join"
+      ]
+    },
+    {
+      "id": "ticket-019",
+      "difficulty": "MEDIUM",
+      "question": "按分类 id 和分类名称统计每个工单分类下的工单数量，没有工单的分类显示 0",
+      "goldSql": "SELECT c.id, c.name, COUNT(t.id) AS cnt FROM ticket_category c LEFT JOIN ticket t ON t.category_id = c.id AND t.deleted = 0 WHERE c.deleted = 0 GROUP BY c.id, c.name ORDER BY c.id",
+      "tags": [
+        "left-join",
+        "zero"
+      ]
+    },
+    {
+      "id": "ticket-020",
+      "difficulty": "MEDIUM",
+      "question": "浏览量最高的那篇知识文章的标题是什么？",
+      "goldSql": "SELECT title FROM knowledge_article WHERE deleted = 0 ORDER BY view_count DESC LIMIT 1",
+      "tags": [
+        "order",
+        "limit"
+      ]
+    },
+    {
+      "id": "ticket-021",
+      "difficulty": "HARD",
+      "question": "已解决的工单从创建到解决平均用了多少秒？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(SECOND, created_at, resolved_at)) AS avg_seconds FROM ticket WHERE deleted = 0 AND resolved_at IS NOT NULL",
+      "tags": [
+        "business",
+        "time-diff"
+      ]
+    },
+    {
+      "id": "ticket-022",
+      "difficulty": "HARD",
+      "question": "已关闭的工单从创建到关闭平均用了多少秒？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(SECOND, created_at, closed_at)) AS avg_seconds FROM ticket WHERE deleted = 0 AND closed_at IS NOT NULL",
+      "tags": [
+        "business",
+        "time-diff"
+      ]
+    },
+    {
+      "id": "ticket-023",
+      "difficulty": "HARD",
+      "question": "AI 推荐分类与工单实际分类一致的工单占全部工单的比例是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT SUM(CASE WHEN category_id = ai_category_id THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0",
+      "tags": [
+        "business",
+        "ratio"
+      ]
+    },
+    {
+      "id": "ticket-024",
+      "difficulty": "HARD",
+      "question": "有 SLA 违规的工单有多少张？同一张工单只算一次",
+      "goldSql": "SELECT COUNT(DISTINCT ticket_id) AS cnt FROM sla_violation WHERE deleted = 0",
+      "tags": [
+        "distinct",
+        "join"
+      ]
+    },
+    {
+      "id": "ticket-025",
+      "difficulty": "HARD",
+      "question": "状态为已升级的 SLA 违规记录有几条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0 AND status = 1",
+      "tags": [
+        "filter",
+        "enum"
+      ]
+    },
+    {
+      "id": "ticket-026",
+      "difficulty": "HARD",
+      "question": "按知识分类 id 和名称统计每个分类下已发布的文章数量，没有文章的分类显示 0",
+      "goldSql": "SELECT c.id, c.name, COUNT(a.id) AS cnt FROM knowledge_category c LEFT JOIN knowledge_article a ON a.category_id = c.id AND a.deleted = 0 AND a.status = 1 WHERE c.deleted = 0 GROUP BY c.id, c.name ORDER BY c.id",
+      "tags": [
+        "left-join",
+        "zero",
+        "condition-in-on"
+      ]
+    },
+    {
+      "id": "ticket-027",
+      "difficulty": "HARD",
+      "question": "按通知类型统计未读通知的数量",
+      "goldSql": "SELECT type, SUM(read_status = 0) AS unread FROM notification WHERE deleted = 0 GROUP BY type",
+      "tags": [
+        "group",
+        "conditional-agg"
+      ]
+    },
+    {
+      "id": "ticket-028",
+      "difficulty": "HARD",
+      "question": "按工单 id，统计每张有 SLA 计时的工单，其解决截止时间比工单创建时间晚多少分钟",
+      "goldSql": "SELECT s.ticket_id, TIMESTAMPDIFF(MINUTE, s.ticket_created_at, s.resolve_deadline) AS mins FROM sla_timer s WHERE s.deleted = 0 ORDER BY s.ticket_id",
+      "tags": [
+        "join",
+        "time-diff"
+      ]
+    },
+    {
+      "id": "ticket-029",
+      "difficulty": "HARD",
+      "question": "列出每条 SLA 违规记录对应的工单编号和违规类型",
+      "goldSql": "SELECT t.ticket_no, v.violation_type FROM sla_violation v JOIN ticket t ON t.id = v.ticket_id WHERE v.deleted = 0",
+      "tags": [
+        "join"
+      ]
+    },
+    {
+      "id": "ticket-030",
+      "difficulty": "HARD",
+      "question": "按工单 id，统计每张工单的流转次数和评论数，没有记录的显示 0",
+      "goldSql": "SELECT t.id, COALESCE(f.cnt, 0) AS flows, COALESCE(c.cnt, 0) AS comments FROM ticket t LEFT JOIN (SELECT ticket_id, COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 GROUP BY ticket_id) f ON f.ticket_id = t.id LEFT JOIN (SELECT ticket_id, COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 GROUP BY ticket_id) c ON c.ticket_id = t.id WHERE t.deleted = 0 ORDER BY t.id",
+      "tags": [
+        "subquery",
+        "left-join",
+        "zero"
+      ]
+    }
+  ]
+}

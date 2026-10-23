@@ -1,0 +1,131 @@
+---
+Status: decision superseded by ADR-0006; findings retained
+---
+
+> **⚠️ 本 ADR 的「决定」已作废，但「结论」全部保留并升级为规格。**
+> ADR-0006 改为自研后，本文「只实现 `JmReportTokenServiceI`、不自建 SQL 改写层」不再成立
+> ——没有厂商能力可复用了，改写层必须自建。
+>
+> 但本文**实测出来的权限语义**仍是新实现的规格来源，已全文迁入
+> [`.scratch/self-built-chatbi/spec.md`](../../.scratch/self-built-chatbi/spec.md) §7：
+> 两层闸门的不同判据、两处「默认放行」缺口、角色名不可经 HTTP 头传递、
+> 「被拒绝返回 HTTP 200」的审计陷阱、等价字段脱敏遗漏。
+> **自研的目标之一正是把这两处默认放行改成默认拒绝。**
+
+> **字段参考与配置方法见 [docs/permission-config.md](../permission-config.md)** ——
+> 权限存在哪两个 `perm_json` 字段里、每个字段的含义、以及四个实测踩出来的坑。
+> 本文只记录**决策**，配置细节不在这里重复。
+
+# 数据权限完全复用 JimuChatBI 自带能力，不自建 SQL 拦截层
+
+## 背景
+
+数据权限是本项目「企业级」诉求中排第一优先的项。原计划（本 ADR 的 proposed 版本）采用两层纵深防御：实现 `JmReportTokenServiceI` 作为主通道，外加包装 `IChat2biDatasourceService.openConnection` 返回的 `Connection` 作为兜底层。
+
+该计划基于一个未验证的假设：自带的 `rowRules` / `colRules` 可能只作用于报表定义，而不作用于 LLM 生成的临时 SQL。此假设已通过 spike 实测证伪。
+
+## 决定
+
+**只实现 `JmReportTokenServiceI`，不自建任何 SQL 改写层。** 兜底层取消。
+
+## 验证证据
+
+spike 在 `chatbi-spike` 工程中以同一请求体、仅切换角色复现（`POST /jimu/chat2bi/ask/recompute`，该端点按 DSL 重算、不经过 LLM，但走同一条 SQL 构造与权限路径）：
+
+| 角色 | 命中的规则 | 结果 |
+|---|---|---|
+| `admin` | 无 | 6 行，金额明文 |
+| `区域经理` | `rowRules: region = 华东` | **1 行**（仅华东） |
+| `分析师` | `colRules: premium 脱敏` | 6 行，金额为 `***` |
+
+三种角色三种行为，与 `chat2bi_domain.perm_json` 的配置一一对应。
+
+**行级过滤的实际形态**（实测下发 SQL）：
+
+```sql
+SELECT * FROM (
+    SELECT region AS "大区", SUM(premium) AS "年保费（元）"
+    FROM ins_policy GROUP BY region ORDER BY 2 DESC
+) c2b_sub WHERE `大区` = '华东' LIMIT 50
+```
+
+即把生成的查询整体包成子查询、在外层按维度过滤。这对 `GROUP BY` 是正确语义——过滤结果维度而非基表行，避免了往聚合前的 WHERE 里塞条件导致的口径错误。
+
+**列级脱敏在结果层而非 SQL 层**：`分析师` 的 SQL 仍为 `SUM(premium)`，但输出与 `insight` 文字中的数值均被替换为 `***`。真实值不进入 LLM 输出。
+
+> ⚠️ **但此结论仅在 `recompute` 路径上验证过。** 后续在真实 `ask` 路径上复测时发现列级脱敏**未生效**——见「后果」中的说明。
+
+**驱动链路**（字节码与运行时双向确认）：
+
+```
+JmReportTokenServiceI.getRoles(token) → String[]
+   ↓  Chat2biAskController 提取为 Set<String>
+IChat2biAskService.ask(..., Set<String> roles)
+   ↓
+Chat2biPermHelper 按 role 匹配 rowRules / colRules，改写即将执行的查询
+```
+
+## 考虑过的其他方案
+
+- **额外包装 `openConnection` 返回的 Connection，用 JSqlParser 自行注入谓词**：原 proposed 版本的第二层。实测证明多余——自带能力已覆盖，且自建改写要处理 CTE、UNION、窗口函数等，正确性风险高于收益。
+- **数据源层强制（视图 / 只读账号）**：不写代码但运维成本随「权限组合 × 数据源数量」爆炸，JimuChatBI 支持 30+ 数据源，不可行。
+
+## 后果
+
+- **自带能力有一处「默认放行」的缺口，必须靠配置纪律或校验兜住。** 运行时实测（同一请求、仅切换身份）：
+
+  | 用户 | 角色 | 结果 |
+  |---|---|---|
+  | `zhangsan` | chat2bi + 区域经理 | 1 行（仅华东）——`rowRules` 生效 |
+  | `lisi` | chat2bi + 分析师 | 6 行，金额 `***`——`colRules` 生效 |
+  | `nobody` | **无任何角色** | **6 行，全部明文** |
+
+  两处默认行为都是**放行**而非拒绝：
+  1. **`chat2bi_domain.perm_json.grantRoles` 为空数组 = 对所有已认证用户开放。** 把 `grantRoles` 设为 `["区域经理"]` 后重测，`lisi` 与 `nobody` 均返回 0 行——**闸门本身是失败关闭的，问题在于默认值**。
+  2. **某角色被授予域访问权但没有匹配的 `rowRules` 时，不附加任何过滤条件**，该角色看到域内全部行。这是「按角色授予限制」模型的固有语义，不是缺陷。
+
+  **由此得出两条硬性要求：**
+  - **R1：每个启用中的语义域与在线助手，都必须设置有效的访问授权。** 否则该对象对所有能通过认证的用户开放。这一条由 `AccessGrantStartupCheck` **校验**而非仅靠文档——一个漏配的域就是一次全量数据暴露。
+  - **R2：被授予域访问权即等于域内全量可见，除非另有 `rowRules` 约束。** 授予访问权时必须是有意为之。
+
+- **访问授权有两层，两层都有「默认放行」的缺口，均已实测确认。**
+
+  | 层 | 配置位置 | 闸门判据 | 缺口 |
+  |---|---|---|---|
+  | **域** | `chat2bi_domain.perm_json` | `grantRoles` / `grantUsers` 有内容，或 `isPublic=true` | 授权为空且未公开 → 对所有已认证用户开放 |
+  | **助手** | `chat2bi_assistant.perm_json` | `enabled=true` **且** 角色在 `grantRoles` 内 | `enabled` 缺失 → 对**任何角色集**放行，包括空集与不存在的角色 |
+
+  两层判据**不同且不可统一**：域看"有没有授权内容"，助手看"enabled 开关是否打开"。后者是实测结论——助手在 `enabled=true` 且授权为空时是**拒绝**（安全），而缺 `enabled` 时是**放行**。这是厂商各自默认值的差异，不是笔误。
+
+  两层的**失败表现也不同**：域层拦下返回 **0 行**（用户以为没数据），助手层拦下返回**明确错误**（"您没有该助理的访问权限"，实测确认）。后者体验更好，但也说明**助手层不是数据保护点**——数据保护由域层承担，助手层只是功能可见性。
+
+  两者均由 `AccessGrantStartupCheck` 在启动时校验，未设置有效授权即拒绝启动。
+
+- **`Chat2biAskController` 没有任何 `@RequiresRoles` / `@RequiresPermissions`。** 问数端点厂商层面不设角色门槛（`Chat2biAssistantController` 有 8 处）。域与助手两层校验由此成为问数链路上仅有的两道门。
+
+- **`getRoles` 返回空数组不是失败关闭。** 见上表无角色者一行。修改 `ChatbiTokenService` 时不要把它当作安全兜底。
+- **角色名必须与 `rowRules[].role` 逐字符一致。** 注意非 ASCII 角色名（如 `区域经理`）不能经由 HTTP 头传递：头按 RFC 7230 只允许 ASCII，容器按 ISO-8859-1 解码会产生乱码，导致匹配失败且**静默放行**。生产实现从 JWT 的 `getRoles(token)` 取角色，不经过头部，可规避此问题。
+- **`sysVar` 动态规则能力有限。** 实测中 `dynamic: false` 的静态规则正常工作；字节码显示 `sysVar` 为空或不支持时会跳过该条规则并打日志（"行级规则动态变量[{}]暂不支持或值为空，已跳过"）。若将来需要「按当前用户所属组织动态过滤」，需先确认 `sysVar` 支持哪些变量。
+- **⚠️ 列级脱敏按「字段」配置，而语义层里同一业务口径可能存在多个等价字段。**
+
+  实测对照（同一用户 `分析师`、同一环境）：
+
+  | 指标 | 实际字段 | 脱敏 |
+  |---|---|---|
+  | `年保费（元）` | `ins_policy.premium` | ✅ `***` |
+  | `保费合计` | `v_ins_premium_trend.premium_total` | ❌ 明文 |
+
+  `colRules` 配的是 `field: premium`，而 `premium_total` 是**另一个列**——厂商行为正确，
+  规则本就不该覆盖它。**受限制的用户可以换一个等价指标看到同样的数值。**
+
+  > **这是本 ADR 一次错误结论的更正。** 最初观察到「ask 路径不脱敏、recompute 脱敏」，
+   > 并据此判断"两条路径对权限助手的调用方式不同"。实际上那两次对比恰好用了**不同指标**，
+   > 我把混淆变量当成了自变量。用 recompute 分别传两个指标即可证伪：同一条路径，
+   > 换指标就换结果。**做路径对比时必须固定其它变量。**
+
+  这类缺口不限于某条路径，**处处适用**，且**代码无法修复**——它是语义建模的纪律问题：
+  一个业务口径应对应一个字段。若确需保留多个等价字段，**每个都必须单独配置权限规则**。
+
+- **厂商对「被拒绝」返回 HTTP 200。** 无权限时响应体为 `{"blocked":true, "text":"您没有模型[...]权限"}`，而非错误码。任何基于"有没有抛异常"的判断都会把它当作成功——审计中尤其危险，因为"被拒绝"与"正常查了但无数据"会变得无法区分。审计因此为拒绝单列 `BLOCKED` 结果类型。
+
+- **`chat2bi_domain.datasource_id` 为空时使用应用默认库**，权限规则仍生效（spike 与真实 ask 路径均为该情形）。

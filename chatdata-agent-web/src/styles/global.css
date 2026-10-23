@@ -1,0 +1,583 @@
+/* ═══════════════ 全局样式 ═══════════════
+ *
+ * 方向：**轻量友好 SaaS**（样张 C）。
+ * 浅蓝灰底 + 白色圆角面板 + 双色渐变主操作；大圆角、柔和投影、胶囊标签。
+ * 共享原语放在这里（按钮、输入、标签、表格、卡片、弹窗），页面只写自己的排版。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background-color: var(--paper);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── 排版件 ── */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.28;
+}
+
+/* 页眉小标：短字距的全大写标注，颜色取强调色 */
+.eyebrow {
+  display: inline-block;
+  margin: 0 0 var(--space-2);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* 双细线：只在需要"分隔一大块"的地方用，别当装饰 */
+.rule-double {
+  border-top: 1px solid var(--line-strong);
+  box-shadow: 0 3px 0 -2px var(--line);
+}
+
+/* ── 按钮 ──
+ * 主操作是渐变胶囊；次级是白底细边。按下有物理反馈。 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0.55em 1.05em;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--gradient-accent);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(91, 108, 255, 0.26);
+}
+
+.btn-primary:not(:disabled):hover {
+  box-shadow: 0 10px 26px rgba(91, 108, 255, 0.36);
+  transform: translateY(-1px);
+}
+
+.btn-quiet {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink-soft);
+}
+
+.btn-quiet:not(:disabled):hover {
+  border-color: #c9d0f5;
+  color: var(--accent-deep);
+}
+
+.btn-danger {
+  background: var(--danger-soft);
+  border-color: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.btn-danger:not(:disabled):hover {
+  border-color: var(--danger);
+}
+
+.btn-sm {
+  padding: 0.32em 0.72em;
+  border-radius: 8px;
+  font-size: 0.6875rem;
+  font-weight: 550;
+}
+
+/* ── 输入 ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.input {
+  width: 100%;
+  padding: 0.58em 0.8em;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.input:hover {
+  border-color: #c3cbe4;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: var(--focus-ring);
+}
+
+.input::placeholder {
+  color: var(--ink-faint);
+}
+
+.field-note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.field-note code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* ── 提示条 ── */
+.note {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.note-warn {
+  border-color: transparent;
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.note-danger {
+  border-color: transparent;
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+/* ── 管理面共享件 ── */
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: 0;
+  margin-bottom: var(--space-5);
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 1.2rem + 0.6vw, 1.7rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.page-head .sub {
+  max-width: 64ch;
+  margin-top: var(--space-2);
+  line-height: 1.65;
+}
+
+.cards {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.card {
+  position: relative;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.card-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+/* 胶囊标签：角色、分类这类"名词"用它；状态用下面的 .state */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.22em 0.62em;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  letter-spacing: 0;
+  color: var(--accent-deep);
+  white-space: nowrap;
+}
+
+.tag-off {
+  background: var(--off-soft, #f0f2f8);
+  color: var(--ink-soft);
+}
+
+.tag-warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+/* 状态：启用绿、停用灰，不带圆点 */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.22em 0.62em;
+  border-radius: var(--radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.state-on {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.state-off {
+  background: var(--off-soft, #f0f2f8);
+  color: var(--ink-soft);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-3);
+}
+
+.meta > div,
+.meta div {
+  display: grid;
+  gap: 2px;
+}
+
+.meta dt {
+  font-size: var(--text-xs);
+  letter-spacing: var(--track-label);
+  color: var(--ink-faint);
+}
+
+.meta dd {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* ── 表格 ──
+ * 三个管理页共用；不要再在页面里复制一份，改一处要改四遍。 */
+.table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.data th,
+.data td {
+  padding: 0.72rem 1.1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.data th {
+  background: var(--surface-sunk);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+
+.data tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data tbody tr:hover td {
+  background: var(--surface-sunk);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* 勾选项做成可点的大目标：整块都是 label，不用瞄准小方块 */
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.42rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.check:hover {
+  border-color: var(--line-strong);
+}
+
+.check:has(input:checked) {
+  border-color: #c9d0f5;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.check input {
+  accent-color: var(--accent);
+}
+
+/* ── 弹窗 ──
+ * 大圆角 + 深投影；遮罩带轻微模糊。 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: rgba(27, 35, 64, 0.34);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  position: relative;
+  width: 100%;
+  max-width: 760px;
+  max-height: 88dvh;
+  overflow: auto;
+  padding: 1.75rem 1.875rem 1.5rem;
+  background: var(--surface);
+  border: none;
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-title {
+  margin-bottom: var(--space-4);
+  font-family: var(--font-display);
+  font-size: 1.3125rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+/* 短字段一行三个，组织这类需要展开树的字段独占一整行 */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.form-grid .span-all {
+  grid-column: 1 / -1;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+/* ── 动效 ── */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  animation: reveal var(--duration-slow) var(--ease-out) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+@media (max-width: 720px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .two-col,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal {
+    padding: var(--space-5);
+  }
+}

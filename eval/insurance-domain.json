@@ -1,0 +1,99 @@
+{
+  "name": "保险分析域基线",
+  "domainId": "1",
+  "userId": "admin",
+  "roles": [
+    "管理员"
+  ],
+  "assistantId": null,
+  "cases": [
+    {
+      "id": "insurance-001",
+      "difficulty": "SIMPLE",
+      "question": "保单总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy",
+      "tags": [
+        "count"
+      ]
+    },
+    {
+      "id": "insurance-002",
+      "difficulty": "SIMPLE",
+      "question": "按保单状态统计保单数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ins_policy GROUP BY status",
+      "tags": [
+        "group",
+        "enum"
+      ]
+    },
+    {
+      "id": "insurance-003",
+      "difficulty": "SIMPLE",
+      "question": "按区域统计保单数量",
+      "goldSql": "SELECT region, COUNT(*) AS cnt FROM ins_policy GROUP BY region",
+      "tags": [
+        "group"
+      ]
+    },
+    {
+      "id": "insurance-004",
+      "difficulty": "MEDIUM",
+      "question": "华东的保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE region = '华东'",
+      "tags": [
+        "filter",
+        "sum"
+      ]
+    },
+    {
+      "id": "insurance-005",
+      "difficulty": "MEDIUM",
+      "question": "按区域统计保费合计，并按保费从高到低排列",
+      "goldSql": "SELECT region, SUM(premium) AS total_premium FROM ins_policy GROUP BY region ORDER BY total_premium DESC",
+      "tags": [
+        "group",
+        "sum"
+      ]
+    },
+    {
+      "id": "insurance-006",
+      "difficulty": "MEDIUM",
+      "question": "按客户等级统计保单数量",
+      "goldSql": "SELECT c.cust_level, COUNT(*) AS cnt FROM ins_policy p JOIN ins_customer c ON p.cust_id = c.id GROUP BY c.cust_level",
+      "tags": [
+        "join",
+        "group"
+      ]
+    },
+    {
+      "id": "insurance-007",
+      "difficulty": "HARD",
+      "question": "2025 年生效的保单保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE YEAR(effect_date) = 2025",
+      "tags": [
+        "time",
+        "sum"
+      ]
+    },
+    {
+      "id": "insurance-008",
+      "difficulty": "HARD",
+      "question": "2025 年生效且状态为生效的保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE YEAR(effect_date) = 2025 AND status = '生效'",
+      "tags": [
+        "time",
+        "filter"
+      ]
+    },
+    {
+      "id": "insurance-009",
+      "difficulty": "SIMPLE",
+      "question": "状态为退保的保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE status = '退保'",
+      "tags": [
+        "filter",
+        "enum"
+      ]
+    }
+  ]
+}

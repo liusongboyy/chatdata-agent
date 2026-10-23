@@ -1,0 +1,25 @@
+# 评测 profile：启动、跑完、退出。见 EvalCommandLineRunner。
+server:
+  # 评测不提供 HTTP 服务，但 Spring Security 的配置需要 servlet 上下文，
+  # 所以不禁用 Web 容器，只让它随机端口、不占 8080。
+  port: 0
+
+spring:
+  main:
+    banner-mode: off
+
+chatdata:
+  eval:
+    # 目录或单个文件。一个数据集一个 JSON，接新数据集只加文件
+    path: ../eval
+    report: target/eval-report.json
+    # 0 = 不阻断，先看基线分数。CI 里建议设成 0.8 或用环境变量覆盖
+    min-pass-rate: 0.0
+    # 只跑前 N 条，调试 prompt 时用
+    limit: 0
+
+logging:
+  level:
+    root: WARN
+    com.liusongboyy.chatdata: INFO
+    io.agentscope: WARN

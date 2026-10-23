@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.liusongboyy.chatdata</groupId>
+        <artifactId>chatdata-agent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>chatdata-agent-iam</artifactId>
+    <packaging>jar</packaging>
+
+    <name>chatdata-agent-iam</name>
+    <description>
+        用户、组织、角色、权限与登录的独立服务。
+        认证授权走 OAuth 2.1（Spring Authorization Server），
+        access token 使用不透明引用令牌（OAuth2TokenFormat.REFERENCE），
+        授权记录落 MySQL、会话与缓存落 Redis。见 docs/adr/0008。
+    </description>
+
+    <dependencies>
+        <!-- 本项目持久层约定（MyBatis-Plus + Hikari + MySQL） -->
+        <dependency>
+            <groupId>com.liusongboyy.chatdata</groupId>
+            <artifactId>chatdata-agent-common-mybatis</artifactId>
+        </dependency>
+
+        <!-- Web。登录页由 chatdata-agent-iam-web（Vue）提供，不用服务端模板 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- 会话落 Redis：IAM 多实例部署时，会话不能只在单机内存里 -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
+        <!-- 认证与授权服务器。
+             Boot 4.1 同时提供旧名 starter（已标 deprecated）与新名，
+             这里用旧名是因为它在本机仓库已存在且传递依赖完整；
+             升级时只需换成 spring-boot-starter-security-oauth2-authorization-server。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-authorization-server</artifactId>
+        </dependency>
+
+        <!-- 会话、验证码、内省缓存、吊销广播 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
