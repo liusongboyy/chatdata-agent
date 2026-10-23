@@ -1,0 +1,768 @@
+{
+  "name": "保险分析域基线（评测夹具）",
+  "domainId": "2001",
+  "userId": "eval",
+  "roles": [
+    "super_admin"
+  ],
+  "assistantId": null,
+  "primaryMetric": "strict",
+  "cases": [
+    {
+      "id": "insurance-001",
+      "difficulty": "SIMPLE",
+      "question": "保单总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-002",
+      "difficulty": "SIMPLE",
+      "question": "按保单状态统计保单数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ins_policy GROUP BY status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 3 行。"
+    },
+    {
+      "id": "insurance-003",
+      "difficulty": "SIMPLE",
+      "question": "按大区统计保单数量",
+      "goldSql": "SELECT region, COUNT(*) AS cnt FROM ins_policy GROUP BY region",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "insurance-004",
+      "difficulty": "SIMPLE",
+      "question": "状态为退保的保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE status = '退保'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-005",
+      "difficulty": "SIMPLE",
+      "question": "客户总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_customer",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-006",
+      "difficulty": "SIMPLE",
+      "question": "按险种类型统计保单数量",
+      "goldSql": "SELECT product_type, COUNT(*) AS cnt FROM ins_policy GROUP BY product_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-007",
+      "difficulty": "SIMPLE",
+      "question": "理赔报案总件数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_claim",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-008",
+      "difficulty": "SIMPLE",
+      "question": "按理赔状态统计理赔件数",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ins_claim GROUP BY status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 3 行。"
+    },
+    {
+      "id": "insurance-009",
+      "difficulty": "SIMPLE",
+      "question": "按销售渠道统计保单数量",
+      "goldSql": "SELECT channel, COUNT(*) AS cnt FROM ins_policy GROUP BY channel",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-010",
+      "difficulty": "SIMPLE",
+      "question": "按客户等级统计客户数量",
+      "goldSql": "SELECT cust_level, COUNT(*) AS cnt FROM ins_customer GROUP BY cust_level",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "insurance-011",
+      "difficulty": "SIMPLE",
+      "question": "按理赔类型统计理赔件数",
+      "goldSql": "SELECT claim_type, COUNT(*) AS cnt FROM ins_claim GROUP BY claim_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-012",
+      "difficulty": "SIMPLE",
+      "question": "男性客户有多少人？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_customer WHERE gender = '男'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-013",
+      "difficulty": "MEDIUM",
+      "question": "华东的保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE region = '华东'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-014",
+      "difficulty": "MEDIUM",
+      "question": "按大区统计保费合计，并按保费从高到低排列",
+      "goldSql": "SELECT region, SUM(premium) AS total_premium FROM ins_policy GROUP BY region ORDER BY total_premium DESC",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg",
+        "order"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "insurance-015",
+      "difficulty": "MEDIUM",
+      "question": "按险种类型统计保费合计",
+      "goldSql": "SELECT product_type, SUM(premium) AS total_premium FROM ins_policy GROUP BY product_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-016",
+      "difficulty": "MEDIUM",
+      "question": "按客户等级统计保单数量",
+      "goldSql": "SELECT c.cust_level, COUNT(*) AS cnt FROM ins_policy p JOIN ins_customer c ON p.cust_id = c.id GROUP BY c.cust_level",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "insurance-017",
+      "difficulty": "MEDIUM",
+      "question": "各区域的理赔赔付金额合计是多少？",
+      "goldSql": "SELECT province, SUM(settle_amount) AS total_settle FROM ins_claim GROUP BY province",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 19 行。"
+    },
+    {
+      "id": "insurance-018",
+      "difficulty": "MEDIUM",
+      "question": "状态为已赔付的理赔，赔付金额合计是多少？",
+      "goldSql": "SELECT SUM(settle_amount) AS total_settle FROM ins_claim WHERE status = '已赔付'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-019",
+      "difficulty": "MEDIUM",
+      "question": "按销售渠道统计保费合计",
+      "goldSql": "SELECT channel, SUM(premium) AS total_premium FROM ins_policy GROUP BY channel",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-020",
+      "difficulty": "MEDIUM",
+      "question": "华东和华南两个大区的保单数量分别是多少？",
+      "goldSql": "SELECT region, COUNT(*) AS cnt FROM ins_policy WHERE region IN ('华东', '华南') GROUP BY region",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "insurance-021",
+      "difficulty": "MEDIUM",
+      "question": "按性别统计客户的平均年龄",
+      "goldSql": "SELECT gender, AVG(age) AS avg_age FROM ins_customer GROUP BY gender",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "insurance-022",
+      "difficulty": "MEDIUM",
+      "question": "保障年限为 10 年的保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE term_years = 10",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-023",
+      "difficulty": "MEDIUM",
+      "question": "理赔状态为已拒赔的理赔申请金额合计是多少？",
+      "goldSql": "SELECT SUM(claim_amount) AS total_claim FROM ins_claim WHERE status = '已拒赔'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-024",
+      "difficulty": "HARD",
+      "question": "2025 年生效的保单保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-025",
+      "difficulty": "HARD",
+      "question": "2025 年生效且状态为生效的保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' AND status = '生效'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-026",
+      "difficulty": "HARD",
+      "question": "2024 年报案的理赔件数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_claim WHERE report_date >= '2024-01-01' AND report_date < '2025-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-027",
+      "difficulty": "HARD",
+      "question": "按投保年份统计保费合计",
+      "goldSql": "SELECT YEAR(sign_date) AS yr, SUM(premium) AS total_premium FROM ins_policy GROUP BY YEAR(sign_date) ORDER BY yr",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "insurance-028",
+      "difficulty": "HARD",
+      "question": "按理赔类型统计赔付金额合计，只看已赔付的理赔",
+      "goldSql": "SELECT claim_type, SUM(settle_amount) AS total_settle FROM ins_claim WHERE status = '已赔付' GROUP BY claim_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-029",
+      "difficulty": "HARD",
+      "question": "各险种类型的保额合计是多少？",
+      "goldSql": "SELECT product_type, SUM(coverage_amount) AS total_coverage FROM ins_policy GROUP BY product_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-030",
+      "difficulty": "HARD",
+      "question": "2025 年理赔金额合计比申请金额合计少多少？",
+      "goldSql": "SELECT SUM(settle_amount) AS total_settle, SUM(claim_amount) AS total_claim FROM ins_claim WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-031",
+      "difficulty": "SIMPLE",
+      "question": "保额最高的那类险种是什么？",
+      "goldSql": "SELECT product_type FROM ins_policy ORDER BY coverage_amount DESC LIMIT 1",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-032",
+      "difficulty": "SIMPLE",
+      "question": "一共涉及多少个省份的保单？",
+      "goldSql": "SELECT COUNT(DISTINCT province) AS cnt FROM ins_policy",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "distinct"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-033",
+      "difficulty": "SIMPLE",
+      "question": "理赔单号一共有多少个？",
+      "goldSql": "SELECT COUNT(DISTINCT claim_no) AS cnt FROM ins_claim",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "distinct"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-034",
+      "difficulty": "SIMPLE",
+      "question": "平均每张保单的保费是多少？",
+      "goldSql": "SELECT AVG(premium) AS avg_premium FROM ins_policy",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-035",
+      "difficulty": "SIMPLE",
+      "question": "最大的一笔年保费是多少？",
+      "goldSql": "SELECT MAX(premium) AS max_premium FROM ins_policy",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-036",
+      "difficulty": "SIMPLE",
+      "question": "最小的一笔年保费是多少？",
+      "goldSql": "SELECT MIN(premium) AS min_premium FROM ins_policy",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-037",
+      "difficulty": "SIMPLE",
+      "question": "按职业统计客户数量",
+      "goldSql": "SELECT occupation, COUNT(*) AS cnt FROM ins_customer GROUP BY occupation",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 10 行。"
+    },
+    {
+      "id": "insurance-038",
+      "difficulty": "SIMPLE",
+      "question": "已赔付的理赔有多少件？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_claim WHERE status = '已赔付'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-039",
+      "difficulty": "SIMPLE",
+      "question": "省份为广东的保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE province = '广东'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-040",
+      "difficulty": "SIMPLE",
+      "question": "车险保单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy WHERE product_type = '车险'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-041",
+      "difficulty": "MEDIUM",
+      "question": "金卡客户的保单数量是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_policy p JOIN ins_customer c ON p.cust_id = c.id WHERE c.cust_level = '金卡'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-042",
+      "difficulty": "MEDIUM",
+      "question": "各销售渠道的平均保费是多少？",
+      "goldSql": "SELECT channel, AVG(premium) AS avg_premium FROM ins_policy GROUP BY channel",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-043",
+      "difficulty": "MEDIUM",
+      "question": "按险种类型统计赔付金额合计",
+      "goldSql": "SELECT product_type, SUM(settle_amount) AS total_settle FROM ins_claim GROUP BY product_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-044",
+      "difficulty": "MEDIUM",
+      "question": "华北和西北的保费合计分别是多少？",
+      "goldSql": "SELECT region, SUM(premium) AS total_premium FROM ins_policy WHERE region IN ('华北', '西北') GROUP BY region",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "insurance-045",
+      "difficulty": "MEDIUM",
+      "question": "按客户性别统计保单数量",
+      "goldSql": "SELECT c.gender, COUNT(*) AS cnt FROM ins_policy p JOIN ins_customer c ON p.cust_id = c.id GROUP BY c.gender",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "insurance-046",
+      "difficulty": "MEDIUM",
+      "question": "理赔状态为已赔付的理赔，平均赔付金额是多少？",
+      "goldSql": "SELECT AVG(settle_amount) AS avg_settle FROM ins_claim WHERE status = '已赔付'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-047",
+      "difficulty": "MEDIUM",
+      "question": "按大区统计客户数量",
+      "goldSql": "SELECT region, COUNT(*) AS cnt FROM ins_customer GROUP BY region",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "insurance-048",
+      "difficulty": "MEDIUM",
+      "question": "50 岁以上的客户有多少人？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ins_customer WHERE age > 50",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-049",
+      "difficulty": "MEDIUM",
+      "question": "线上直销渠道的保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE channel = '线上直销'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-050",
+      "difficulty": "MEDIUM",
+      "question": "按保障年限统计保单数量",
+      "goldSql": "SELECT term_years, COUNT(*) AS cnt FROM ins_policy GROUP BY term_years",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-051",
+      "difficulty": "HARD",
+      "question": "2024 年投保的保单保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE sign_date >= '2024-01-01' AND sign_date < '2025-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-052",
+      "difficulty": "HARD",
+      "question": "2025 年各险种类型的理赔件数分别是多少？",
+      "goldSql": "SELECT product_type, COUNT(*) AS cnt FROM ins_claim WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01' GROUP BY product_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "insurance-053",
+      "difficulty": "HARD",
+      "question": "按生效年份统计保单数量",
+      "goldSql": "SELECT YEAR(effect_date) AS yr, COUNT(*) AS cnt FROM ins_policy GROUP BY YEAR(effect_date) ORDER BY yr",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "insurance-054",
+      "difficulty": "HARD",
+      "question": "2025 年赔付支出总额是多少？",
+      "goldSql": "SELECT SUM(settle_amount) AS total_settle FROM ins_claim WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-055",
+      "difficulty": "HARD",
+      "question": "2024 年各月的理赔报案件数分别是多少？",
+      "goldSql": "SELECT DATE_FORMAT(report_date, '%Y-%m') AS ym, COUNT(*) AS cnt FROM ins_claim WHERE report_date >= '2024-01-01' AND report_date < '2025-01-01' GROUP BY DATE_FORMAT(report_date, '%Y-%m') ORDER BY ym",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 9 行。"
+    },
+    {
+      "id": "insurance-056",
+      "difficulty": "HARD",
+      "question": "已赔付的理赔中，赔付金额占申请金额的比例是多少？",
+      "goldSql": "SELECT SUM(settle_amount) / SUM(claim_amount) AS ratio FROM ins_claim WHERE status = '已赔付'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-057",
+      "difficulty": "HARD",
+      "question": "2025 年新投保客户的平均年龄是多少？",
+      "goldSql": "SELECT AVG(age) AS avg_age FROM ins_customer WHERE reg_date >= '2025-01-01' AND reg_date < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-058",
+      "difficulty": "HARD",
+      "question": "各险种的出单省份里，广东省的保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE province = '广东'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-059",
+      "difficulty": "HARD",
+      "question": "按大区统计退保保单占比",
+      "goldSql": "SELECT region, SUM(CASE WHEN status = '退保' THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ins_policy GROUP BY region",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "insurance-060",
+      "difficulty": "HARD",
+      "question": "2025 年生效的保单中，健康险的保费合计是多少？",
+      "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' AND product_type = '健康险'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "filter",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    }
+  ]
+}

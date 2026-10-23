@@ -32,11 +32,13 @@ import java.util.Map;
  * @param empty       空结果数（已含在 failed 中）
  * @param errors      执行异常数（已含在 failed 中）
  * @param goldErrors  gold SQL 跑不起来/不合法的用例数
+ * @param primaryMetric 本数据集的主指标口径（见 {@link EvalSet.PrimaryMetric}）
  */
 public record EvalReport(
         String name,
         String domainId,
         String mode,
+        String primaryMetric,
         String generatedAt,
         int total,
         int passed,
@@ -55,6 +57,20 @@ public record EvalReport(
         Map<String, DifficultyStat> byDifficulty,
         List<CaseResult> cases
 ) {
+
+    /** 按数据集声明的主指标口径算出的通过率。 */
+    public double primaryRate() {
+        return primaryMetricOf() == EvalSet.PrimaryMetric.STRICT ? passRate : containsRate;
+    }
+
+    /** 按主指标口径算出的通过数。 */
+    public int primaryPassed() {
+        return primaryMetricOf().passedOf(passed, containsPassed);
+    }
+
+    public EvalSet.PrimaryMetric primaryMetricOf() {
+        return EvalSet.PrimaryMetric.parse(primaryMetric);
+    }
 
     /** 一个难度档的统计。 */
     public record DifficultyStat(int total, int passed) {
@@ -109,7 +125,15 @@ public record EvalReport(
             sb.append("模式：").append(mode).append('\n');
         }
         int denominator = total - goldErrors;
+        EvalSet.PrimaryMetric metric = EvalSet.PrimaryMetric.parse(primaryMetric);
+        int primaryPassed = metric.passedOf(passed, containsPassed);
+        double primaryRate = metric == EvalSet.PrimaryMetric.STRICT ? passRate : containsRate;
+
+        sb.append("主指标：").append(metric == EvalSet.PrimaryMetric.STRICT
+                        ? "严格 EX" : "包含式 EX").append('\n');
         sb.append("用例 ").append(total)
+                .append(" | 主指标通过 ").append(primaryPassed)
+                .append("（").append(pct(primaryRate)).append("）")
                 .append(" | 严格通过 ").append(passed)
                 .append("（").append(pct(passRate)).append("）")
                 .append(" | 包含式通过 ").append(containsPassed)

@@ -1,0 +1,749 @@
+{
+  "name": "工单直连域基线（直连·评测夹具）",
+  "domainId": "2003",
+  "userId": "eval",
+  "roles": [
+    "super_admin"
+  ],
+  "assistantId": null,
+  "primaryMetric": "contains",
+  "cases": [
+    {
+      "id": "ticket-r-001",
+      "difficulty": "SIMPLE",
+      "question": "工单总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-002",
+      "difficulty": "SIMPLE",
+      "question": "按状态统计工单数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-r-003",
+      "difficulty": "SIMPLE",
+      "question": "通知里未读的有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM notification WHERE deleted = 0 AND read_status = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-004",
+      "difficulty": "SIMPLE",
+      "question": "知识库里已发布的文章有多少篇？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_article WHERE deleted = 0 AND status = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-005",
+      "difficulty": "SIMPLE",
+      "question": "按通知类型统计通知条数",
+      "goldSql": "SELECT type, COUNT(*) AS cnt FROM notification WHERE deleted = 0 GROUP BY type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 3 行。"
+    },
+    {
+      "id": "ticket-r-006",
+      "difficulty": "SIMPLE",
+      "question": "SLA 违规记录有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-007",
+      "difficulty": "SIMPLE",
+      "question": "按违规类型统计 SLA 违规次数",
+      "goldSql": "SELECT violation_type, COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0 GROUP BY violation_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-r-008",
+      "difficulty": "SIMPLE",
+      "question": "分派规则一共有几条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM dispatch_rule WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-009",
+      "difficulty": "SIMPLE",
+      "question": "按启用状态统计 SLA 策略数量",
+      "goldSql": "SELECT enabled, COUNT(*) AS cnt FROM sla_policy WHERE deleted = 0 GROUP BY enabled",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-010",
+      "difficulty": "SIMPLE",
+      "question": "知识附件一共有多少个？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_attachment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-011",
+      "difficulty": "MEDIUM",
+      "question": "浏览量最高的那篇知识文章的标题是什么？",
+      "goldSql": "SELECT title FROM knowledge_article WHERE deleted = 0 ORDER BY view_count DESC, id LIMIT 1",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-012",
+      "difficulty": "MEDIUM",
+      "question": "每篇文章平均有多少个附件？",
+      "goldSql": "SELECT COUNT(*) / (SELECT COUNT(*) FROM knowledge_article WHERE deleted = 0) AS avg_attach FROM knowledge_attachment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-013",
+      "difficulty": "MEDIUM",
+      "question": "SLA 违规记录里逾期最久的是多少分钟？",
+      "goldSql": "SELECT MAX(overdue_minutes) AS max_overdue FROM sla_violation WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-014",
+      "difficulty": "MEDIUM",
+      "question": "按分类统计知识文章数量",
+      "goldSql": "SELECT category_id, COUNT(*) AS cnt FROM knowledge_article WHERE deleted = 0 GROUP BY category_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-015",
+      "difficulty": "MEDIUM",
+      "question": "每张工单平均有多少条流转记录？",
+      "goldSql": "SELECT COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_flow FROM ticket_flow WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-016",
+      "difficulty": "MEDIUM",
+      "question": "有 SLA 计时记录的工单有多少张？",
+      "goldSql": "SELECT COUNT(DISTINCT ticket_id) AS cnt FROM sla_timer WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "distinct"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-017",
+      "difficulty": "MEDIUM",
+      "question": "知识文章的总浏览量是多少？",
+      "goldSql": "SELECT SUM(view_count) AS total_view FROM knowledge_article WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-018",
+      "difficulty": "MEDIUM",
+      "question": "有帮助数最高的知识文章标题是什么？",
+      "goldSql": "SELECT title FROM knowledge_article WHERE deleted = 0 ORDER BY helpful_count DESC, id LIMIT 1",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-019",
+      "difficulty": "MEDIUM",
+      "question": "每个工单分类下已关闭工单的数量",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 AND t.status = 'CLOSED' GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-020",
+      "difficulty": "MEDIUM",
+      "question": "逾期分钟数超过 600 的 SLA 违规有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0 AND overdue_minutes > 600",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-021",
+      "difficulty": "MEDIUM",
+      "question": "附件总大小是多少字节？",
+      "goldSql": "SELECT SUM(file_size) AS total_size FROM knowledge_attachment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-022",
+      "difficulty": "MEDIUM",
+      "question": "按工单状态统计通知数量（通过工单关联）",
+      "goldSql": "SELECT t.status, COUNT(*) AS cnt FROM notification n JOIN ticket t ON n.biz_id = t.id WHERE n.deleted = 0 AND t.deleted = 0 AND n.type = 'ticket' GROUP BY t.status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-r-023",
+      "difficulty": "MEDIUM",
+      "question": "平均每张工单产生多少条评论？",
+      "goldSql": "SELECT COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_comment FROM ticket_comment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-024",
+      "difficulty": "HARD",
+      "question": "已关闭的工单从创建到关闭平均用了多少小时？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, closed_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND closed_at IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-025",
+      "difficulty": "HARD",
+      "question": "AI 推荐分类与工单实际分类一致的工单占全部工单的比例是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT SUM(CASE WHEN ai_category_id = category_id THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-026",
+      "difficulty": "HARD",
+      "question": "按工单 id，统计每张工单的流转次数和评论数，没有记录的显示 0",
+      "goldSql": "SELECT t.id, COUNT(DISTINCT f.id) AS flow_cnt, COUNT(DISTINCT c.id) AS comment_cnt FROM ticket t LEFT JOIN ticket_flow f ON f.ticket_id = t.id AND f.deleted = 0 LEFT JOIN ticket_comment c ON c.ticket_id = t.id AND c.deleted = 0 WHERE t.deleted = 0 GROUP BY t.id ORDER BY t.id LIMIT 50",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "multi-agg"
+      ],
+      "note": "夹具数据；gold 结果 50 行。"
+    },
+    {
+      "id": "ticket-r-027",
+      "difficulty": "HARD",
+      "question": "列出每条 SLA 违规记录对应的工单编号和违规类型",
+      "goldSql": "SELECT t.ticket_no, v.violation_type FROM sla_violation v JOIN ticket t ON v.ticket_id = t.id WHERE v.deleted = 0 AND t.deleted = 0 ORDER BY v.id LIMIT 50",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "join"
+      ],
+      "note": "夹具数据；gold 结果 50 行。"
+    },
+    {
+      "id": "ticket-r-028",
+      "difficulty": "HARD",
+      "question": "解决违规和首次响应违规各有多少条？",
+      "goldSql": "SELECT violation_type, COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0 GROUP BY violation_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-r-029",
+      "difficulty": "HARD",
+      "question": "没有 SLA 计时记录的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket t WHERE t.deleted = 0 AND NOT EXISTS (SELECT 1 FROM sla_timer st WHERE st.ticket_id = t.id AND st.deleted = 0)",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "subquery"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-030",
+      "difficulty": "HARD",
+      "question": "知识文章里，有附件的文章占比是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT COUNT(DISTINCT a.id) / (SELECT COUNT(*) FROM knowledge_article a2 WHERE a2.deleted = 0) AS ratio FROM knowledge_article a JOIN knowledge_attachment att ON att.article_id = a.id WHERE a.deleted = 0 AND att.deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-031",
+      "difficulty": "SIMPLE",
+      "question": "工单评论一共有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-032",
+      "difficulty": "SIMPLE",
+      "question": "按工单来源统计数量",
+      "goldSql": "SELECT source, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY source",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-r-033",
+      "difficulty": "SIMPLE",
+      "question": "知识分类一共有几个？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_category WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-034",
+      "difficulty": "SIMPLE",
+      "question": "通知总条数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM notification WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-035",
+      "difficulty": "SIMPLE",
+      "question": "工单流转记录一共有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-036",
+      "difficulty": "SIMPLE",
+      "question": "SLA 计时记录有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM sla_timer WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-037",
+      "difficulty": "SIMPLE",
+      "question": "按动作类型统计分派规则数量",
+      "goldSql": "SELECT action_type, COUNT(*) AS cnt FROM dispatch_rule WHERE deleted = 0 GROUP BY action_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-r-038",
+      "difficulty": "SIMPLE",
+      "question": "已读通知有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM notification WHERE deleted = 0 AND read_status = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-039",
+      "difficulty": "SIMPLE",
+      "question": "按状态统计知识文章数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM knowledge_article WHERE deleted = 0 GROUP BY status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-r-040",
+      "difficulty": "SIMPLE",
+      "question": "评论里内部备注有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 AND is_internal = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-041",
+      "difficulty": "MEDIUM",
+      "question": "浏览量最低的已发布知识文章标题是什么？",
+      "goldSql": "SELECT title FROM knowledge_article WHERE deleted = 0 AND status = 1 ORDER BY view_count ASC, id LIMIT 1",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-042",
+      "difficulty": "MEDIUM",
+      "question": "文件大小最大的附件是哪个文件？",
+      "goldSql": "SELECT file_name FROM knowledge_attachment WHERE deleted = 0 ORDER BY file_size DESC, id LIMIT 1",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-043",
+      "difficulty": "MEDIUM",
+      "question": "每个分类下知识文章的平均浏览量是多少？",
+      "goldSql": "SELECT category_id, AVG(view_count) AS avg_view FROM knowledge_article WHERE deleted = 0 GROUP BY category_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-044",
+      "difficulty": "MEDIUM",
+      "question": "按读取状态统计通知数量",
+      "goldSql": "SELECT read_status, COUNT(*) AS cnt FROM notification WHERE deleted = 0 GROUP BY read_status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-r-045",
+      "difficulty": "MEDIUM",
+      "question": "SLA 策略里解决时限最长的是多少分钟？",
+      "goldSql": "SELECT MAX(resolve_time) AS max_resolve FROM sla_policy WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-046",
+      "difficulty": "MEDIUM",
+      "question": "有附件的知识文章有多少篇？",
+      "goldSql": "SELECT COUNT(DISTINCT article_id) AS cnt FROM knowledge_attachment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "distinct"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-047",
+      "difficulty": "MEDIUM",
+      "question": "SLA 违规里已升级的有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM sla_violation WHERE deleted = 0 AND status = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-048",
+      "difficulty": "MEDIUM",
+      "question": "按工单优先级统计流转记录数量",
+      "goldSql": "SELECT t.priority, COUNT(*) AS cnt FROM ticket_flow f JOIN ticket t ON f.ticket_id = t.id WHERE f.deleted = 0 AND t.deleted = 0 GROUP BY t.priority",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-049",
+      "difficulty": "MEDIUM",
+      "question": "知识文章标题里包含「支付」的有多少篇？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_article WHERE deleted = 0 AND title LIKE '%支付%'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "like"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-050",
+      "difficulty": "MEDIUM",
+      "question": "平均每张工单对应多少条 SLA 违规记录？",
+      "goldSql": "SELECT COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_violation FROM sla_violation WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-051",
+      "difficulty": "HARD",
+      "question": "各知识分类下已发布文章的平均浏览量和平均点赞数分别是多少？",
+      "goldSql": "SELECT category_id, AVG(view_count) AS avg_view, AVG(helpful_count) AS avg_helpful FROM knowledge_article WHERE deleted = 0 AND status = 1 GROUP BY category_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-052",
+      "difficulty": "HARD",
+      "question": "2025 年创建的工单按来源统计已关闭的数量",
+      "goldSql": "SELECT source, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND created_at >= '2025-01-01' AND created_at < '2026-01-01' GROUP BY source",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group",
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-r-053",
+      "difficulty": "HARD",
+      "question": "首次响应违规和解决违规的平均逾期分钟数分别是多少？",
+      "goldSql": "SELECT violation_type, AVG(overdue_minutes) AS avg_overdue FROM sla_violation WHERE deleted = 0 GROUP BY violation_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-r-054",
+      "difficulty": "HARD",
+      "question": "既有流转记录又有评论的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket t WHERE t.deleted = 0 AND EXISTS (SELECT 1 FROM ticket_flow f WHERE f.ticket_id = t.id AND f.deleted = 0) AND EXISTS (SELECT 1 FROM ticket_comment c WHERE c.ticket_id = t.id AND c.deleted = 0)",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "subquery"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-055",
+      "difficulty": "HARD",
+      "question": "评论数最多的 5 张工单，各自有多少条评论？",
+      "goldSql": "SELECT ticket_id, COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 GROUP BY ticket_id ORDER BY cnt DESC, ticket_id LIMIT 5",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-056",
+      "difficulty": "HARD",
+      "question": "按知识分类统计文章数量和总浏览量",
+      "goldSql": "SELECT category_id, COUNT(*) AS cnt, SUM(view_count) AS total_view FROM knowledge_article WHERE deleted = 0 GROUP BY category_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "multi-agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-r-057",
+      "difficulty": "HARD",
+      "question": "SLA 违规中逾期 1000 分钟以上的占比是多少？",
+      "goldSql": "SELECT SUM(CASE WHEN overdue_minutes > 1000 THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM sla_violation WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-058",
+      "difficulty": "HARD",
+      "question": "各处理团队的平均解决时长（小时）是多少？",
+      "goldSql": "SELECT team_id, AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND resolved_at IS NOT NULL GROUP BY team_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "ticket-r-059",
+      "difficulty": "HARD",
+      "question": "知识文章里草稿状态的有多少篇？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM knowledge_article WHERE deleted = 0 AND status = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-r-060",
+      "difficulty": "HARD",
+      "question": "每个工单分类下的 SLA 违规数量（通过工单关联）",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt FROM sla_violation v JOIN ticket t ON v.ticket_id = t.id AND t.deleted = 0 JOIN ticket_category c ON t.category_id = c.id WHERE v.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    }
+  ]
+}

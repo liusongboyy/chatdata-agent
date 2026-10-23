@@ -173,7 +173,7 @@ public final class AskSqlRenderer {
         if (dsl.timeRange() != null) {
             ResolvedTime rt = resolveTime(dsl.timeRange(), today);
             if (rt != null) {
-                String col = resolveTimeColumn(model, dialect, alias, dsl.timeRange());
+                String col = resolveTimeColumn(model, dialect, involvedTableIds, dsl.timeRange());
                 whereParts.add(col + " >= ?");
                 params.add(rt.startInclusive());
                 whereParts.add(col + " < ?");
@@ -271,19 +271,17 @@ public final class AskSqlRenderer {
                                            SemanticModel model,
                                            SqlDialect dialect) {
         sql.append(" FROM ");
-        appendTableRef(sql, plan.rootTableId(), model, dialect);
-        sql.append(' ').append(dialect.quoteIdentifier(model.aliasOfTable(plan.rootTableId())));
+        appendTableRefWithAlias(sql, plan.rootTableId(), model, dialect);
 
         for (JoinPlanner.JoinStep step : plan.steps()) {
             TableJoin join = step.join();
             String joinKeyword = join.type() == TableJoin.JoinType.LEFT ? " LEFT JOIN " : " INNER JOIN ";
 
             sql.append(joinKeyword);
-            appendTableRef(sql, step.toTableId(), model, dialect);
+            appendTableRefWithAlias(sql, step.toTableId(), model, dialect);
 
             String leftAlias = dialect.quoteIdentifier(model.aliasOfTable(join.leftTableId()));
             String rightAlias = dialect.quoteIdentifier(model.aliasOfTable(join.rightTableId()));
-            sql.append(' ').append(dialect.quoteIdentifier(model.aliasOfTable(step.toTableId())));
             sql.append(" ON ")
                     .append(leftAlias).append('.').append(dialect.quoteIdentifier(join.leftColumn()))
                     .append(" = ")
@@ -291,7 +289,32 @@ public final class AskSqlRenderer {
         }
     }
 
-    /** 渲染一张表的引用：物理表直接写名字，SQL 虚拟表包成子查询。 */
+    /**
+     * 渲染表引用**并**追加渲染期别名。
+     *
+     * <p>物理表的别名在这里加；虚拟表的别名已由 {@link #appendTableRef} 加过，
+     * 不能再加一次——那样就是 {@code (SELECT ...) `t1` `t1`}。
+     */
+    private static void appendTableRefWithAlias(StringBuilder sql, String tableId,
+                                                SemanticModel model, SqlDialect dialect) {
+        appendTableRef(sql, tableId, model, dialect);
+        RegisteredTable t = model.domain().tableById(tableId).orElseThrow();
+        if (t.isPhysical()) {
+            sql.append(' ').append(dialect.quoteIdentifier(model.aliasOfTable(tableId)));
+        }
+    }
+
+    /**
+     * 渲染一张表的引用：物理表直接写名字，SQL 虚拟表包成子查询。
+     *
+     * <p><strong>本方法不负责别名。</strong>调用方统一在引用之后追加渲染期别名
+     * （{@code t1}/{@code t2}…）。这里曾给虚拟表顺手加了个 {@code referenceName()} 别名，
+     * 于是虚拟表渲染成 {@code (SELECT ...) `ticket` `t1`}——两个连续标识符，
+     * MySQL 直接报语法错误。
+     *
+     * <p>物理表那条路径上加别名看不出来：{@code `ticket` `t1`} 恰好是合法写法，
+     * 所以这个 bug 只在虚拟表上暴露，而线上此前没有域使用虚拟表。
+     */
     private static void appendTableRef(StringBuilder sql, String tableId,
                                        SemanticModel model, SqlDialect dialect) {
         RegisteredTable t = model.domain().tableById(tableId)
@@ -301,9 +324,10 @@ public final class AskSqlRenderer {
         if (t.isPhysical()) {
             sql.append(dialect.quoteIdentifier(t.referenceName()));
         } else {
-            // SQL 虚拟表包成子查询，别名加在括号外
-            sql.append('(').append(t.sqlText()).append(") ");
-            sql.append(dialect.quoteIdentifier(t.referenceName()));
+            // 子查询必须带**自己**的别名：派生表在 MySQL 里不能没有别名。
+            // 用渲染期别名而不是 referenceName()——后者会和调用方追加的那个撞车。
+            sql.append('(').append(t.sqlText()).append(") ")
+                    .append(dialect.quoteIdentifier(model.aliasOfTable(tableId)));
         }
     }
 
@@ -332,12 +356,20 @@ public final class AskSqlRenderer {
      * 时间口径对应哪个列，而不是按名字猜。等 {@code semantic} 包的术语部分落地后替换这里。
      */
     private static String resolveTimeColumn(SemanticModel model, SqlDialect dialect,
-                                            String alias, AskDsl.TimeRange tr) {
+                                            Set<String> involvedTableIds, AskDsl.TimeRange tr) {
         for (String candidate : TIME_COLUMN_CANDIDATES) {
             try {
                 FieldRef r = model.resolveDimension(candidate);
-                // 时间列可以在任意一张参与查询的表上——多表场景下它未必在主表。
-                // 这里只校验它属于本次用到的表，不强制等于 root 别名。
+                // **时间列必须落在本次参与 FROM 的表上。** 否则渲染出
+                // `FROM ins_customer WHERE t2.effect_date >= ?`——t2 不在 FROM 里，
+                // MySQL 报 Unknown column，用户看到的是"查询失败"而不是"这个域查不了时间"。
+                //
+                // 这一条此前只写在注释里、没有实现：域里只要有多张带日期列的表，
+                // 而查询只用到其中一张，就可能选中另一张。
+                // 时间列可以在任意一张**参与查询**的表上——多表场景下它未必在主表。
+                if (!involvedTableIds.contains(model.tableIdOfAlias(r.tableAlias()))) {
+                    continue;
+                }
                 return dialect.quoteQualified(r.tableAlias() + "." + r.column());
             } catch (SemanticException ignored) {
                 // 这个名字在本域内不可解析，试下一个

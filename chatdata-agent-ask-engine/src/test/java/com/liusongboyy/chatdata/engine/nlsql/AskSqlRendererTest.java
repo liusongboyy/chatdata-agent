@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.List;
 import java.util.Set;
 
@@ -830,6 +832,169 @@ class AskSqlRendererTest {
             assertThat(render(monthly(), "ORACLE").sql())
                     .contains("to_char(\"t1\".\"effect_date\", 'YYYY-MM')")
                     .doesNotContain("%Y-%m");
+        }
+    }
+
+    @Nested
+    @DisplayName("/** SQL 虚拟表 */")
+    class VirtualTables {
+
+        /**
+         * 夹具：一张物理表 + 一张内建软删过滤的虚拟表。
+         *
+         * <p>虚拟表的典型用法就是把"必须成立于每一条查询"的口径写进定义，
+         * 例如 {@code WHERE deleted = 0}——它不该出现在语义层的列定义里，
+         * 也不该指望模型每次都记得加。
+         */
+        private SemanticModel virtualModel() {
+            RegisteredTable tickets = new RegisteredTable("tbl-ticket", "ticket", "工单表",
+                    RegisteredTable.Mode.SQL, "SELECT * FROM ticket WHERE deleted = 0", true, List.of(
+                    new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "工单数", true),
+                    new ColumnDef("status", "varchar", Aggregation.NONE, "状态", true)));
+
+            RegisteredTable categories = new RegisteredTable("tbl-category", "ticket_category", "工单分类",
+                    RegisteredTable.Mode.SQL, "SELECT * FROM ticket_category WHERE deleted = 0", true, List.of(
+                    new ColumnDef("name", "varchar", Aggregation.NONE, "分类名称", true)));
+
+            Domain domain = new Domain("d1", "工单域", "ds1", "MYSQL5.7", true,
+                    List.of(tickets, categories),
+                    List.of(new TableJoin(1L, "tbl-ticket", "tbl-category",
+                            "category_id", "id", TableJoin.JoinType.INNER)),
+                    openPermission(), List.of(), List.of());
+            return new SemanticModel(domain);
+        }
+
+        @Test
+        @DisplayName("★ 单张虚拟表：子查询外层只能有一个别名（曾渲染出 `ticket` `t1` 两个）")
+        void singleVirtualTableHasExactlyOneAlias() {
+            DomainPermission perm = openPermission();
+            SemanticModel m = virtualModel();
+
+            RenderedSql r = AskSqlRenderer.render(
+                    dsl(List.of("工单数"), List.of(), null, List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowed(perm, "分析师"), TODAY);
+
+            // 别名编号按域内全部可见表分配（另一张表占了 t1），重点是子查询外层
+            // **只有一个**别名，且 SELECT 里引用的就是它
+            assertThat(r.sql()).isEqualTo(
+                    "SELECT COUNT(`t2`.`ticket_no`) AS `工单数` "
+                            + "FROM (SELECT * FROM ticket WHERE deleted = 0) `t2` LIMIT 1000");
+        }
+
+        @Test
+        @DisplayName("★ 虚拟表参与 JOIN：两侧都只带一个别名，且 JOIN 前缀不重复表引用")
+        void virtualTablesInJoin() {
+            DomainPermission perm = openPermission();
+            SemanticModel m = virtualModel();
+
+            RenderedSql r = AskSqlRenderer.render(
+                    dsl(List.of("工单数"), List.of("分类名称"), null, List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowed(perm, "分析师"), TODAY);
+
+            // 别名编号按域内全部可见表分配，顺序不固定；这里只断言**结构**：
+            // 两个派生表各一个别名，且 ON 用的就是这两个别名
+            Matcher ticketAlias = Pattern
+                    .compile("FROM \\(SELECT \\* FROM ticket WHERE deleted = 0\\) `(t\\d+)`")
+                    .matcher(r.sql());
+            Matcher categoryAlias = Pattern
+                    .compile("INNER JOIN \\(SELECT \\* FROM ticket_category WHERE deleted = 0\\) `(t\\d+)`")
+                    .matcher(r.sql());
+            assertThat(ticketAlias.find()).as("工单虚拟表应被渲染为带别名的派生表").isTrue();
+            assertThat(categoryAlias.find()).as("分类虚拟表应被渲染为带别名的派生表").isTrue();
+
+            String t = ticketAlias.group(1);
+            String c = categoryAlias.group(1);
+            assertThat(t).isNotEqualTo(c);
+            assertThat(r.sql()).contains("ON `" + t + "`.`category_id` = `" + c + "`.`id`");
+            // 子查询后面只能跟一个别名；曾经是 `ticket` `t1` 两个
+            assertThat(r.sql()).doesNotContainPattern("\\) `\\w+` `t\\d+`");
+        }
+
+        @Test
+        @DisplayName("虚拟表与物理表混用：物理表仍直接引用表名")
+        void virtualAndPhysicalMixed() {
+            RegisteredTable tickets = new RegisteredTable("tbl-ticket", "ticket", "工单表",
+                    RegisteredTable.Mode.SQL, "SELECT * FROM ticket WHERE deleted = 0", true, List.of(
+                    new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "工单数", true)));
+            RegisteredTable teams = new RegisteredTable("tbl-team", "team", "团队表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("name", "varchar", Aggregation.NONE, "团队名称", true)));
+
+            Domain domain = new Domain("d1", "工单域", "ds1", "MYSQL5.7", true,
+                    List.of(tickets, teams),
+                    List.of(new TableJoin(1L, "tbl-ticket", "tbl-team",
+                            "team_id", "id", TableJoin.JoinType.INNER)),
+                    openPermission(), List.of(), List.of());
+            DomainPermission perm = openPermission();
+
+            RenderedSql r = AskSqlRenderer.render(
+                    dsl(List.of("工单数"), List.of("团队名称"), null, List.of()),
+                    new SemanticModel(domain), SqlDialects.of("MYSQL5.7"),
+                    allowed(perm, "分析师"), TODAY);
+
+            Matcher ticketAlias = Pattern
+                    .compile("FROM \\(SELECT \\* FROM ticket WHERE deleted = 0\\) `(t\\d+)`")
+                    .matcher(r.sql());
+            Matcher teamAlias = Pattern.compile("`team` `(t\\d+)`").matcher(r.sql());
+            assertThat(ticketAlias.find()).isTrue();
+            assertThat(teamAlias.find()).as("物理表仍直接引用表名并带一个别名").isTrue();
+
+            String t = ticketAlias.group(1);
+            String team = teamAlias.group(1);
+            assertThat(t).isNotEqualTo(team);
+            assertThat(r.sql()).contains("ON `" + t + "`.`team_id` = `" + team + "`.`id`");
+        }
+    }
+
+    @Nested
+    @DisplayName("/** 时间列的选择范围 */")
+    class TimeColumnScope {
+
+        /**
+         * 夹具：保单表有「生效日期」，客户表有「注册日期」。
+         *
+         * <p>两张表都能被 {@code resolveDimension} 解析到，但一次查询里
+         * 只有**参与 FROM 的表**能用。挑错表会渲染出
+         * {@code Unknown column 'tX.effect_date'}——SQL 直接执行失败。
+         */
+        private SemanticModel twoDateTables() {
+            RegisteredTable policy = new RegisteredTable("tbl-policy", "ins_policy", "保单表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("premium", "decimal", Aggregation.SUM, "保费", true),
+                    new ColumnDef("cust_id", "bigint", Aggregation.NONE, "客户ID", true),
+                    new ColumnDef("effect_date", "date", Aggregation.NONE, "生效日期", true)));
+
+            RegisteredTable customer = new RegisteredTable("tbl-cust", "ins_customer", "客户表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("cust_level", "varchar", Aggregation.NONE, "客户等级", true),
+                    new ColumnDef("reg_date", "date", Aggregation.NONE, "注册日期", true)));
+
+            Domain domain = new Domain("d1", "保险分析域", "ds1", "MYSQL5.7", true,
+                    List.of(policy, customer),
+                    List.of(new TableJoin(1L, "tbl-policy", "tbl-cust",
+                            "cust_id", "id", TableJoin.JoinType.INNER)),
+                    openPermission(), List.of(), List.of());
+            return new SemanticModel(domain);
+        }
+
+        @Test
+        @DisplayName("★ 只查客户表时的带时间条件，必须用客户表的日期列（曾选到未参与 FROM 的表）")
+        void timeColumnMustBelongToInvolvedTables() {
+            DomainPermission perm = openPermission();
+            SemanticModel m = twoDateTables();
+
+            // 只查「客户等级」→ FROM 只有客户表。「生效日期」属于保单表、不在 FROM 里；
+            // 客户表的「注册日期」又不在候选词表里。
+            //
+            // 正确行为是**拒绝**：要么明确告诉用户"这个问法在本域取不到时间口径"，
+            // 要么去建模里补上术语。渲染出 `t2.effect_date` 是最差的一种——
+            // 用户拿到的是 MySQL 的 Unknown column，完全指不到配置问题。
+            assertThatThrownBy(() -> AskSqlRenderer.render(
+                    new AskDsl(List.of(), List.of("客户等级"),
+                            new AskDsl.TimeRange("今年", null, null), List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowed(perm, "分析师"), TODAY))
+                    .isInstanceOf(SemanticException.class)
+                    .hasMessageContaining("找不到可用的日期列");
         }
     }
 }

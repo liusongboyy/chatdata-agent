@@ -1,0 +1,761 @@
+{
+  "name": "工单分析域基线（建模·评测夹具）",
+  "domainId": "2002",
+  "userId": "eval",
+  "roles": [
+    "super_admin"
+  ],
+  "assistantId": null,
+  "primaryMetric": "strict",
+  "cases": [
+    {
+      "id": "ticket-m-001",
+      "difficulty": "SIMPLE",
+      "question": "工单总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-002",
+      "difficulty": "SIMPLE",
+      "question": "按状态统计工单数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-m-003",
+      "difficulty": "SIMPLE",
+      "question": "按优先级统计工单数量",
+      "goldSql": "SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY priority",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-004",
+      "difficulty": "SIMPLE",
+      "question": "按来源统计工单数量",
+      "goldSql": "SELECT source, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY source",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-m-005",
+      "difficulty": "SIMPLE",
+      "question": "状态为已关闭的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-006",
+      "difficulty": "SIMPLE",
+      "question": "评论里内部备注有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 AND is_internal = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-007",
+      "difficulty": "SIMPLE",
+      "question": "按工单分类统计工单数量",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-008",
+      "difficulty": "SIMPLE",
+      "question": "处理团队 3 的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND team_id = 3",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-009",
+      "difficulty": "SIMPLE",
+      "question": "按流转后的状态统计流转次数",
+      "goldSql": "SELECT to_status, COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 GROUP BY to_status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-m-010",
+      "difficulty": "SIMPLE",
+      "question": "优先级为 1 的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND priority = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-011",
+      "difficulty": "SIMPLE",
+      "question": "按分类名称统计已关闭工单的数量",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 AND t.status = 'CLOSED' GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group",
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-012",
+      "difficulty": "SIMPLE",
+      "question": "来自 WEB 渠道的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND source = 'WEB'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-013",
+      "difficulty": "MEDIUM",
+      "question": "2025 年 3 月创建的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-03-01' AND created_at < '2025-04-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-014",
+      "difficulty": "MEDIUM",
+      "question": "每个分类下的工单平均评论数是多少？",
+      "goldSql": "SELECT c.name, COUNT(cm.id) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-015",
+      "difficulty": "MEDIUM",
+      "question": "按创建月份统计 2025 年的工单数量",
+      "goldSql": "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01' GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY ym",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 12 行。"
+    },
+    {
+      "id": "ticket-m-016",
+      "difficulty": "MEDIUM",
+      "question": "每个优先级里状态为已关闭的工单有多少张？",
+      "goldSql": "SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED' GROUP BY priority",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-017",
+      "difficulty": "MEDIUM",
+      "question": "按来源和状态统计工单数量",
+      "goldSql": "SELECT source, status, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY source, status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 16 行。"
+    },
+    {
+      "id": "ticket-m-018",
+      "difficulty": "MEDIUM",
+      "question": "2025 年下半年（7 到 12 月）创建的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-07-01' AND created_at < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-019",
+      "difficulty": "MEDIUM",
+      "question": "评论条数最多的前 5 张工单，各自有多少条评论？",
+      "goldSql": "SELECT ticket_id, COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 GROUP BY ticket_id ORDER BY cnt DESC, ticket_id LIMIT 5",
+      "ordered": true,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "order",
+        "limit"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-020",
+      "difficulty": "MEDIUM",
+      "question": "AI 推荐分类与实际分类不一致的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND ai_category_id <> category_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "compare"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-021",
+      "difficulty": "MEDIUM",
+      "question": "平均每张工单有多少次状态流转？",
+      "goldSql": "SELECT COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_flow FROM ticket_flow WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-022",
+      "difficulty": "MEDIUM",
+      "question": "每个处理团队的平均 AI 置信度是多少？",
+      "goldSql": "SELECT team_id, AVG(ai_confidence) AS avg_conf FROM ticket WHERE deleted = 0 GROUP BY team_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "ticket-m-023",
+      "difficulty": "MEDIUM",
+      "question": "2025 年第一季度创建的工单按来源统计数量",
+      "goldSql": "SELECT source, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2025-04-01' GROUP BY source",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-m-024",
+      "difficulty": "HARD",
+      "question": "2025 年创建的工单里，已解决的工单占比是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT SUM(CASE WHEN status IN ('RESOLVED','CLOSED') THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business",
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-025",
+      "difficulty": "HARD",
+      "question": "已关闭的工单从创建到关闭平均用了多少小时？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, closed_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND closed_at IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-026",
+      "difficulty": "HARD",
+      "question": "已解决的工单从创建到解决平均用了多少分钟？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(MINUTE, created_at, resolved_at)) AS avg_minutes FROM ticket WHERE deleted = 0 AND status IN ('RESOLVED','CLOSED') AND resolved_at IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-027",
+      "difficulty": "HARD",
+      "question": "按分类统计工单中内部备注占全部评论的比例",
+      "goldSql": "SELECT c.name, SUM(CASE WHEN cm.is_internal = 1 THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket t JOIN ticket_category c ON t.category_id = c.id JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-028",
+      "difficulty": "HARD",
+      "question": "处理人 5 负责的工单里，各优先级的工单数量分别是多少？",
+      "goldSql": "SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND assignee_id = 5 GROUP BY priority",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-029",
+      "difficulty": "HARD",
+      "question": "每个分类的工单平均解决时长（小时）是多少？只算已解决的",
+      "goldSql": "SELECT c.name, AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.resolved_at)) AS avg_hours FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 AND t.resolved_at IS NOT NULL GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-030",
+      "difficulty": "HARD",
+      "question": "2025 年关闭的工单里，超时关闭（关闭时间晚于 SLA 截止时间）的有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND closed_at IS NOT NULL AND closed_at > sla_deadline",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business",
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-031",
+      "difficulty": "SIMPLE",
+      "question": "评论一共有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-032",
+      "difficulty": "SIMPLE",
+      "question": "流转记录一共有多少条？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "count"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-033",
+      "difficulty": "SIMPLE",
+      "question": "状态为处理中的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'IN_PROGRESS'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-034",
+      "difficulty": "SIMPLE",
+      "question": "来自 APP 的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND source = 'APP'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-035",
+      "difficulty": "SIMPLE",
+      "question": "分类名称叫「订单与支付」的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 AND c.name = '订单与支付'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-036",
+      "difficulty": "SIMPLE",
+      "question": "平均优先级是多少？",
+      "goldSql": "SELECT AVG(priority) AS avg_priority FROM ticket WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-037",
+      "difficulty": "SIMPLE",
+      "question": "最高优先级（数字最小）的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND priority = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-038",
+      "difficulty": "SIMPLE",
+      "question": "处理过工单的不同处理人有多少个？",
+      "goldSql": "SELECT COUNT(DISTINCT assignee_id) AS cnt FROM ticket WHERE deleted = 0 AND assignee_id IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "distinct"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-039",
+      "difficulty": "SIMPLE",
+      "question": "按团队统计工单数量",
+      "goldSql": "SELECT team_id, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY team_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "ticket-m-040",
+      "difficulty": "SIMPLE",
+      "question": "按是否内部备注统计评论数量",
+      "goldSql": "SELECT is_internal, COUNT(*) AS cnt FROM ticket_comment WHERE deleted = 0 GROUP BY is_internal",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-m-041",
+      "difficulty": "MEDIUM",
+      "question": "2025 年 1 月创建的工单按状态统计数量",
+      "goldSql": "SELECT status, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2025-02-01' GROUP BY status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-m-042",
+      "difficulty": "MEDIUM",
+      "question": "每个分类的平均 AI 置信度是多少？",
+      "goldSql": "SELECT c.name, AVG(t.ai_confidence) AS avg_conf FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-043",
+      "difficulty": "MEDIUM",
+      "question": "评论数超过 2 条的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM (SELECT ticket_id FROM ticket_comment WHERE deleted = 0 GROUP BY ticket_id HAVING COUNT(*) > 2) x",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "subquery"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-044",
+      "difficulty": "MEDIUM",
+      "question": "状态为已关闭的工单，平均有多少条评论？",
+      "goldSql": "SELECT COUNT(*) / COUNT(DISTINCT t.id) AS avg_comment FROM ticket t JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 AND t.status = 'CLOSED'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-045",
+      "difficulty": "MEDIUM",
+      "question": "按来源统计内部备注数量",
+      "goldSql": "SELECT t.source, COUNT(*) AS cnt FROM ticket t JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 AND cm.is_internal = 1 GROUP BY t.source",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 4 行。"
+    },
+    {
+      "id": "ticket-m-046",
+      "difficulty": "MEDIUM",
+      "question": "2025 年 11 月创建的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-11-01' AND created_at < '2025-12-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-047",
+      "difficulty": "MEDIUM",
+      "question": "处理团队 1 和团队 2 各有多少张工单？",
+      "goldSql": "SELECT team_id, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND team_id IN (1, 2) GROUP BY team_id",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 2 行。"
+    },
+    {
+      "id": "ticket-m-048",
+      "difficulty": "MEDIUM",
+      "question": "每个分类下已解决（含已关闭）的工单有多少张？",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 AND t.status IN ('RESOLVED', 'CLOSED') GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "filter",
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-049",
+      "difficulty": "MEDIUM",
+      "question": "流转记录里「OPEN 变到 IN_PROGRESS」发生了多少次？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 AND from_status = 'OPEN' AND to_status = 'IN_PROGRESS'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-050",
+      "difficulty": "MEDIUM",
+      "question": "按流转前后状态组合统计流转次数",
+      "goldSql": "SELECT from_status, to_status, COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 GROUP BY from_status, to_status",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "group"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-051",
+      "difficulty": "HARD",
+      "question": "各优先级的工单平均解决时长（小时）是多少？只算已解决的",
+      "goldSql": "SELECT priority, AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND resolved_at IS NOT NULL GROUP BY priority",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-052",
+      "difficulty": "HARD",
+      "question": "2025 年为已关闭状态的工单占 2025 年全部工单的比例是多少？",
+      "goldSql": "SELECT SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business",
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-053",
+      "difficulty": "HARD",
+      "question": "有评论的工单占比是多少？",
+      "goldSql": "SELECT COUNT(DISTINCT t.id) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS ratio FROM ticket t JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-054",
+      "difficulty": "HARD",
+      "question": "各分类的工单中，内部备注占全部评论的比例分别是多少？",
+      "goldSql": "SELECT c.name, SUM(CASE WHEN cm.is_internal = 1 THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket t JOIN ticket_category c ON t.category_id = c.id JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-055",
+      "difficulty": "HARD",
+      "question": "2025 年创建的工单中，AI 推荐分类准确（AI 分类与实际分类一致）的比例是多少？",
+      "goldSql": "SELECT SUM(CASE WHEN ai_category_id = category_id THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business",
+        "time"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-056",
+      "difficulty": "HARD",
+      "question": "按优先级统计平均流转次数",
+      "goldSql": "SELECT t.priority, COUNT(f.id) / COUNT(DISTINCT t.id) AS avg_flow FROM ticket t JOIN ticket_flow f ON f.ticket_id = t.id AND f.deleted = 0 WHERE t.deleted = 0 GROUP BY t.priority",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-057",
+      "difficulty": "HARD",
+      "question": "已关闭工单中，关闭时间早于 SLA 截止时间的比例是多少？",
+      "goldSql": "SELECT SUM(CASE WHEN closed_at <= sla_deadline THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND closed_at IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-058",
+      "difficulty": "HARD",
+      "question": "2025 年 4 月创建的工单里，已关闭的有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND created_at >= '2025-04-01' AND created_at < '2025-05-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "time",
+        "filter"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-059",
+      "difficulty": "HARD",
+      "question": "各分类下工单的平均优先级是多少？",
+      "goldSql": "SELECT c.name, AVG(t.priority) AS avg_priority FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "agg"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-060",
+      "difficulty": "HARD",
+      "question": "处理人 7 的工单里，平均解决时长（小时）是多少？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND assignee_id = 7 AND resolved_at IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "business"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    }
+  ]
+}

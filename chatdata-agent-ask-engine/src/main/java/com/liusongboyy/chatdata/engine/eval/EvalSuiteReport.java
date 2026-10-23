@@ -20,7 +20,8 @@ import java.util.Map;
  * @param empty       空结果总数
  * @param errors      执行异常总数
  * @param goldErrors  gold SQL 错误总数
- * @param passRate    总通过率（分母扣除 gold 错误）
+ * @param passRate    总通过率（严格 EX，分母扣除 gold 错误）
+ * @param primaryRate 总通过率（**按各数据集自己声明的主指标**汇总）
  * @param byDifficulty 跨数据集的分档汇总
  * @param reports     每个数据集一份
  */
@@ -35,6 +36,7 @@ public record EvalSuiteReport(
         int goldErrors,
         double passRate,
         double containsRate,
+        double primaryRate,
         Map<String, EvalReport.DifficultyStat> byDifficulty,
         List<EvalReport> reports
 ) {
@@ -75,14 +77,22 @@ public record EvalSuiteReport(
             }
         });
 
+        // 主指标按**每个数据集各自的声明**汇总：直连域用包含式、建模域用严格式，
+        // 混在一起就只能是"平均了两个不同问题的答案"，那不是可验收的数字
+        int primaryPassed = 0;
+        for (EvalReport r : reports) {
+            primaryPassed += r.primaryPassed();
+        }
+
         int denominator = total - goldErrors;
         double rate = denominator == 0 ? 0.0 : (double) passed / denominator;
         double containsRate = denominator == 0 ? 0.0 : (double) containsPassed / denominator;
+        double primaryRate = denominator == 0 ? 0.0 : (double) primaryPassed / denominator;
 
         return new EvalSuiteReport(
                 OffsetDateTime.now(ZoneOffset.ofHours(8)).toString(),
                 total, passed, containsPassed, failed, empty, errors, goldErrors,
-                rate, containsRate, byDifficulty, List.copyOf(reports));
+                rate, containsRate, primaryRate, byDifficulty, List.copyOf(reports));
     }
 
     /** 终端摘要：总览 + 每个数据集单独一段。 */
@@ -100,6 +110,8 @@ public record EvalSuiteReport(
         sb.append("总通过率（严格 EX）：").append(String.format("%.1f%%", passRate * 100))
                 .append(" | 包含式 EX：").append(String.format("%.1f%%", containsRate * 100))
                 .append('\n');
+        sb.append("总通过率（按各集主指标）：").append(String.format("%.1f%%", primaryRate * 100))
+                .append("   ← CI 门禁与验收看这一行").append('\n');
         if (!byDifficulty.isEmpty()) {
             sb.append("分档：");
             byDifficulty.forEach((k, v) -> sb.append(k).append(' ')

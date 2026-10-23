@@ -218,7 +218,7 @@ public final class EvalRunner {
         }
 
         return new EvalReport(
-                set.name(), set.domainId(), mode,
+                set.name(), set.domainId(), mode, set.primaryMetric().name(),
                 OffsetDateTime.now(ZoneOffset.ofHours(8)).toString(),
                 total, passed, containsPassed, failed, empty, errors, goldErrors,
                 passRate, containsRate, emptyRate, silentRate, avg, p50, byDifficulty, results);

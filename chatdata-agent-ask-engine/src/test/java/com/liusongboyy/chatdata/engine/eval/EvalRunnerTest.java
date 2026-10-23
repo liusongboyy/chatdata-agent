@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -51,6 +52,16 @@ class EvalRunnerTest {
 
     private static EvalSet set(List<EvalCase> cases) {
         return new EvalSet("test-set", "17", "admin", Set.of("管理员"), null, cases);
+    }
+
+    /** 造一份结果集：列名按 c1/c2… 生成，值是给定的二维数组。 */
+    private static QueryResult rows(Object[][] values) {
+        int cols = values.length == 0 ? 0 : values[0].length;
+        List<String> names = java.util.stream.IntStream.rangeClosed(1, cols)
+                .mapToObj(i -> "c" + i).toList();
+        List<List<Object>> body = java.util.Arrays.stream(values)
+                .map(java.util.Arrays::asList).map(l -> (List<Object>) l).toList();
+        return new QueryResult(names, body);
     }
 
     private static EvalCase c(String id, String question, String goldSql) {
@@ -198,5 +209,81 @@ class EvalRunnerTest {
         assertThat(report.errors()).isEqualTo(1);
         assertThat(report.cases()).singleElement()
                 .satisfies(r -> assertThat(r.status()).isEqualTo(EvalReport.Status.ERROR));
+    }
+
+    // ── 主指标口径 ──
+
+    /**
+     * 直连模式常"数据对但多带列"。用严格口径衡量它，失败里会混进大量
+     * 非答案错误；数据集因此可以声明以**包含式**为主指标。
+     */
+    @Test
+    @DisplayName("★ 声明 contains 主指标时，多带列算通过且计入 primaryPassed")
+    void containsMetricCountsExtraColumnsAsPassed() {
+        when(executor.execute(any(), any())).thenReturn(rows(new Object[][]{{10}}));
+        // 模型多带了一列（直连模式的典型形态）
+        when(facade.askStreaming(any(), any()))
+                .thenReturn(result(rows(new Object[][]{{10, "多余列"}})));
+
+        EvalSet set = new EvalSet("直连集", "17", "admin", Set.of("管理员"), null,
+                EvalSet.PrimaryMetric.CONTAINS,
+                List.of(c("c1", "总数是多少？", "SELECT COUNT(*) FROM t")));
+
+        EvalReport r = new EvalRunner(factory, executor, id -> "ds").run(set, p -> {
+        });
+
+        assertThat(r.passed()).as("严格 EX 仍如实记为未通过").isZero();
+        assertThat(r.containsPassed()).as("包含式下数据一致").isEqualTo(1);
+        assertThat(r.primaryPassed()).as("主指标按 contains 结算").isEqualTo(1);
+        assertThat(r.primaryRate()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("不声明主指标时默认严格 EX（与 BIRD / Spider 可比）")
+    void defaultMetricIsStrict() {
+        when(executor.execute(any(), any())).thenReturn(rows(new Object[][]{{10}}));
+        when(facade.askStreaming(any(), any()))
+                .thenReturn(result(rows(new Object[][]{{10, "多余列"}})));
+
+        EvalReport r = new EvalRunner(factory, executor, id -> "ds").run(
+                set(List.of(c("c1", "总数是多少？", "SELECT COUNT(*) FROM t"))), p -> {
+                });
+
+        assertThat(r.primaryMetricOf()).isEqualTo(EvalSet.PrimaryMetric.STRICT);
+        assertThat(r.primaryPassed()).as("严格口径下多一列就是没通过").isZero();
+        assertThat(r.primaryRate()).isZero();
+    }
+
+    @Test
+    @DisplayName("总览按各集自己的主指标汇总，而不是统一取某一个口径")
+    void suiteSumsByPerSetMetric() {
+        when(executor.execute(any(), any())).thenReturn(rows(new Object[][]{{10}}));
+        when(facade.askStreaming(any(), any()))
+                .thenReturn(result(rows(new Object[][]{{10, "多余列"}})));
+
+        List<EvalCase> cases = List.of(c("c1", "总数是多少？", "SELECT COUNT(*) FROM t"));
+        EvalReport containsSet = new EvalRunner(factory, executor, id -> "ds").run(
+                new EvalSet("直连集", "17", "admin", Set.of("管理员"), null,
+                        EvalSet.PrimaryMetric.CONTAINS, cases), p -> {
+                });
+        EvalReport strictSet = new EvalRunner(factory, executor, id -> "ds").run(
+                new EvalSet("建模集", "17", "admin", Set.of("管理员"), null, cases), p -> {
+                });
+
+        EvalSuiteReport suite = EvalSuiteReport.of(List.of(containsSet, strictSet));
+
+        assertThat(suite.total()).isEqualTo(2);
+        assertThat(suite.passRate()).as("严格口径：两条都没过").isZero();
+        assertThat(suite.primaryRate())
+                .as("直连集按 contains 算过、建模集按 strict 算不过 → 1/2")
+                .isEqualTo(0.5);
+    }
+
+    @Test
+    @DisplayName("未知的 primaryMetric 直接报错，不静默退回默认")
+    void unknownMetricIsRejected() {
+        assertThatThrownBy(() -> EvalSet.PrimaryMetric.parse("loose"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("primaryMetric");
     }
 }

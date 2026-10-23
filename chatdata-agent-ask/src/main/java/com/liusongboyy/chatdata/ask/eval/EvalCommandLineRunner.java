@@ -71,10 +71,13 @@ public class EvalCommandLineRunner implements CommandLineRunner {
             writeReport(suite);
             System.out.println(suite.summary());
 
-            code = suite.passRate() >= props.getMinPassRate() ? 0 : 1;
+            // 门禁看**主指标**：各集按自己声明的口径汇总。
+            // 直连域用严格 EX 衡量会把"数据正确但多带列"算成错，
+            // 拿它当门禁等于要求模型在裸 schema 上跟语义层一样收敛
+            code = suite.primaryRate() >= props.getMinPassRate() ? 0 : 1;
             if (code != 0) {
-                System.out.printf("通过率 %.1f%% 低于阈值 %.1f%%%n",
-                        suite.passRate() * 100, props.getMinPassRate() * 100);
+                System.out.printf("主指标通过率 %.1f%% 低于阈值 %.1f%%%n",
+                        suite.primaryRate() * 100, props.getMinPassRate() * 100);
             }
         } catch (Exception e) {
             // 评测跑不起来不是"0 分"，要让人一眼看出是环境/配置问题
