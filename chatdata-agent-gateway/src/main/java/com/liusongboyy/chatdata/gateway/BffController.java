@@ -1,14 +1,14 @@
 package com.liusongboyy.chatdata.gateway;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.server.WebSession;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
@@ -24,6 +24,15 @@ import java.util.Map;
  */
 @Controller
 public class BffController {
+
+    /** 客户端注册 id，与 {@code application.yml} 里 {@code registration.iam} 一致。 */
+    private static final String CLIENT_REGISTRATION_ID = "iam";
+
+    private final ServerOAuth2AuthorizedClientRepository authorizedClients;
+
+    public BffController(ServerOAuth2AuthorizedClientRepository authorizedClients) {
+        this.authorizedClients = authorizedClients;
+    }
 
     /** 入口：交给 Spring Security 的授权码流程（带 PKCE）。 */
     @GetMapping("/bff/login")
@@ -41,9 +50,10 @@ public class BffController {
      */
     @GetMapping("/bff/me")
     @ResponseBody
-    public Mono<Map<String, Object>> me(@AuthenticationPrincipal OAuth2User user, WebSession session) {
+    public Mono<Map<String, Object>> me(Authentication authentication,
+                                        ServerWebExchange exchange) {
         Map<String, Object> out = new LinkedHashMap<>();
-        if (user == null) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof OAuth2User user)) {
             out.put("authenticated", false);
             return Mono.just(out);
         }
@@ -51,29 +61,26 @@ public class BffController {
         out.put("username", user.getName());
         out.put("attributes", user.getAttributes());
 
-        OAuth2AuthorizedClient client = findAuthorizedClient(session);
-        if (client == null) {
-            out.put("tokenReady", false);
-        } else {
-            Instant expiresAt = client.getAccessToken().getExpiresAt();
-            out.put("tokenReady", true);
-            out.put("expiresAt", expiresAt == null ? null : expiresAt.toString());
-            out.put("scopes", client.getAccessToken().getScopes());
-        }
-        return Mono.just(out);
+        // 走官方仓库接口取令牌，**不自己拼会话 key**。
+        // 曾经按 OAuth2AuthorizedClient.class.getName() 扫会话属性，
+        // 而实际存储键是 WebSessionServerOAuth2AuthorizedClientRepository 的类名，
+        // 于是永远找不到——表现是"已登录但 tokenReady=false"，
+        // 之后所有 /api/** 都是 401，看起来像令牌过期或权限配置错误
+        return authorizedClients
+                .loadAuthorizedClient(CLIENT_REGISTRATION_ID, authentication, exchange)
+                .map(client -> {
+                    Instant expiresAt = client.getAccessToken().getExpiresAt();
+                    out.put("tokenReady", true);
+                    out.put("expiresAt", expiresAt == null ? null : expiresAt.toString());
+                    out.put("scopes", client.getAccessToken().getScopes());
+                    return out;
+                })
+                .defaultIfEmpty(withTokenReady(out, false));
     }
 
-    /**
-     * 从会话里找已授权的客户端。
-     *
-     * <p>按类名前缀扫描而不是拼固定的 key：会话属性的 key 由 Spring Security 内部约定，
-     * 拼错了不会报错，只会得到"令牌明明在会话里却读不到"。
-     */
-    private static OAuth2AuthorizedClient findAuthorizedClient(WebSession session) {
-        return session.getAttributes().entrySet().stream()
-                .filter(e -> e.getKey().startsWith(OAuth2AuthorizedClient.class.getName()))
-                .map(e -> (OAuth2AuthorizedClient) e.getValue())
-                .findFirst()
-                .orElse(null);
+    private static Map<String, Object> withTokenReady(Map<String, Object> out, boolean ready) {
+        out.put("tokenReady", ready);
+        return out;
     }
+
 }
