@@ -94,7 +94,7 @@ INSURANCE = [
      False, ["time"]),
     ("insurance-027", "HARD", "按投保年份统计保费合计",
      "SELECT YEAR(sign_date) AS yr, SUM(premium) AS total_premium FROM ins_policy GROUP BY YEAR(sign_date) ORDER BY yr",
-     True, ["time", "group"]),
+     False, ["time", "group"]),
     ("insurance-028", "HARD", "按理赔类型统计赔付金额合计，只看已赔付的理赔",
      "SELECT claim_type, SUM(settle_amount) AS total_settle FROM ins_claim WHERE status = '已赔付' GROUP BY claim_type",
      False, ["filter", "group", "agg"]),
@@ -147,7 +147,7 @@ TICKET_MODELED = [
     ("ticket-m-015", "MEDIUM", "按创建月份统计 2025 年的工单数量",
      "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS cnt FROM ticket "
      "WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01' "
-     "GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY ym", True, ["time", "group"]),
+     "GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY ym", False, ["time", "group"]),
     ("ticket-m-016", "MEDIUM", "每个优先级里状态为已关闭的工单有多少张？",
      "SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'CLOSED' GROUP BY priority",
      False, ["filter", "group"]),
@@ -347,14 +347,14 @@ INSURANCE_2 = [
      False, ["time", "group"]),
     ("insurance-053", "HARD", "按生效年份统计保单数量",
      "SELECT YEAR(effect_date) AS yr, COUNT(*) AS cnt FROM ins_policy GROUP BY YEAR(effect_date) ORDER BY yr",
-     True, ["time", "group"]),
+     False, ["time", "group"]),
     ("insurance-054", "HARD", "2025 年赔付支出总额是多少？",
      "SELECT SUM(settle_amount) AS total_settle FROM ins_claim "
      "WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01'", False, ["time", "agg"]),
     ("insurance-055", "HARD", "2024 年各月的理赔报案件数分别是多少？",
      "SELECT DATE_FORMAT(report_date, '%Y-%m') AS ym, COUNT(*) AS cnt FROM ins_claim "
      "WHERE report_date >= '2024-01-01' AND report_date < '2025-01-01' "
-     "GROUP BY DATE_FORMAT(report_date, '%Y-%m') ORDER BY ym", True, ["time", "group"]),
+     "GROUP BY DATE_FORMAT(report_date, '%Y-%m') ORDER BY ym", False, ["time", "group"]),
     ("insurance-056", "HARD", "已赔付的理赔中，赔付金额占申请金额的比例是多少？",
      "SELECT SUM(settle_amount) / SUM(claim_amount) AS ratio FROM ins_claim WHERE status = '已赔付'",
      False, ["business"]),

@@ -41,7 +41,12 @@ import static org.assertj.core.api.Assertions.assertThat;
         "chatdata.engine.datasource.secret=session-wiring-test-engine-secret",
         // 这里不连 IAM，只让上下文装配得起来；给一个占位密钥，
         // 避免任何客户端在构造期因为"缺配置"而失败
-        "chatdata.iam.client-secret=session-wiring-test-iam-secret"
+        "chatdata.iam.client-secret=session-wiring-test-iam-secret",
+        // **关掉启动校验**。本用例验的是"会话存储接线对不对"，与语义配置是否合规无关；
+        // 而启动校验默认 fail-on-violation，库里只要有人建了个没配完的域，
+        // 这个测试就会以"上下文加载失败"的形式红掉，报错还指不到真正的原因。
+        // 配置校验本身有 EngineStartupCheckRealDbTest 覆盖。
+        "chatdata.engine.startup.enabled=false"
 })
 class AskSessionStoreWiringTest {
 

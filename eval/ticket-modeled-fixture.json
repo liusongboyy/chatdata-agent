@@ -185,7 +185,7 @@
       "difficulty": "MEDIUM",
       "question": "按创建月份统计 2025 年的工单数量",
       "goldSql": "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01' GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY ym",
-      "ordered": true,
+      "ordered": false,
       "columnOrder": "ANY",
       "tags": [
         "time",

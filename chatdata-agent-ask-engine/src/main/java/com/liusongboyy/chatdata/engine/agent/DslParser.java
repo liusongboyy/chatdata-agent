@@ -49,11 +49,16 @@ public final class DslParser {
                             + "（" + truncate(firstLine(e.getMessage())) + "）");
         }
 
+        // granularity **必须显式带出来**。这里曾经漏掉它，于是模型填了 month/year
+        // 也被丢掉，AskDsl 构造器兜底成 DAY，渲染器按天分组——
+        // 用户问「每年的保费」拿到几百行逐日数据，数字都对但没有一个是他要的。
+        // 那条链路上每一环单独看都没问题，只有串起来才暴露。
         return new AskDsl(
                 stringList(root.path("metrics")),
                 stringList(root.path("dimensions")),
                 timeRange(root.path("timeRange")),
-                filters(root.path("filters")));
+                filters(root.path("filters")),
+                AskDsl.Granularity.parse(root.path("granularity").asText(null)));
     }
 
     /**

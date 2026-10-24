@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -172,16 +173,31 @@ class EngineStartupCheckRealDbTest {
         };
     }
 
+    /**
+     * 种子域：`sql/09-ask-engine-seed.sql` 建出来的那些，id 与名称都固定。
+     *
+     * <p><strong>只断言种子域，不断言整个库。</strong>这条哨兵要抓的是"校验规则误报"，
+     * 而库里还有人在管理台建的域——建到一半（没绑数据源、没注册表）时校验本来就该报，
+     * 那是校验在正常工作。要求全库零违规会把"用户刚建了一个域"变成构建失败。
+     */
+    private static final Set<Long> SEED_DOMAIN_IDS = Set.of(1L);
+
     @Test
-    @DisplayName("★ 种子数据应当零违规 —— 这条是防止校验规则误报的回归哨兵")
+    @DisplayName("★ 种子域应当零违规 —— 这条是防止校验规则误报的回归哨兵")
     void seedDataHasNoViolations() {
         List<EngineConfigViolation> violations = check().collectViolations();
 
-        System.out.println("[启动校验] 对种子数据校验，违规数 = " + violations.size());
+        System.out.println("[启动校验] 全库违规数 = " + violations.size());
         violations.forEach(v -> System.out.println("  " + v.describe()));
 
-        assertThat(violations)
-                .as("种子数据是刻意配成合规的；这里非空说明要么种子被改坏了，"
+        // 违规只对**种子域**断言。其它域（管理台手工建的）建到一半时报警是正确的
+        List<EngineConfigViolation> seedViolations = violations.stream()
+                .filter(v -> v.domainId() != null
+                        && SEED_DOMAIN_IDS.contains(Long.valueOf(v.domainId())))
+                .toList();
+
+        assertThat(seedViolations)
+                .as("种子域是刻意配成合规的；这里非空说明要么种子被改坏了，"
                         + "要么校验规则误报——而总是红的校验会被关掉，那比不校验更糟")
                 .isEmpty();
     }
@@ -211,15 +227,22 @@ class EngineStartupCheckRealDbTest {
 
         List<EngineConfigViolation> violations = c.collectViolations();
 
-        assertThat(violations)
+        // 只看**角色引用**这一类。库里还可能有与角色无关的违规（例如管理台新建、
+        // 尚未配表就启用的域），那些和本用例要验的事无关，不该让它失败
+        List<EngineConfigViolation> dangling = violations.stream()
+                .filter(v -> v.category() == EngineConfigViolation.Category.DANGLING_GRANT_ROLE
+                        || v.category() == EngineConfigViolation.Category.DANGLING_RULE_ROLE)
+                .toList();
+
+        assertThat(dangling)
                 .as("「分析师」被引用于域的授权、助理的授权，以及一条列规则，抽掉后必须全部报出来")
                 .isNotEmpty()
                 .allSatisfy(v -> assertThat(v.message()).contains("分析师"));
 
         // 两类引用的严重度**必须不同**，这是这道校验的核心设计
-        List<EngineConfigViolation> grants = violations.stream()
+        List<EngineConfigViolation> grants = dangling.stream()
                 .filter(v -> v.category() == EngineConfigViolation.Category.DANGLING_GRANT_ROLE).toList();
-        List<EngineConfigViolation> rules = violations.stream()
+        List<EngineConfigViolation> rules = dangling.stream()
                 .filter(v -> v.category() == EngineConfigViolation.Category.DANGLING_RULE_ROLE).toList();
 
         // 断言"至少覆盖了域与助理两类"，而不是写死总条数：

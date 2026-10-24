@@ -172,4 +172,31 @@ class DslParserTest {
                             .isLessThan(500));
         }
     }
+
+    @Test
+    @DisplayName("★ granularity 必须解析出来（曾整个字段被丢弃，恒为 DAY）")
+    void parsesGranularity() {
+        AskDsl month = DslParser.parse("""
+                {"metrics":["保费"],"dimensions":["生效日期"],"filters":[],"granularity":"month"}""");
+        assertThat(month.granularity())
+                .as("模型填了 month 却被丢掉，SQL 就会按天分组")
+                .isEqualTo(AskDsl.Granularity.MONTH);
+
+        AskDsl year = DslParser.parse("""
+                {"metrics":["保费"],"dimensions":["生效日期"],"filters":[],"granularity":"year"}""");
+        assertThat(year.granularity()).isEqualTo(AskDsl.Granularity.YEAR);
+    }
+
+    @Test
+    @DisplayName("未填或填了不认识的值时按 DAY（不截断是安全默认）")
+    void granularityDefaultsToDay() {
+        assertThat(DslParser.parse("""
+                {"metrics":["保费"],"dimensions":["生效日期"],"filters":[]}""").granularity())
+                .isEqualTo(AskDsl.Granularity.DAY);
+        assertThat(DslParser.parse("""
+                {"metrics":["保费"],"dimensions":["生效日期"],"filters":[],"granularity":"quarter"}""")
+                .granularity())
+                .as("猜成按月会让「按季度」静默变成「按月」，比不截断更糟")
+                .isEqualTo(AskDsl.Granularity.DAY);
+    }
 }
