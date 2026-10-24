@@ -41,3 +41,21 @@ VALUES (220001,2200,'order_txn_with_org','订单（含组织路径）','SQL',
 
 SELECT d.id, d.name, d.mode, t.name AS table_name, t.mode AS table_mode
 FROM `ask_domain` d JOIN `ask_domain_table` t ON t.domain_id = d.id WHERE d.id = 2200;
+
+-- ── 助理 ────────────────────────────────────────────────────────────
+-- 问数页是**从助理进入**的：只建域不建助理，用户根本没有入口。
+-- 助理层的判据与域层不同（enabled=true 且主体在名单内），两道闸门分别生效：
+-- 助理决定"这个入口可不可见"，域决定"能看到哪些行"。
+DELETE FROM `ask_assistant` WHERE `id` = 2200;
+
+INSERT INTO `ask_assistant`
+  (`id`,`name`,`avatar`,`description`,`welcome`,`domain_id`,`domain_ids`,
+   `show_sql`,`status`,`questions_json`,`perm_json`,`sort_no`,`created_by`)
+VALUES (2200,'便利店订单助手','🏪','按组织层级查看便利店订单与交易额',
+ '你好，我可以按你所在的组织范围查询便利店订单。试试问「交易金额合计是多少？」',
+ 2200,'["2200"]',1,'online',
+ '["交易金额合计是多少？","订单数是多少？","按所属组织统计交易金额","按门店统计订单数"]',
+ '{"enabled":true,"grantRoles":["区域经理","分析师","super_admin"],"grantUsers":[]}',
+ 0,'demo');
+
+SELECT a.id, a.name, a.status, a.domain_id FROM `ask_assistant` a WHERE a.id = 2200;
