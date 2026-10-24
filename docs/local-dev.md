@@ -168,6 +168,56 @@ ask 没有本地登录，`/api/**` 由资源服务器内省 IAM 令牌。
 启动时应看到 `引擎配置校验通过`。如果报违规，按提示改库里的配置
 （`ask_domain` / `ask_domain_table` / `ask_assistant`），不需要改代码。
 
+## 改完代码为什么没生效
+
+**这是最容易浪费时间的一类问题**：代码改了、测试也过了，跑起来的服务用的还是旧逻辑。
+
+`java -jar` 跑的是 `target/*-SNAPSHOT.jar` 里的东西。Maven 增量构建在
+"源码时间戳没变"或"只是下游模块变了"时**可能跳过 repackage**，于是 fat jar 里
+嵌的还是上一版引擎模块。实测踩到过：改了 `ask-engine` 的解析器，
+`mvn install` 报成功，但 `chatdata-agent-ask/target/*.jar` 的时间戳没变，
+运行中的服务行为与修复前完全一致——而评测（走 `spring-boot:run`，用 target/classes）
+却是通过的，两边对不上，很容易误判成"配置问题"。
+
+**改完后确认三件事：**
+
+```bash
+# ① 引擎模块的 jar 时间戳
+ls -l chatdata-agent-ask-engine/target/*.jar
+
+# ② ask 的 fat jar 时间戳（必须是刚刚）
+ls -l chatdata-agent-ask/target/chatdata-agent-ask-*.jar
+
+# ③ fat jar 里嵌的引擎是不是新版
+unzip -p chatdata-agent-ask/target/chatdata-agent-ask-*.jar \
+  BOOT-INF/lib/chatdata-agent-ask-engine-1.0.0-SNAPSHOT.jar > /tmp/eng.jar
+unzip -p /tmp/eng.jar com/liusongboyy/chatdata/engine/agent/DslParser.class > /tmp/p.class
+python3 -c "print(b'granularity' in open('/tmp/p.class','rb').read())"
+```
+
+第 ③ 步别用 `strings | grep`：macOS 上 `strings` 读管道时行为不稳定，
+实际会返回空结果，看起来像"没匹配到"。直接按字节查关键词更可靠。
+
+改完引擎或宿主代码后，用**强制重新打包**而不是 `install`：
+
+```bash
+rm -f chatdata-agent-ask/target/chatdata-agent-ask-*.jar
+mvn -q -pl chatdata-agent-ask -am -DskipTests package
+```
+
+`-am`（also make）会把依赖的引擎模块一起构建；`rm` 是为了绕开增量判断。
+打包后**必须重启进程**——`java -jar` 不会热加载。
+
+### 评测与线上为什么可能不一致
+
+| | 用什么 |
+|---|---|
+| `./eval/run.sh` | `mvn spring-boot:run` + `target/classes`（总是最新） |
+| 线上 / 本地 `java -jar` | fat jar（可能过期） |
+
+所以"评测通过但页面不对"时，先查 jar 时间戳，不要先怀疑配置。
+
+
 ## 常见问题
 
 | 症状 | 原因 |
@@ -178,3 +228,5 @@ ask 没有本地登录，`/api/**` 由资源服务器内省 IAM 令牌。
 | 问数报「匹配到多处」 | 两张表用了同一个业务别名，改其中一个 |
 | `/actuator/health` 500 或 401 | 缺 actuator 依赖，或资源服务器没放行该路径 |
 | 管理台提示"权限由 IAM 提供" | 已废弃：数据策略归 ask，见 ADR-0010 |
+| **改完代码行为没变，但测试/评测通过** | fat jar 没重新打包，见上文「改完代码为什么没生效」 |
+| 服务起不来，日志报「N 项引擎配置违规」 | 库里有未配完的域（启用但没绑数据源/没注册表）。改该域为 `disabled`，或补齐配置 |
