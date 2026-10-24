@@ -113,7 +113,8 @@ async function save(): Promise<void> {
       <h2 class="modal-title">功能权限 · {{ role.name }}</h2>
       <p class="sub">
         决定这个角色能看到哪些<strong>页面、按钮与 tab</strong>。
-        与「数据策略」是两件事：那个决定能看哪些<strong>行和列</strong>。
+        数据权限（能看哪些<strong>行和列</strong>）不在 IAM 配置，见问数管理台的
+        数据域/助理页面。
       </p>
 
       <p v-if="isBuiltinSuper" class="note note-warn" role="status">

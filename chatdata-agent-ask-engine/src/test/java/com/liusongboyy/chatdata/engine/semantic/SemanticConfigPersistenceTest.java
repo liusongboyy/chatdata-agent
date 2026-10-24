@@ -43,8 +43,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SemanticConfigPersistenceTest {
 
-    private static final String URL =
-            "jdbc:mysql://127.0.0.1:3306/jimureport?useUnicode=true&characterEncoding=UTF-8"
+    /**
+     * 配置库与数据库**已分开**：语义配置（{@code ask_*}）在 chatdata_ask，
+     * 被查询的业务数据（{@code ins_*}）在 chatdata_demo。
+     *
+     * <p>本测试的链路是「配置库 → Mapper → 加载器 → 渲染器 → 数据库」，
+     * 两个库都要连。合成一个 URL 只能测到一半。
+     */
+    private static final String CONFIG_URL =
+            "jdbc:mysql://127.0.0.1:3306/chatdata_ask?useUnicode=true&characterEncoding=UTF-8"
+                    + "&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";
+    private static final String DATA_URL =
+            "jdbc:mysql://127.0.0.1:3306/chatdata_demo?useUnicode=true&characterEncoding=UTF-8"
                     + "&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";
     private static final String USER = "root";
     private static final String PASSWORD = "root";
@@ -57,7 +67,7 @@ class SemanticConfigPersistenceTest {
     @BeforeAll
     static void setUp() {
         MysqlDataSource ds = new MysqlDataSource();
-        ds.setURL(URL);
+        ds.setURL(CONFIG_URL);
         ds.setUser(USER);
         ds.setPassword(PASSWORD);
 
@@ -101,7 +111,7 @@ class SemanticConfigPersistenceTest {
     }
 
     private static Object execute(RenderedSql r) throws Exception {
-        try (Connection c = java.sql.DriverManager.getConnection(URL, USER, PASSWORD);
+        try (Connection c = java.sql.DriverManager.getConnection(DATA_URL, USER, PASSWORD);
              PreparedStatement ps = c.prepareStatement(r.sql())) {
             for (int i = 0; i < r.params().size(); i++) {
                 ps.setObject(i + 1, r.params().get(i));
@@ -121,9 +131,12 @@ class SemanticConfigPersistenceTest {
 
             assertThat(m.domain().name()).isEqualTo("保险分析域");
             assertThat(m.domain().dbType()).as("dbType 应从绑定的数据源解析出来").isEqualTo("MYSQL5.7");
-            assertThat(m.visibleTables()).as("种子数据含保单表与客户表").hasSize(2);
+            // 断言"种子里那两张在"，而不是写死总数：
+            // 保险域后来又加了 ins_claim，写死 hasSize 会让一次正常建模变更把测试打红
+            assertThat(m.visibleTables()).as("种子数据含保单表与客户表")
+                    .hasSizeGreaterThanOrEqualTo(2);
             assertThat(m.visibleTables()).extracting(RegisteredTable::name)
-                    .containsExactlyInAnyOrder("ins_policy", "ins_customer");
+                    .contains("ins_policy", "ins_customer");
 
             // 字段能解析出来，说明 columns_json 解析正确
             assertThat(m.resolveMetric("保费").column()).isEqualTo("premium");
@@ -273,8 +286,8 @@ class SemanticConfigPersistenceTest {
         try (SqlSession session = factory.openSession()) {
             SemanticModel m = loadModelFromDb(session);
             assertThat(m.visibleTables())
-                    .as("种子数据应当有保单表与客户表两张")
-                    .hasSize(2);
+                    .as("种子数据应当包含保单表与客户表")
+                    .hasSizeGreaterThanOrEqualTo(2);
 
             PermissionDecision manager = PermissionGuard.check(
                     null, m.domain().permission(), PermissionContext.of("u1", Set.of("区域经理")));
@@ -312,7 +325,7 @@ class SemanticConfigPersistenceTest {
 
             BigDecimal sum = BigDecimal.ZERO;
             int rows = 0;
-            try (Connection c = java.sql.DriverManager.getConnection(URL, USER, PASSWORD);
+            try (Connection c = java.sql.DriverManager.getConnection(DATA_URL, USER, PASSWORD);
                  PreparedStatement ps = c.prepareStatement(r.sql())) {
                 for (int i = 0; i < r.params().size(); i++) {
                     ps.setObject(i + 1, r.params().get(i));

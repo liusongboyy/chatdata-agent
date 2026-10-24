@@ -52,6 +52,12 @@ public class AskSecurityConfig {
                     // 它调用的 /api/ask/** 与 /sys/** 各有自己的鉴权。
                     auth.requestMatchers("/app/**").permitAll();
 
+                    // 健康检查。探针没有令牌，也不该需要令牌——
+                    // 它要回答的是"进程与关键依赖活着吗"，与"你是谁"无关。
+                    // 只暴露 health 本身（见 application.yml 的 management 段），
+                    // 不像 /api/** 那样需要内省一次令牌
+                    auth.requestMatchers("/actuator/health").permitAll();
+
                     // 管理面。细粒度判定在**每个接口的 @PreAuthorize 上**
                     // （见 AdminEngineController），这里只要求"已登录"，
                     // 否则只有某一项权限的人进不来。关闭功能权限时退回旧判据

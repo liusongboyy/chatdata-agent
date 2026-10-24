@@ -171,7 +171,7 @@ export interface PermissionNode {
   code: string
   label: string
   kind: 'MODULE' | 'PAGE' | 'ACTION'
-  /** 单项就等于相当大的权限（重置密码、配角色权限、改数据策略…），配置时单独提示 */
+  /** 单项就等于相当大的权限（重置密码、配角色权限…），配置时单独提示 */
   sensitive: boolean
   children: PermissionNode[]
 }

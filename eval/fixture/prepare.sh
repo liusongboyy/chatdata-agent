@@ -21,7 +21,7 @@ DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASSWORD="${DB_PASSWORD:-root}"
-CONFIG_DB="${CONFIG_DB:-jimureport}"
+CONFIG_DB="${CONFIG_DB:-chatdata_ask}"
 
 export MYSQL_PWD="$DB_PASSWORD"
 MYSQL=(mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER")

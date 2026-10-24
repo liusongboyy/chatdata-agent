@@ -311,12 +311,21 @@ function datasourceName(id: number | null): string {
   return datasources.value.find((d) => d.id === id)?.name ?? `#${id}`
 }
 
-/** 列表里的策略状态：未配置 / vN / 解析失败。fail-closed 下"未配置"是高危项。 */
+/**
+ * 列表里的策略状态。
+ *
+ * <p>这里曾显示 `v1` —— 那是 `perm_json` 的 **schema 版本号**（`{"v":1,...}`），
+ * 由代码写死、不是可编辑的版本，也不是"改了几次"。于是每一行都是 v1，
+ * 既不能点也不能改，看起来像坏掉的控件。
+ *
+ * 真正该告诉管理员的是：**这份策略能不能用、是宽还是严**。
+ * 判据按 PRD §7 的 fail-closed 语义来：没有授权就是谁都进不去，是高危项。
+ */
 function policyState(d: Domain): { label: string; tone: string } {
   if (!d.permJson || !d.permJson.trim()) return { label: '未配置', tone: 'state-missing' }
   const parsed = parseDomainPolicy(d.permJson)
   if (parsed.error) return { label: '解析失败', tone: 'state-bad' }
-  return { label: `v${parsed.policy.v}`, tone: '' }
+  return { label: '已配置', tone: '' }
 }
 
 /** 列表里的授权摘要：公开 / 角色与用户 / 未配置。 */
@@ -351,7 +360,7 @@ function grantSummary(d: Domain): string {
             <th scope="col">名称</th>
             <th scope="col">数据源</th>
             <th scope="col">状态</th>
-            <th scope="col">策略</th>
+            <th scope="col" title="访问授权 + 行规则 + 列规则，在「编辑」里配置">策略</th>
             <th scope="col">授权</th>
             <th scope="col" class="col-actions">操作</th>
           </tr>

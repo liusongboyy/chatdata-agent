@@ -249,12 +249,19 @@ function domainName(id: number | null): string {
   return domains.value.find((d) => d.id === id)?.name ?? `#${id}`
 }
 
-/** 未配置在 fail-closed 下等于谁都进不去，必须能在列表里一眼看见。 */
+/**
+ * 列表里的访问控制状态。
+ *
+ * 助理策略只有 `enabled` 一个开关，没有版本号——这里曾显示 `v1/v0`
+ * （由开关拼出来），看起来像策略版本，实际是"启用/关闭"。改成直说。
+ */
 function policyState(a: AssistantRow): { label: string; tone: string } {
   if (!a.permJson || !a.permJson.trim()) return { label: '未配置', tone: 'state-missing' }
   const parsed = parseAssistantPolicy(a.permJson)
   if (parsed.error) return { label: '解析失败', tone: 'state-bad' }
-  return { label: `v${parsed.policy.enabled ? '1' : '0'}`, tone: '' }
+  return parsed.policy.enabled
+    ? { label: '已启用', tone: '' }
+    : { label: '已关闭', tone: 'state-missing' }
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -298,20 +305,19 @@ const STATUS_LABEL: Record<string, string> = {
             <dd>{{ domainName(a.domainId) }}</dd>
           </div>
           <div>
-            <dt>策略</dt>
-            <dd><span class="state" :class="policyState(a).tone">{{ policyState(a).label }}</span></dd>
-          </div>
-          <div>
             <dt>访问权限</dt>
             <dd>
+              <span class="state" :class="policyState(a).tone">{{ policyState(a).label }}</span>
               <template v-if="(parsePerm(a.permJson) as AssistantPerm).enabled">
-                {{
+                · {{
                   ((parsePerm(a.permJson) as AssistantPerm).grantRoles ?? []).join('、') ||
                   ((parsePerm(a.permJson) as AssistantPerm).grantUsers ?? []).join('、') ||
-                  '（名单为空，谁都进不去）'
+                  '名单为空，谁都进不去'
                 }}
               </template>
-              <span v-else class="warn-text">未启用（拒绝所有访问）</span>
+              <template v-else-if="policyState(a).label === '已关闭'">
+                · 拒绝所有访问
+              </template>
             </dd>
           </div>
           <div>
@@ -392,7 +398,7 @@ const STATUS_LABEL: Record<string, string> = {
           </label>
 
           <fieldset v-if="!showAdvanced" class="grants">
-            <legend class="label">访问权限</legend>
+            <legend class="label">访问权限（策略）</legend>
 
             <label class="checkbox">
               <input v-model="policy.enabled" type="checkbox" />

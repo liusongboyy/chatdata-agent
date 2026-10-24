@@ -34,6 +34,13 @@
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
 
+        <!-- 健康检查。运维与探针要能问到"进程活着吗"。
+             只暴露 health：metrics/env/heapdump 之类在公网入口上是信息泄露面 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- 会话落 Redis：IAM 多实例部署时，会话不能只在单机内存里 -->
         <dependency>
             <groupId>org.springframework.session</groupId>

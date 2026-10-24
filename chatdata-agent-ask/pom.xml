@@ -75,6 +75,13 @@
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
 
+        <!-- 健康检查。运维与探针要能问到"进程活着吗"。
+             只暴露 health：metrics/env/heapdump 之类在公网入口上是信息泄露面 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- 数据库。驱动版本交给 Spring Boot 管理，不自行 pin。
              连接池用 common-mybatis 带的 HikariCP；druid 随厂商依赖一并移除了。 -->
         <dependency>

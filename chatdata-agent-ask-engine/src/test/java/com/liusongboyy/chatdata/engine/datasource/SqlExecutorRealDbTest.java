@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SqlExecutorRealDbTest {
 
     private static final String URL =
-            "jdbc:mysql://127.0.0.1:3306/jimureport?useUnicode=true&characterEncoding=UTF-8"
+            "jdbc:mysql://127.0.0.1:3306/chatdata_demo?useUnicode=true&characterEncoding=UTF-8"
                     + "&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";
 
     /** 金标准：华东生效保单保费合计。 */

@@ -11,7 +11,7 @@ spring:
 
   # 业务库：角色表、审计表、问数引擎的 ask_* 表
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:jimureport}?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:chatdata_ask}?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -63,3 +63,15 @@ logging:
   level:
     root: INFO
     com.liusongboyy.chatdata: INFO
+
+# 健康检查。只暴露 health：metrics / env / heapdump 走公网入口是信息泄露面。
+# show-details=never 让响应里不带数据库、Redis 等组件的明细——
+# 探针只需要知道 200 还是 503。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

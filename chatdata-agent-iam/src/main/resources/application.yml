@@ -43,3 +43,15 @@ logging:
     root: INFO
     com.liusongboyy.chatdata: INFO
     org.springframework.security: INFO
+
+# 健康检查。只暴露 health：metrics / env / heapdump 走公网入口是信息泄露面。
+# show-details=never 让响应里不带数据库、Redis 等组件的明细——
+# 探针只需要知道 200 还是 503。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

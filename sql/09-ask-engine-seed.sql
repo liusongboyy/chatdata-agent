@@ -19,7 +19,7 @@
 -- ---------------------------------------------------------------------
 INSERT INTO `ask_datasource` (`id`, `name`, `db_type`, `driver_class`, `url`, `username`, `password_enc`, `enabled`)
 VALUES (1, '本地问数库', 'MYSQL5.7', 'com.mysql.cj.jdbc.Driver',
-        'jdbc:mysql://127.0.0.1:3306/jimureport?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai',
+        'jdbc:mysql://127.0.0.1:3306/chatdata_demo?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai',
         'root', NULL, 1)
 ON DUPLICATE KEY UPDATE `db_type` = VALUES(`db_type`), `url` = VALUES(`url`), `enabled` = VALUES(`enabled`);
 

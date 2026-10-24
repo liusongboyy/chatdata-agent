@@ -20,16 +20,16 @@
 -- =====================================================================
 
 -- 0) 备份。表名带日期，避免覆盖上一轮备份
-CREATE TABLE IF NOT EXISTS `jimureport`.`ask_domain_perm_backup_20261023` AS
-SELECT `id`, `perm_json`, NOW() AS `backed_up_at` FROM `jimureport`.`ask_domain`;
+CREATE TABLE IF NOT EXISTS `chatdata_ask`.`ask_domain_perm_backup_20261023` AS
+SELECT `id`, `perm_json`, NOW() AS `backed_up_at` FROM `chatdata_ask`.`ask_domain`;
 
-CREATE TABLE IF NOT EXISTS `jimureport`.`ask_assistant_perm_backup_20261023` AS
-SELECT `id`, `perm_json`, NOW() AS `backed_up_at` FROM `jimureport`.`ask_assistant`;
+CREATE TABLE IF NOT EXISTS `chatdata_ask`.`ask_assistant_perm_backup_20261023` AS
+SELECT `id`, `perm_json`, NOW() AS `backed_up_at` FROM `chatdata_ask`.`ask_assistant`;
 
 -- 1) 数据域：以 IAM 文档为准
 START TRANSACTION;
 
-UPDATE `jimureport`.`ask_domain` d
+UPDATE `chatdata_ask`.`ask_domain` d
 JOIN `chatdata_iam`.`iam_policy` p
   ON p.`tenant_id` = 't_default'
  AND p.`resource_type` = 'DOMAIN'
@@ -39,7 +39,7 @@ WHERE p.`document` IS NOT NULL
   AND JSON_VALID(p.`document`);
 
 -- 2) 助理：以 IAM 文档为准
-UPDATE `jimureport`.`ask_assistant` a
+UPDATE `chatdata_ask`.`ask_assistant` a
 JOIN `chatdata_iam`.`iam_policy` p
   ON p.`tenant_id` = 't_default'
  AND p.`resource_type` = 'ASSISTANT'
@@ -52,7 +52,7 @@ COMMIT;
 
 -- 3) 复核 A：迁移后仍与 IAM 文档不一致的资源（应为 0 行）
 SELECT 'DOMAIN' AS `resource_type`, d.`id`, d.`name`
-FROM `jimureport`.`ask_domain` d
+FROM `chatdata_ask`.`ask_domain` d
 JOIN `chatdata_iam`.`iam_policy` p
   ON p.`tenant_id` = 't_default'
  AND p.`resource_type` = 'DOMAIN'
@@ -63,7 +63,7 @@ WHERE p.`document` IS NOT NULL
 UNION ALL
 
 SELECT 'ASSISTANT', a.`id`, a.`name`
-FROM `jimureport`.`ask_assistant` a
+FROM `chatdata_ask`.`ask_assistant` a
 JOIN `chatdata_iam`.`iam_policy` p
   ON p.`tenant_id` = 't_default'
  AND p.`resource_type` = 'ASSISTANT'
@@ -73,20 +73,20 @@ WHERE p.`document` IS NOT NULL
 
 -- 4) 复核 B：仍引用旧角色 `管理员` 的行（应为 0；IAM 导入时已改为 super_admin）
 SELECT 'DOMAIN' AS `resource_type`, `id`, `name`
-FROM `jimureport`.`ask_domain`
+FROM `chatdata_ask`.`ask_domain`
 WHERE `perm_json` LIKE '%"管理员"%'
 UNION ALL
 SELECT 'ASSISTANT', `id`, `name`
-FROM `jimureport`.`ask_assistant`
+FROM `chatdata_ask`.`ask_assistant`
 WHERE `perm_json` LIKE '%"管理员"%';
 
 -- 5) 复核 C：资源数量与策略数量（IAM 有、本地没有 → 该资源会被 fail-closed）
 SELECT 'DOMAIN' AS `resource_type`,
-       (SELECT COUNT(*) FROM `jimureport`.`ask_domain`) AS `local_resources`,
+       (SELECT COUNT(*) FROM `chatdata_ask`.`ask_domain`) AS `local_resources`,
        (SELECT COUNT(*) FROM `chatdata_iam`.`iam_policy`
          WHERE `tenant_id`='t_default' AND `resource_type`='DOMAIN') AS `iam_policies`
 UNION ALL
 SELECT 'ASSISTANT',
-       (SELECT COUNT(*) FROM `jimureport`.`ask_assistant`),
+       (SELECT COUNT(*) FROM `chatdata_ask`.`ask_assistant`),
        (SELECT COUNT(*) FROM `chatdata_iam`.`iam_policy`
          WHERE `tenant_id`='t_default' AND `resource_type`='ASSISTANT');
