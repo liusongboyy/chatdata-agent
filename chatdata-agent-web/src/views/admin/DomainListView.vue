@@ -567,7 +567,8 @@ function grantSummary(d: Domain): string {
           <datalist id="dm-sysvar-options">
             <option value="orgCode">当前组织编码</option>
             <option value="userCode">当前用户账号</option>
-            <option value="orgPath">当前组织路径</option>
+            <option value="orgPath">当前组织路径（单组织）</option>
+            <option value="orgPaths">当前组织路径（含兼岗，多值）</option>
           </datalist>
 
           <div class="advanced">

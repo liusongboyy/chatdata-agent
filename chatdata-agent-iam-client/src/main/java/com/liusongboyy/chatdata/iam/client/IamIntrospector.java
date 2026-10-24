@@ -164,6 +164,9 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
         attributes.put("orgId", principal.orgId());
         attributes.put("orgCode", principal.orgCode());
         attributes.put("orgPath", principal.orgPath());
+        // 全部组织路径。行规则里 sysVar 写 orgPaths 时取它，支持兼岗的并集语义。
+        // 单一组织时 orgPaths 与 orgPath 内容一致，两种写法等价
+        attributes.put("orgPaths", principal.orgPaths());
         attributes.put("roles", principal.roles());
         attributes.put("scope", principal.scope());
         attributes.put("tokenVersion", principal.tokenVersion());
@@ -206,14 +209,17 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
                 // 新旧实例读到的前 12 段含义一致。
                 // 空集合也要占位（String.join 会留下一个尾部分隔符），
                 // 否则 split(…, -1) 得到 12 段，新代码会当成"旧格式"而丢弃权限
-                String.join("\u001e", p.permissions()));
+                String.join("\u001e", p.permissions()),
+                // 组织路径**继续追加在末尾**。同样是为了滚动发布：
+                // 旧实例读到多出来的第 14 段会当作"字段数更多"而正常解析前面的
+                String.join("\u001e", p.orgPaths()));
     }
 
     static IamPrincipal decode(String encoded) {
         String[] f = encoded.split("\u001f", -1);
-        // 12 → 13：旧的 12 段缓存值会在这里抛，被 fromCache 捕获后退回问 IAM。
+        // 12 → 13 → 14：段数不足的旧缓存会在这里抛，被 fromCache 捕获后退回问 IAM。
         // 安全降级——多一次往返，不会读出错的身份
-        if (f.length < 13) {
+        if (f.length < 14) {
             throw new IllegalStateException("缓存内容字段数不足：" + f.length);
         }
         return new IamPrincipal(
@@ -224,6 +230,7 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
                 f[4].isEmpty() ? null : Long.parseLong(f[4]),
                 emptyToNull(f[5]),
                 emptyToNull(f[6]),
+                splitList(f[13]),        // orgPaths（编码里追加在末尾，record 里紧跟 orgPath）
                 splitSet(f[7]),          // roles
                 // 权限在**编码里排最后**（追加），但 record 的分量顺序里紧跟 roles。
                 // 这两处顺序不一致是刻意的：编码顺序要迁就"新字段只能追加"，
@@ -242,6 +249,22 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
      * 而症状是 401（看起来像令牌失效）。上游只要有一条没写 DISTINCT 的 SQL
      * 就能触发——一次 Redis 抖动不该被误报成鉴权失败。
      */
+    /**
+     * 解码一个**有序**列表。
+     *
+     * <p>组织路径的顺序有语义（主组织在前），且重复项没有意义但不是错误，
+     * 所以用 {@code distinct()} 而不是 {@code Set.of}——后者遇重复会抛。
+     */
+    private static java.util.List<String> splitList(String v) {
+        if (v.isEmpty()) {
+            return java.util.List.of();
+        }
+        return java.util.Arrays.stream(v.split("\u001e"))
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+    }
+
     private static java.util.Set<String> splitSet(String v) {
         if (v.isEmpty()) {
             return java.util.Set.of();

@@ -238,4 +238,88 @@ class RowRuleCompilerTest {
             assertThat(p.params()).containsExactly("华东");
         }
     }
+
+    @Nested
+    @DisplayName("/** 组织树前缀匹配 */")
+    class HierarchyPrefix {
+
+        private PermissionContext ctxWith(String... paths) {
+            return new PermissionContext("u1", Set.of("R"), Map.of("orgPath", List.of(paths)));
+        }
+
+        @Test
+        @DisplayName("★ starts_with 只在右侧加通配符（层级前缀，不是包含匹配）")
+        void startsWithIsPrefixNotContains() throws Exception {
+            RowScope scope = RowRuleCompiler.compile(
+                    perm("[{\"id\":1,\"role\":\"R\",\"field\":\"org_path\",\"op\":\"starts_with\",\"sysVar\":\"orgPath\",\"dynamic\":true}]"),
+                    ctxWith("/1/10/"));
+
+            SqlPredicate p = ((RowScope.Restricted) scope).predicate();
+
+            assertThat(p.sql()).contains("LIKE").doesNotContain("'%");
+            // 参数是「值 + %」，不是「% + 值 + %」
+            assertThat(p.params()).containsExactly("/1/10/%");
+        }
+
+        @Test
+        @DisplayName("★ 包含匹配会越权：/1/10% 不能写成 %/1/10%")
+        void containsOperatorWouldLeakSiblings() throws Exception {
+            // /1/100/ 与 /1/10/ 是不同子树。用「包含」时 '/1/10/' 不含在 '/1/100/' 里，
+            // 但反过来 '/1/100' 会被 '%/1/10%' 匹配——这就是不能用 LIKE 的原因
+            RowScope prefix = RowRuleCompiler.compile(
+                    perm("[{\"id\":1,\"role\":\"R\",\"field\":\"org_path\",\"op\":\"starts_with\",\"sysVar\":\"orgPath\",\"dynamic\":true}]"),
+                    ctxWith("/1/10/"));
+
+            assertThat(((RowScope.Restricted) prefix).predicate().params())
+                    .as("前缀匹配的参数以值开头，只对右侧加通配")
+                    .containsExactly("/1/10/%");
+        }
+
+        @Test
+        @DisplayName("多组织归属：多个前缀按 OR 合并")
+        void multiplePathsMergeWithOr() throws Exception {
+            RowScope scope = RowRuleCompiler.compile(
+                    perm("[{\"id\":1,\"role\":\"R\",\"field\":\"org_path\",\"op\":\"starts_with\",\"sysVar\":\"orgPath\",\"dynamic\":true}]"),
+                    ctxWith("/1/10/", "/1/12/"));
+
+            SqlPredicate p = ((RowScope.Restricted) scope).predicate();
+
+            assertThat(p.sql()).contains(" OR ");
+            assertThat(p.params()).containsExactly("/1/10/%", "/1/12/%");
+        }
+
+        @Test
+        @DisplayName("通配符必须转义：路径里的下划线不能放大范围")
+        void escapesWildcardsInPath() throws Exception {
+            RowScope scope = RowRuleCompiler.compile(
+                    perm("[{\"id\":1,\"role\":\"R\",\"field\":\"org_path\",\"op\":\"starts_with\",\"sysVar\":\"orgPath\",\"dynamic\":true}]"),
+                    ctxWith("/1/A_B/"));
+
+            assertThat(((RowScope.Restricted) scope).predicate().params())
+                    .as("未转义的 _ 在 LIKE 里匹配任意单字符，会跨到 /1/AXB/ 去")
+                    .containsExactly("/1/A\\_B/%");
+        }
+
+        @Test
+        @DisplayName("路径为空或空白时拒绝，不得放行")
+        void rejectsBlankPaths() {
+            assertThatThrownBy(() -> RowRuleCompiler.compile(
+                    perm("[{\"id\":1,\"role\":\"R\",\"field\":\"org_path\",\"op\":\"starts_with\",\"sysVar\":\"orgPath\",\"dynamic\":true}]"),
+                    ctxWith("/1/10/", "  ")))
+                    .isInstanceOf(RowRuleCompiler.RuleNotEvaluableException.class);
+        }
+
+        @Test
+        @DisplayName("单值字符串（老格式）仍可作为前缀使用")
+        void acceptsSingleStringValue() throws Exception {
+            PermissionContext ctx = new PermissionContext(
+                    "u1", Set.of("R"), Map.of("orgPath", "/1/10/"));
+
+            RowScope scope = RowRuleCompiler.compile(
+                    perm("[{\"id\":1,\"role\":\"R\",\"field\":\"org_path\",\"op\":\"starts_with\",\"sysVar\":\"orgPath\",\"dynamic\":true}]"),
+                    ctx);
+
+            assertThat(((RowScope.Restricted) scope).predicate().params()).containsExactly("/1/10/%");
+        }
+    }
 }

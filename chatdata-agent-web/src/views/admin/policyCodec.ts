@@ -55,7 +55,17 @@ const DOMAIN_KEYS = new Set([
 
 const ASSISTANT_KEYS = new Set(['enabled', 'grantRoles', 'grantUsers'])
 
-export const ROW_OPERATORS = ['=', '!=', '>', '>=', '<', '<=', '包含', 'in', 'not in'] as const
+/**
+ * 行规则运算符。
+ *
+ * `前缀` 与 `包含` **不能互相替代**：
+ * - 「包含」两侧加通配符（`%值%`），用于模糊搜索
+ * - 「前缀」只在右侧加（`值%`），用于组织树这类"覆盖整棵子树"的权限
+ *
+ * 层级权限配成「包含」会跨到兄弟子树：组织路径 `/1/10/` 与 `/1/100/` 是两支，
+ * `%/1/10%` 会同时命中——那是越权，且不报错。
+ */
+export const ROW_OPERATORS = ['=', '!=', '>', '>=', '<', '<=', '包含', '前缀', 'in', 'not in'] as const
 
 export const MASK_ACTION = '脱敏'
 

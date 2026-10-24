@@ -23,6 +23,13 @@ public record IamUserDetails(
         Long orgId,
         String orgCode,
         String orgPath,
+        /**
+         * 该用户所属**全部**组织的物化路径，主组织在前。
+         *
+         * <p>兼岗（同时管两个大区）时行权限要取并集；只有 {@link #orgPath}
+         * 会让一半数据凭空消失。不含已停用的组织。
+         */
+        List<String> orgPaths,
         Set<String> roles,
         /** 功能权限码（页面/按钮/tab）。与 {@code roles} 是两个维度：见 PermissionCatalog。 */
         Set<String> permissions,
@@ -30,6 +37,7 @@ public record IamUserDetails(
 ) {
 
     public IamUserDetails {
+        orgPaths = orgPaths == null ? List.of() : List.copyOf(orgPaths);
         roles = roles == null ? Set.of() : Set.copyOf(roles);
         permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
     }

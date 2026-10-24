@@ -97,6 +97,9 @@ public class PrincipalController {
         out.put("orgId", user.orgId());
         out.put("orgCode", user.orgCode());
         out.put("orgPath", user.orgPath());
+        // 全部组织路径（兼岗）。行权限按它取并集；orgPath 保留是为了
+        // 单组织场景的兼容——老配置里 sysVar=orgPath 仍按单值解释
+        out.put("orgPaths", user.orgPaths());
         out.put("roles", user.roleCodes());
         // 功能权限（页面/按钮/tab）。**必须与 @perm 的判定同源**——
         // 两处算法不一致会得到"界面有按钮、点了全 403"（见 PermissionChecker）

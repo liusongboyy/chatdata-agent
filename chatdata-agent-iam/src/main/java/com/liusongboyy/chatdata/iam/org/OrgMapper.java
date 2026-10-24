@@ -59,6 +59,25 @@ public interface OrgMapper {
     OrgRow selectPrimaryByUser(@Param("userId") long userId);
 
     /**
+     * 该用户所属的**全部**组织路径（主组织在前）。
+     *
+     * <p>兼岗场景需要：一个人同时管华东与华南时，行权限要取两个子树的并集，
+     * 只取主组织会让另一半数据凭空消失——而用户不知道是权限配错了。
+     *
+     * <p>排除已停用的组织：停用意味着那段树不再有效，把它的路径带进权限
+     * 会让"已撤销的管辖范围"仍然可见。
+     */
+    @Select("""
+            SELECT o.path
+            FROM iam_user_org uo
+            JOIN iam_org o ON o.id = uo.org_id
+            WHERE uo.user_id = #{userId}
+              AND o.enabled = 1
+            ORDER BY uo.is_primary DESC, o.id
+            """)
+    java.util.List<String> selectOrgPathsByUser(@Param("userId") long userId);
+
+    /**
      * 插入。path 先占位，拿到自增 id 后由调用方回填——
      * 路径必须包含自己的 id，不能在建行前算出来。
      */

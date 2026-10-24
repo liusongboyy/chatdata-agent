@@ -37,6 +37,9 @@ import java.util.regex.Pattern;
  */
 public final class RowRuleCompiler {
 
+    /** 前缀匹配的内部标记。不直接映射成 SQL 运算符——它要改写取值。 */
+    private static final String STARTS_WITH = "__STARTS_WITH__";
+
     /** 合法标识符：{@code col} 或 {@code table.col}。 */
     private static final Pattern IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)?$");
 
@@ -64,7 +67,13 @@ public final class RowRuleCompiler {
             Map.entry("in", "IN"),
             Map.entry("IN", "IN"),
             Map.entry("not in", "NOT IN"),
-            Map.entry("NOT IN", "NOT IN"));
+            Map.entry("NOT IN", "NOT IN"),
+            // 层级前缀：只在右侧加通配符，用于组织树等"包含整棵子树"的场景。
+            // **不能与「包含」合并**：包含是 %值%，前缀是 值%。前者用于搜索文本，
+            // 后者用于权限过滤；拿包含做层级会匹配到兄弟子树（/1/100/ 命中 /1/10%）
+            Map.entry("starts_with", STARTS_WITH),
+            Map.entry("starts", STARTS_WITH),
+            Map.entry("前缀", STARTS_WITH));
 
     private RowRuleCompiler() {
     }
@@ -120,6 +129,8 @@ public final class RowRuleCompiler {
                     "规则 %d 的字段名非法：%s".formatted(rule.id(), field));
         }
         field = field.trim();
+        // lambda 里要引用，必须是终态变量
+        final String col = field;
 
         String rawOp = rule.op() == null ? "=" : rule.op().trim();
         String op = OPERATORS.get(rawOp);
@@ -138,6 +149,49 @@ public final class RowRuleCompiler {
                         "规则 %d 是 %s 但取值为空".formatted(rule.id(), rawOp));
             }
             return SqlPredicate.columnIn(field, op, parts);
+        }
+
+        // **多值 + 等号等价于 IN。**
+        // 动态变量可能是集合（兼岗的 orgPaths），若直接把它当单个参数绑定，
+        // JDBC 会试图把一个 List 序列化进 VARCHAR——报的是
+        // "Cannot convert string '\xAC\xED...' from binary to utf8mb4"，
+        // 那与"权限配置写错了"看起来毫无关系，排查会走很远。
+        if ("=".equals(op) || "<>".equals(op)) {
+            List<String> parts = splitValues(value);
+            if (parts.size() > 1) {
+                return SqlPredicate.columnIn(field, "=".equals(op) ? "IN" : "NOT IN", parts);
+            }
+            if (parts.size() == 1) {
+                return SqlPredicate.column(field, op, parts.get(0));
+            }
+        }
+
+        // 层级前缀：值 + %，**只在右侧**加通配。
+        //
+        // 与「包含」的区别不是风格问题：包含生成 %值%，用于搜索文本；
+        // 前缀生成 值%，用于权限过滤。拿包含做层级会匹配到兄弟子树——
+        // /1/100/ 会被 %/1/10% 命中，那是越权。
+        //
+        // 取值可能是**多个**（兼岗：同时管华东与华南），按 OR 合并取并集。
+        if (STARTS_WITH.equals(op)) {
+            // **空白项要整体拒绝，不能在 splitValues 里被过滤掉。**
+            // 过滤等于把"我管 /1/10/ 和 （空）"悄悄当成"我管 /1/10/"——
+            // 少一条路径用户可能看不到应有数据，而配置错误没有任何提示。
+            // 所以判据放在摊平之前，看原始值。
+            if (hasBlankEntry(value)) {
+                throw new RuleNotEvaluableException(
+                        "规则 %d 的前缀取值里有空白项，无法确定可见范围".formatted(rule.id()));
+            }
+            List<String> values = splitValues(value);
+            if (values.isEmpty()) {
+                throw new RuleNotEvaluableException(
+                        "规则 %d 是前缀匹配但取值为空".formatted(rule.id()));
+            }
+            return values.stream()
+                    .map(v -> SqlPredicate.of("{col:" + col + "} LIKE ? ESCAPE '\\\\'",
+                            escapeLike(v) + "%"))
+                    .reduce(SqlPredicate::or)
+                    .orElseThrow();
         }
 
         // LIKE：包含匹配，两侧加通配符。通配符本身转义，避免用户值里的 % 变成"匹配全部"。
@@ -172,9 +226,50 @@ public final class RowRuleCompiler {
                                 + "（厂商在此情形下会跳过规则、放行全部行；本项目改为拒绝）"));
     }
 
+    /** 取值里是否有空白项（集合中的空串/空白串，或单个空白串）。 */
+    private static boolean hasBlankEntry(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof java.util.Collection<?> c) {
+            return c.stream().anyMatch(v -> v == null || String.valueOf(v).isBlank());
+        }
+        if (value instanceof Object[] arr) {
+            return java.util.Arrays.stream(arr)
+                    .anyMatch(v -> v == null || String.valueOf(v).isBlank());
+        }
+        return String.valueOf(value).isBlank();
+    }
+
+    /**
+     * 把动态变量的取值摊平成字符串列表。
+     *
+     * <p><strong>必须显式处理集合类型。</strong>动态变量可能是单个字符串
+     * （{@code orgPath = "/1/10/"}），也可能是多个（兼岗：
+     * {@code orgPath = ["/1/10/", "/1/12/"]}）。如果一律走
+     * {@code String.valueOf(value)}，集合会被 {@code List.toString()} 变成
+     * {@code "[/1/10/, /1/12/]"}——**方括号会被当成路径的一部分**，
+     * 前缀匹配于是永远不成立，而失败形态是"用户什么都看不到"。
+     *
+     * <p>单个字符串仍按逗号拆分，兼容 {@code "A,B"} 的历史写法。
+     */
     private static List<String> splitValues(Object value) {
         if (value == null) {
             return List.of();
+        }
+        if (value instanceof java.util.Collection<?> c) {
+            return c.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(v -> String.valueOf(v).trim())
+                    .filter(s -> !s.isEmpty())
+                    .toList();
+        }
+        if (value instanceof Object[] arr) {
+            return java.util.Arrays.stream(arr)
+                    .filter(java.util.Objects::nonNull)
+                    .map(v -> String.valueOf(v).trim())
+                    .filter(s -> !s.isEmpty())
+                    .toList();
         }
         return java.util.Arrays.stream(String.valueOf(value).split(","))
                 .map(String::trim)

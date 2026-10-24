@@ -96,8 +96,7 @@ public class AskEngineStreamController {
         }
         try {
             return ResponseEntity.ok(serviceFactory.listUsableAssistants(
-                    com.liusongboyy.chatdata.engine.permission.PermissionContext.of(
-                            username, currentUser.roles())));
+                    permissionContext(username)));
         } catch (Exception e) {
             // 走到这里说明**整条列表**读不出来（业务库不可用之类），
             // 而不是某一个助理的问题：助理级的失败（配置坏掉、IAM 策略读不到）
@@ -131,8 +130,7 @@ public class AskEngineStreamController {
                 String username = currentUser.username().orElse(null);
                 if (username != null) {
                     var svc = serviceFactory.forAssistant(assistantId, null,
-                            com.liusongboyy.chatdata.engine.permission.PermissionContext.of(
-                                    username, currentUser.roles()));
+                            permissionContext(username));
                     return ResponseEntity.ok(new AskServiceFactory.Capabilities(
                             svc.domainName(), svc.availableFields()));
                 }
@@ -232,7 +230,7 @@ public class AskEngineStreamController {
 
         try {
             AskFacade facade = serviceFactory.forAssistant(conversation.assistantId(), body.domainId(),
-                    com.liusongboyy.chatdata.engine.permission.PermissionContext.of(username, roles));
+                    permissionContext(username));
 
             // 重算是 **DSL 概念**：直连模式压根没有 DSL，模型写的是 SQL。
             // 与其假装支持，不如明确告诉调用方这个模式没有可重算的中间表示
@@ -320,7 +318,7 @@ public class AskEngineStreamController {
             // 见 AskServiceFactory.forAssistant 的说明
             AskFacade service = serviceFactory.forAssistant(
                     conversation.assistantId(), body.domainId(),
-                    com.liusongboyy.chatdata.engine.permission.PermissionContext.of(username, roles));
+                    permissionContext(username));
 
             // assistantId 必须带上：**审计要能回答"这次走的是哪个助理"**。
             // 助理决定功能可见性与落点域，是排查"他为什么看到这些数据"的一环；
@@ -476,4 +474,21 @@ public class AskEngineStreamController {
         return payload;
     }
 
+
+    /**
+     * 引擎用的权限上下文。
+     *
+     * <p><strong>必须带 attributes。</strong>动态行规则（如 {@code sysVar: "orgPaths"}）
+     * 从这里取组织路径；只传 roles 时动态变量恒为空，结果要么整条查询被拒绝，
+     * 要么——更糟——规则被当成"不适用"而静默放宽。
+     *
+     * <p>此前这里有四处各自写 {@code PermissionContext.of(username, roles)}，
+     * 全都丢了 attributes。四处分别写同一个东西时，改一处漏三处是常态，
+     * 所以收敛成一个方法。
+     */
+    private com.liusongboyy.chatdata.engine.permission.PermissionContext permissionContext(
+            String username) {
+        return com.liusongboyy.chatdata.engine.permission.PermissionContext.of(
+                username, currentUser.roles(), currentUser.attributes());
+    }
 }

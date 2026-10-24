@@ -229,9 +229,13 @@ class EngineStartupCheckRealDbTest {
 
         // 只看**角色引用**这一类。库里还可能有与角色无关的违规（例如管理台新建、
         // 尚未配表就启用的域），那些和本用例要验的事无关，不该让它失败
+        // 只看**种子域**上的角色引用。库里还有人在管理台建的域（同样可能引用「分析师」），
+        // 那些违规是正确的，但不是本用例要验的对象
         List<EngineConfigViolation> dangling = violations.stream()
                 .filter(v -> v.category() == EngineConfigViolation.Category.DANGLING_GRANT_ROLE
                         || v.category() == EngineConfigViolation.Category.DANGLING_RULE_ROLE)
+                .filter(v -> v.domainId() != null
+                        && SEED_DOMAIN_IDS.contains(Long.valueOf(v.domainId())))
                 .toList();
 
         assertThat(dangling)
@@ -245,11 +249,11 @@ class EngineStartupCheckRealDbTest {
         List<EngineConfigViolation> rules = dangling.stream()
                 .filter(v -> v.category() == EngineConfigViolation.Category.DANGLING_RULE_ROLE).toList();
 
-        // 断言"至少覆盖了域与助理两类"，而不是写死总条数：
+        // 断言"域与助理两类都覆盖到了"，而不是写死总条数：
         // 种子数据里加一个引用就会让写死的数字变红，而那不是校验逻辑坏了
         assertThat(grants)
-                .as("域与助理的授权里都引用了「分析师」")
-                .hasSizeGreaterThanOrEqualTo(4);
+                .as("种子域的授权 + 该域下助理的授权都引用了「分析师」")
+                .hasSizeGreaterThanOrEqualTo(2);
         assertThat(grants).allSatisfy(v -> assertThat(v.category().isFatal())
                 .as("授权名单里的角色失效是「少给了权限」，用户会来报障，但不该拦住启动")
                 .isFalse());
