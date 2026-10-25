@@ -56,6 +56,19 @@ public record AskResult(
     }
 
     /**
+     * 展示给用户 / 写进审计的 SQL：参数已内联成字面量。
+     *
+     * <p>{@link #sqlText()} 是**参数化**版本（含 {@code ?}），执行与排查用它；
+     * 但用户和审计看那句是没意义的——{@code WHERE org_path LIKE ?} 说明不了
+     * "查的是哪个组织"。两者刻意分开，别把这里的结果拿去执行。
+     *
+     * <p>直连模式下模型写的就是完整 SQL，没有参数，两者相同。
+     */
+    public String sqlDisplayText() {
+        return sql != null ? sql.displaySql() : modelSql;
+    }
+
+    /**
      * 这是不是一条"只说不用查"的答复。
      *
      * <p>界面据此**不渲染表格与 0 行提示**——那不是"查询没查到数据"，

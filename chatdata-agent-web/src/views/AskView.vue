@@ -401,7 +401,9 @@ function applyEvent(turnId: string, event: AskEvent): void {
       ...feedback.value,
       [turnId]: {
         open: false,
-        sql: event.sql ?? '',
+        // 预填**参数已内联**的版本：用户要在此基础上改 SQL，
+        // 给他一句带 `?` 的模板无法编辑
+        sql: event.sqlDisplay ?? event.sql ?? '',
         note: '',
         submitting: false,
         done: false,
@@ -526,7 +528,8 @@ async function sendHelpful(turn: Turn): Promise<void> {
 async function sendWrongAnswer(turn: Turn): Promise<void> {
   const current = feedback.value[turn.id]
   if (!current) return
-  const generated = (turn.result?.sql ?? '').trim()
+  // 与预填时用的同一个版本比较，否则「没改过」也会被判成 SQL_CORRECTION
+  const generated = (turn.result?.sqlDisplay ?? turn.result?.sql ?? '').trim()
   const corrected = current.sql.trim()
   // 能力答复（「这里能分析哪些数据」）没有对应的数据问题，
   // 把它的修正 SQL 收进范例库会让下一个能力问题被教着写 SQL——与规则 6 相反
@@ -548,7 +551,8 @@ async function sendFeedback(turn: Turn, type: FeedbackType): Promise<void> {
       domainId: turn.result.domainId ?? '',
       assistantId: assistantId.value || undefined,
       question: turn.question,
-      generatedSql: turn.result.sql ?? null,
+      // 与展示给用户的是同一份，管理员审核时才对得上
+      generatedSql: turn.result.sqlDisplay ?? turn.result.sql ?? null,
       correctedSql: type === 'SQL_CORRECTION' ? current.sql.trim() : null,
       note: current.note.trim() || null,
       type,
@@ -871,7 +875,10 @@ async function logout(): Promise<void> {
               查看 SQL
               <span class="sub">· {{ turn.result.rowCount }} 行 · {{ turn.result.durationMs }}ms</span>
             </summary>
-            <pre class="mono">{{ turn.result.sql }}</pre>
+            <!-- 展示**参数已内联**的版本：后端 `sql` 里是 `?` 占位符，
+                 用户看不出查了什么条件（例如 `WHERE org_path LIKE ?`）。
+                 旧后端没有 sqlDisplay，回退到 sql -->
+            <pre class="mono">{{ turn.result.sqlDisplay ?? turn.result.sql }}</pre>
           </details>
 
           <!-- 反馈。**提交不等于生效**：修正 SQL 要管理员审核通过后才进范例库，

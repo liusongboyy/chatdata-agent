@@ -58,6 +58,15 @@ export interface AskResultEvent {
   maskedColumns: string[]
   durationMs: number
   sql: string
+  /**
+   * **参数已内联**的 SQL，界面展示与复制用。
+   *
+   * `sql` 里是 `?` 占位符（参数化执行语句），直接展示用户看不出查了什么条件——
+   * 比如 `WHERE org_path LIKE ?` 说明不了查的是哪个组织。
+   *
+   * 兼容旧后端：可能为空，取不到时回退到 `sql`。
+   */
+  sqlDisplay?: string
   /** 后端推荐的图表形态。前端据此选默认视图，用户可切换。 */
   chart: ChartSpec
   /**

@@ -458,6 +458,9 @@ public class AskEngineStreamController {
         // SQL 是否透出由上层决定；这里先带上，前端按助手的 showSql 开关决定显不显示。
         // 用 sqlText() 而不是 r.sql().sql()：直连模式的 SQL 由模型写，不在 RenderedSql 里
         payload.put("sql", r.sqlText());
+        // **展示用**：参数已内联成字面量。sqlText() 里是 `?`，用户看不出查了什么条件。
+        // 两个都给：sql 保留为排查用的模板，sqlDisplay 给界面与复制粘贴
+        payload.put("sqlDisplay", r.sqlDisplayText());
         // 模式要告诉前端：直连模式**没有行/列权限**，界面必须明示这一点
         payload.put("mode", r.mode().name());
         // 「我理解成了」——四个槽位永远全给，空的就是空数组/空值。
