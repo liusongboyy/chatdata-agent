@@ -75,6 +75,21 @@ public record SqlPredicate(String sql, List<Object> params) {
     }
 
     /**
+     * 谓词里引用到的全部列名（去重，保持出现顺序）。
+     *
+     * <p>供渲染器判断"这条谓词依赖哪些表"——星型模型下事实表本身没有权限字段，
+     * 必须靠它把权限所在的维表拉进 FROM，否则谓词引用一个不存在的别名。
+     */
+    public java.util.List<String> columnRefs() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        Matcher m = COLUMN_REF.matcher(sql);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
+        return java.util.List.copyOf(out);
+    }
+
+    /**
      * 把 SQL 里所有列占位符替换为渲染结果。
      *
      * @param renderer 输入列名（编译期校验过的标识符），返回带限定与引号的表达式

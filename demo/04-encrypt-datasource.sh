@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# 给演示数据源（ask_datasource.id = 120）加密密码。
+# 给演示数据源加密密码。
+#
+# 默认处理两个：120（便利店订单库）、130（门店分析库）。
 #
 # 03-ask-domain.sql 是"先删后插"，每次重跑都会把 password_enc 清成 NULL。
 # 重跑那个脚本之后**必须**再跑本脚本，否则连接池建不起来，
@@ -17,7 +19,7 @@ set -euo pipefail
 
 RAW_USER="${DB_USER:-root}"
 RAW_PASSWORD="${DB_PASSWORD:-root}"
-DATASOURCE_ID=120
+DATASOURCE_IDS="${DATASOURCE_IDS:-120 130}"
 CONFIG_DB="${CONFIG_DB:-chatdata_ask}"
 
 if [ -z "${CHATDATA_ENGINE_DS_SECRET:-}" ] && [ -f "$HOME/.chatdata-agent.env" ]; then
@@ -29,7 +31,7 @@ if [ -z "${CHATDATA_ENGINE_DS_SECRET:-}" ]; then
   exit 2
 fi
 
-DB_USER="$RAW_USER" DB_PASSWORD="$RAW_PASSWORD" DATASOURCE_ID="$DATASOURCE_ID" \
+DB_USER="$RAW_USER" DB_PASSWORD="$RAW_PASSWORD" DATASOURCE_IDS="$DATASOURCE_IDS" \
 CONFIG_DB="$CONFIG_DB" python3 - <<'PY'
 import base64, hashlib, os, pymysql
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -44,10 +46,11 @@ enc = base64.b64encode(
 conn = pymysql.connect(host="127.0.0.1", user=os.environ["DB_USER"],
                        password=os.environ["DB_PASSWORD"],
                        database=os.environ["CONFIG_DB"])
+total = 0
 with conn.cursor() as cur:
-    n = cur.execute("UPDATE ask_datasource SET password_enc=%s WHERE id=%s",
-                    (enc, os.environ["DATASOURCE_ID"]))
+    for ds_id in os.environ["DATASOURCE_IDS"].split():
+        total += cur.execute("UPDATE ask_datasource SET password_enc=%s WHERE id=%s", (enc, ds_id))
 conn.commit()
 conn.close()
-print(f"数据源 {os.environ['DATASOURCE_ID']} 密码已加密写入（影响 {n} 行）")
+print(f"数据源 {os.environ['DATASOURCE_IDS']} 密码已加密写入（影响 {total} 行）")
 PY

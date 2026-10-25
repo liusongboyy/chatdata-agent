@@ -5,6 +5,7 @@ import com.liusongboyy.chatdata.engine.datasource.dialect.SqlDialects;
 import com.liusongboyy.chatdata.engine.permission.AssistantPermission;
 import com.liusongboyy.chatdata.engine.permission.DomainPermission;
 import com.liusongboyy.chatdata.engine.permission.PermissionContext;
+import com.liusongboyy.chatdata.engine.permission.RowScope;
 import com.liusongboyy.chatdata.engine.permission.PermissionDecision;
 import com.liusongboyy.chatdata.engine.permission.PermissionGuard;
 import com.liusongboyy.chatdata.engine.semantic.Aggregation;
@@ -995,6 +996,112 @@ class AskSqlRendererTest {
                     m, SqlDialects.of("MYSQL5.7"), allowed(perm, "分析师"), TODAY))
                     .isInstanceOf(SemanticException.class)
                     .hasMessageContaining("找不到可用的日期列");
+        }
+    }
+
+    @Nested
+    @DisplayName("/** 权限表自动进 FROM */")
+    class PermissionTableJoin {
+
+        /**
+         * 星型模型的典型形态：事实表只有 {@code store_id}，组织层级在维表上。
+         *
+         * <p>行规则只能配在维表（{@code dim_org.org_path}）——事实表上没有这个字段。
+         * 但用户问「订单金额」时，DSL 只涉及 f_order，维表不在候选里。
+         * 若不把权限表拉进 FROM，谓词 {@code tN.org_path LIKE ...} 引用的别名不存在，
+         * 执行时直接报 {@code Unknown column}。
+         */
+        private SemanticModel starSchema() {
+            RegisteredTable order = new RegisteredTable("tbl-order", "f_order", "订单表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("store_id", "bigint", Aggregation.NONE, "门店ID", true),
+                    new ColumnDef("amount", "decimal", Aggregation.SUM, "订单金额", true)));
+
+            RegisteredTable stock = new RegisteredTable("tbl-stock", "f_stock", "库存表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("store_id", "bigint", Aggregation.NONE, "库存门店ID", true),
+                    new ColumnDef("qty", "int", Aggregation.SUM, "库存数量", true)));
+
+            RegisteredTable org = new RegisteredTable("tbl-org", "dim_org", "组织表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("id", "bigint", Aggregation.NONE, "组织ID", true),
+                    new ColumnDef("org_path", "varchar", Aggregation.NONE, "组织路径", true)));
+
+            Domain domain = new Domain("d1", "门店分析域", "ds1", "MYSQL5.7", true,
+                    List.of(order, stock, org),
+                    List.of(
+                            new TableJoin(1L, "tbl-order", "tbl-org",
+                                    "store_id", "id", TableJoin.JoinType.LEFT),
+                            new TableJoin(2L, "tbl-stock", "tbl-org",
+                                    "store_id", "id", TableJoin.JoinType.LEFT)),
+                    permOf("""
+                            {"v":1,"grantRoles":["区域经理"],
+                             "rowRules":[{"id":1,"role":"区域经理","field":"org_path",
+                                          "op":"starts_with","sysVar":"orgPaths","dynamic":true}]}"""),
+                    List.of(), List.of());
+            return new SemanticModel(domain);
+        }
+
+        private PermissionDecision.Allowed allowedWithOrg(String path) {
+            PermissionContext ctx = new PermissionContext("u1", Set.of("区域经理"),
+                    java.util.Map.of("orgPaths", List.of(path)));
+            DomainPermission perm = starSchema().domain().permission();
+            return (PermissionDecision.Allowed) PermissionGuard.check(null, perm, ctx);
+        }
+
+        @Test
+        @DisplayName("★ 查事实表时，权限引用的维表必须自动 JOIN 进 FROM")
+        void permissionTableAutoJoins() {
+            SemanticModel m = starSchema();
+
+            RenderedSql r = AskSqlRenderer.render(
+                    dsl(List.of("订单金额"), List.of(), null, List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowedWithOrg("/1/100/110/"), TODAY);
+
+            assertThat(r.sql())
+                    .as("谓词引用了 org_path，它所在的行只有 JOIN 进来才存在")
+                    .contains("dim_org")
+                    .contains("org_path");
+            // 取值走参数绑定，不拼进 SQL 文本
+            assertThat(r.params())
+                    .as("前缀参数是 值+%")
+                    .containsExactly("/1/100/110/%");
+        }
+
+        @Test
+        @DisplayName("★ 换一张事实表，同一条行规则照样生效（不需要为每张表配规则）")
+        void sameRuleAppliesToEveryFactTable() {
+            SemanticModel m = starSchema();
+            PermissionDecision.Allowed allowed = allowedWithOrg("/1/100/110/");
+
+            RenderedSql order = AskSqlRenderer.render(
+                    dsl(List.of("订单金额"), List.of(), null, List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowed, TODAY);
+            RenderedSql stock = AskSqlRenderer.render(
+                    dsl(List.of("库存数量"), List.of(), null, List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowed, TODAY);
+
+            assertThat(order.sql()).contains("dim_org").contains("org_path");
+            assertThat(stock.sql()).contains("dim_org").contains("org_path");
+            // 两张表各自 JOIN 组织表，不是共用同一份 FROM
+            assertThat(order.sql()).contains("f_order");
+            assertThat(stock.sql()).contains("f_stock");
+        }
+
+        @Test
+        @DisplayName("无行规则时不多 JOIN 一张表（避免无谓的行数变化）")
+        void noPermissionTableWhenUnrestricted() {
+            SemanticModel m = starSchema();
+            PermissionDecision allowed = new PermissionDecision.Allowed(
+                    new RowScope.Unrestricted(), Set.of());
+
+            RenderedSql r = AskSqlRenderer.render(
+                    dsl(List.of("订单金额"), List.of(), null, List.of()),
+                    m, SqlDialects.of("MYSQL5.7"), allowed, TODAY);
+
+            assertThat(r.sql())
+                    .as("没有谓词要用 org_path，就不该把维表拉进来")
+                    .doesNotContain("dim_org");
         }
     }
 }

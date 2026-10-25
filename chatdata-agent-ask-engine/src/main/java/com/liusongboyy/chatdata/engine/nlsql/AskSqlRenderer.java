@@ -105,6 +105,17 @@ public final class AskSqlRenderer {
             throw new IllegalArgumentException("DSL 没有解析出任何字段");
         }
 
+        // ③.5 **把行规则引用的表也拉进来。**
+        //
+        // 星型模型里事实表只有 store_id，组织层级在维表上——行规则只能配在维表上。
+        // 但用户问「订单金额」时 DSL 只涉及 f_order，维表不在候选里，
+        // 于是谓词里的 org_path 引用的别名根本没有出现在 FROM 中，
+        // 执行时报 Unknown column。
+        //
+        // 语义建模层面这本来是**正确**的做法：一条行规则配在维表上，
+        // 所有事实表自动受约束。缺的就是这一步。
+        involvedTableIds.addAll(permissionTableIds(allowed.rowScope(), model));
+
         // ④ 规划 join 路径。连不通或必须反向遍历 LEFT 边时在这里失败。
         //    preferredRoot = 第一个指标所在的表：INNER 场景下根的选择不影响语义，
         //    但以事实表为根生成的 SQL 读起来自然（FROM 事实表 JOIN 维表），排查时人要读它。
@@ -379,6 +390,27 @@ public final class AskSqlRenderer {
                 "问数里带了时间条件（" + tr.kind() + "），但本域内找不到可用的日期列。"
                         + "请在语义建模中把日期列的别名设为「生效日期」「统计日期」等，"
                         + "或改用业务术语显式声明时间口径");
+    }
+
+    /**
+     * 行规则的谓词引用了哪些表。
+     *
+     * <p>谓词里的列是占位符形式（{@code {col:org_path}}），名字已按白名单校验过，
+     * 这里通过语义模型解析成具体表 id。解析不到或有多处匹配时抛异常——
+     * 与 {@link #appendRowScope} 的判定同源，不在这里另做一套。
+     *
+     * <p>只在 {@link RowScope.Restricted} 时有内容：显式全量、隐式全量都不附加谓词，
+     * 也就不该把维表拉进来——多 JOIN 一张表会让行数与用户预期不符（INNER 时甚至少行）。
+     */
+    private static Set<String> permissionTableIds(RowScope scope, SemanticModel model) {
+        if (!(scope instanceof RowScope.Restricted restricted)) {
+            return Set.of();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (String col : restricted.predicate().columnRefs()) {
+            ids.add(model.tableIdOfAlias(model.resolveAny(col).tableAlias()));
+        }
+        return ids;
     }
 
     /**
