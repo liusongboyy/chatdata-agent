@@ -366,6 +366,12 @@ INSURANCE_2 = [
     ("insurance-059", "HARD", "按大区统计退保保单占比",
      "SELECT region, SUM(CASE WHEN status = '退保' THEN 1 ELSE 0 END) / COUNT(*) AS ratio "
      "FROM ins_policy GROUP BY region", False, ["business"]),
+    ("insurance-061", "HARD", "赔付金额占申请金额的比例是多少？用 0 到 1 之间的小数表示",
+     "SELECT SUM(settle_amount) / NULLIF(SUM(claim_amount), 0) AS ratio FROM ins_claim",
+     False, ["derived", "ratio"]),
+    ("insurance-062", "HARD", "赔付金额比申请金额少多少？",
+     "SELECT SUM(settle_amount) - SUM(claim_amount) AS diff FROM ins_claim",
+     False, ["derived", "diff"]),
     ("insurance-060", "HARD", "2025 年生效的保单中，健康险的保费合计是多少？",
      "SELECT SUM(premium) AS total_premium FROM ins_policy "
      "WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' AND product_type = '健康险'",
@@ -466,6 +472,10 @@ TICKET_MODELED_2 = [
      "SELECT c.name, AVG(t.priority) AS avg_priority FROM ticket t "
      "JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 GROUP BY c.name",
      False, ["join", "agg"]),
+    ("ticket-m-061", "HARD", "有解决时间的工单，平均解决时长是多少小时？",
+     "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket "
+     "WHERE deleted = 0 AND resolved_at IS NOT NULL",
+     False, ["derived", "duration"]),
     ("ticket-m-060", "HARD", "处理人 7 的工单里，平均解决时长（小时）是多少？",
      "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket "
      "WHERE deleted = 0 AND assignee_id = 7 AND resolved_at IS NOT NULL", False, ["business"]),

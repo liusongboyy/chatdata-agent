@@ -112,6 +112,21 @@ public interface SqlDialect {
     String yearBucket(String columnExpression);
 
     /**
+     * 两个时间列之差的**数值**，用于派生指标里的「时长」。
+     *
+     * <p>这是少数几种真正需要方言的地方之一：{@code TIMESTAMPDIFF} 只有
+     * MySQL/Doris 有；PostgreSQL 用 {@code EXTRACT(EPOCH FROM (b - a))}、
+     * Oracle 的日期相减直接得到**天**、SQL Server 用 {@code DATEDIFF}。
+     *
+     * <p>返回值语义：{@code unit} 为单位的天/时/分/秒数，**不是**日期类型。
+     *
+     * @param unit       SECOND / MINUTE / HOUR / DAY（已由 DerivedMetric 校验过大写）
+     * @param startExpr  起始时间列表达式（已按方言引用）
+     * @param endExpr    结束时间列表达式
+     */
+    String timeDiffToNumber(String unit, String startExpr, String endExpr);
+
+    /**
      * 按粒度渲染日期列。
      *
      * <p>这是渲染器该调用的入口——它把"粒度"这个语义映射到具体函数，

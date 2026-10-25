@@ -30,4 +30,17 @@ public class PostgreSqlDialect implements SqlDialect {
     public String yearBucket(String columnExpression) {
         return "to_char(" + columnExpression + ", 'YYYY')";
     }
+
+    @Override
+    public String timeDiffToNumber(String unit, String startExpr, String endExpr) {
+        // EXTRACT(EPOCH FROM ...) 得到秒；按单位折算
+        String perUnit = switch (unit) {
+            case "SECOND" -> "1";
+            case "MINUTE" -> "60";
+            case "HOUR" -> "3600";
+            case "DAY" -> "86400";
+            default -> throw new IllegalArgumentException("未知时长单位：" + unit);
+        };
+        return "(EXTRACT(EPOCH FROM (" + endExpr + " - " + startExpr + ")) / " + perUnit + ")";
+    }
 }

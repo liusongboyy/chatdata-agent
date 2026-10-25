@@ -125,6 +125,10 @@ public final class DomainLoader {
         }
         List<ColumnDef> cols = new ArrayList<>(arr.size());
         for (JsonNode n : arr) {
+            JsonNode dv = n.path("derived");
+            DerivedMetric derived = dv.isMissingNode() || dv.isNull()
+                    ? null
+                    : DerivedMetric.from(dv);
             cols.add(new ColumnDef(
                     text(n, "col"),
                     text(n, "type"),
@@ -135,7 +139,8 @@ public final class DomainLoader {
                     // enabled 缺省视为**可见**。注意这与助手权限的 enabled 缺省相反——
                     // 那里缺省是拒绝。这里的语义是"列默认参与问数"，
                     // 而权限那层是"默认不放行"，两者的方向本就不同。
-                    !n.has("enabled") || n.path("enabled").asBoolean(true)));
+                    !n.has("enabled") || n.path("enabled").asBoolean(true),
+                    derived));
         }
         return cols;
     }

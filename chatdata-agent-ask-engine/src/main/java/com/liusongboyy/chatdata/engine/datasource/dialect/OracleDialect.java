@@ -44,4 +44,17 @@ public class OracleDialect implements SqlDialect {
     public String yearBucket(String columnExpression) {
         return "to_char(" + columnExpression + ", 'YYYY')";
     }
+
+    @Override
+    public String timeDiffToNumber(String unit, String startExpr, String endExpr) {
+        // Oracle 的 DATE 相减直接得到**天**（带小数）
+        String factor = switch (unit) {
+            case "SECOND" -> "86400";
+            case "MINUTE" -> "1440";
+            case "HOUR" -> "24";
+            case "DAY" -> "1";
+            default -> throw new IllegalArgumentException("未知时长单位：" + unit);
+        };
+        return "((" + endExpr + " - " + startExpr + ") * " + factor + ")";
+    }
 }

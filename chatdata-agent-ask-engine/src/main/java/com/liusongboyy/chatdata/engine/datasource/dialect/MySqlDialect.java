@@ -28,4 +28,9 @@ public class MySqlDialect implements SqlDialect {
     public String yearBucket(String columnExpression) {
         return "YEAR(" + columnExpression + ")";
     }
+
+    @Override
+    public String timeDiffToNumber(String unit, String startExpr, String endExpr) {
+        return "TIMESTAMPDIFF(" + unit + ", " + startExpr + ", " + endExpr + ")";
+    }
 }

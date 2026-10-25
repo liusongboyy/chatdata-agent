@@ -746,6 +746,19 @@
       "note": "夹具数据；gold 结果 5 行。"
     },
     {
+      "id": "ticket-m-061",
+      "difficulty": "HARD",
+      "question": "有解决时间的工单，平均解决时长是多少小时？",
+      "goldSql": "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND resolved_at IS NOT NULL",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "derived",
+        "duration"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
       "id": "ticket-m-060",
       "difficulty": "HARD",
       "question": "处理人 7 的工单里，平均解决时长（小时）是多少？",

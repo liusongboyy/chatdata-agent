@@ -94,7 +94,10 @@ public final class SemanticModel {
         if (c.alias() != null && !c.alias().isBlank()) {
             keys.add(norm(c.alias()));
         }
-        keys.add(norm(c.col()));
+        // 派生指标没有物理列，只按业务名索引
+        if (c.col() != null && !c.col().isBlank()) {
+            keys.add(norm(c.col()));
+        }
         return List.copyOf(keys);
     }
 
@@ -129,6 +132,39 @@ public final class SemanticModel {
      * @throws SemanticException 找不到、有歧义、或角色不符
      */
     public FieldRef resolve(String name, FieldKind kind) {
+        Candidate c = requireCandidate(name);
+        ColumnDef col = c.column();
+
+        // 派生指标没有单一物理列，FieldRef 表达不了。要取派生指标请用 resolveMetricRef
+        if (col.derived() != null) {
+            throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
+                    "「" + name + "」是派生指标，只能作为指标引用；"
+                            + "不能当维度，也不能作为另一个派生指标的输入");
+        }
+
+        // 角色校验。指标必须配了聚合方式，维度必须没配——两者渲染位置不同，混了会出错结果
+        if (kind == FieldKind.METRIC && !col.isMetric()) {
+            throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
+                    "「" + name + "」没有配置聚合方式，不能作为指标。"
+                            + "请在语义建模中为它设置 SUM / COUNT 等聚合，或把它当维度用");
+        }
+        if (kind == FieldKind.DIMENSION && col.isMetric()) {
+            throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
+                    "「" + name + "」配置了聚合方式（" + col.agg() + "），不能作为维度。"
+                            + "若确需按它分组，请在语义建模中另加一条不聚合的列定义");
+        }
+
+        return new FieldRef(aliasByTableId.get(c.table().id()), col.col(), col.agg(), kind);
+    }
+
+    /**
+     * 解析一个命名到**唯一一个已启用列**（含派生指标）。
+     *
+     * <p>把"找不到"与"歧义"两段判定收在一处：{@link #resolve} 与
+     * {@link #resolveMetricRef} 的判据必须完全一致，分成两份迟早会漂移——
+     * 而漂移的表现是"同一个名字，一个入口能解析、另一个说找不到"。
+     */
+    private Candidate requireCandidate(String name) {
         if (name == null || name.isBlank()) {
             throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND, "字段名为空");
         }
@@ -152,23 +188,39 @@ public final class SemanticModel {
                     "字段「" + name + "」在本域内匹配到多处：" + names
                             + "。请为它们设置不同的业务名，或关闭不用的列");
         }
+        return candidates.get(0);
+    }
 
-        Candidate c = candidates.get(0);
+    /**
+     * 解析指标引用：普通列指标或派生指标。
+     *
+     * <p>派生指标的输入在这里一并解析成 {@link FieldRef}：
+     * 比值/差值的两侧必须是**指标**（带聚合），时长的起止必须是**维度**（原始时间列）。
+     * 解析失败直接抛——输入列配错时宁可拒绝，也不要渲染出一条语义不明的 SQL。
+     */
+    public MetricRef resolveMetricRef(String name) {
+        Candidate c = requireCandidate(name);
         ColumnDef col = c.column();
 
-        // 角色校验。指标必须配了聚合方式，维度必须没配——两者渲染位置不同，混了会出错结果
-        if (kind == FieldKind.METRIC && !col.isMetric()) {
-            throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
-                    "「" + name + "」没有配置聚合方式，不能作为指标。"
-                            + "请在语义建模中为它设置 SUM / COUNT 等聚合，或把它当维度用");
-        }
-        if (kind == FieldKind.DIMENSION && col.isMetric()) {
-            throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
-                    "「" + name + "」配置了聚合方式（" + col.agg() + "），不能作为维度。"
-                            + "若确需按它分组，请在语义建模中另加一条不聚合的列定义");
+        if (col.derived() == null) {
+            if (!col.isMetric()) {
+                throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
+                        "「" + name + "」没有配置聚合方式，不能作为指标。"
+                                + "请在语义建模中为它设置 SUM / COUNT 等聚合，或把它当维度用");
+            }
+            return new MetricRef.Column(new FieldRef(
+                    aliasByTableId.get(c.table().id()), col.col(), col.agg(), FieldKind.METRIC));
         }
 
-        return new FieldRef(aliasByTableId.get(c.table().id()), col.col(), col.agg(), kind);
+        DerivedMetric d = col.derived();
+        List<FieldRef> inputs = d.kind() == DerivedMetric.Kind.DURATION
+                // 时间列本身是维度（agg=NONE），时长由渲染器用方言函数算差
+                ? List.of(resolve(d.start(), FieldKind.DIMENSION),
+                          resolve(d.end(), FieldKind.DIMENSION))
+                // 比值/差值的两侧是聚合后的指标
+                : List.of(resolve(d.left(), FieldKind.METRIC),
+                          resolve(d.right(), FieldKind.METRIC));
+        return new MetricRef.Derived(d, inputs);
     }
 
     /** 解析指标。 */

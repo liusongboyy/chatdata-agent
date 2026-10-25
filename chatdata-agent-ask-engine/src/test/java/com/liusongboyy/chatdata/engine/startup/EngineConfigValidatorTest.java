@@ -367,4 +367,55 @@ class EngineConfigValidatorTest {
             assertThat(check(draft, domainGranting("区域经理"))).isEmpty();
         }
     }
+
+    @Nested
+    @DisplayName("派生指标")
+    class Derived {
+
+        private RegisteredTable claimTable(ColumnDef derived) {
+            return new RegisteredTable("2", "ins_claim", "理赔表", RegisteredTable.Mode.TABLE, null, true,
+                    List.of(new ColumnDef("settle_amount", "decimal", Aggregation.SUM, "赔付金额", true),
+                            new ColumnDef("apply_amount", "decimal", Aggregation.SUM, "申请金额", true),
+                            derived));
+        }
+
+        private List<EngineConfigViolation> check(ColumnDef derived) {
+            Domain domain = goodDomain(granted(), List.of(claimTable(derived)), List.of());
+            return EngineConfigValidator.validate(domain, DATASOURCES);
+        }
+
+        @Test
+        @DisplayName("配置正确的比值指标 → 不报")
+        void validRatioPasses() {
+            assertThat(check(new ColumnDef(null, "decimal", Aggregation.NONE, "赔付率", true,
+                    new com.liusongboyy.chatdata.engine.semantic.DerivedMetric(
+                            com.liusongboyy.chatdata.engine.semantic.DerivedMetric.Kind.RATIO,
+                            "赔付金额", "申请金额", null, null, null))))
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("★ 输入名写错 → 在启动时报，而不是等用户提问")
+        void brokenInputReported() {
+            assertThat(check(new ColumnDef(null, "decimal", Aggregation.NONE, "赔付率", true,
+                    new com.liusongboyy.chatdata.engine.semantic.DerivedMetric(
+                            com.liusongboyy.chatdata.engine.semantic.DerivedMetric.Kind.RATIO,
+                            "赔付金额", "不存在的列", null, null, null))))
+                    .singleElement()
+                    .satisfies(v -> assertThat(v.category())
+                            .isEqualTo(EngineConfigViolation.Category.BROKEN_DERIVED_METRIC))
+                    .satisfies(v -> assertThat(v.message())
+                            .contains("赔付率").contains("不存在的列"));
+        }
+
+        @Test
+        @DisplayName("列被关掉 → 不报：模型本来也问不到它")
+        void disabledDerivedSkipped() {
+            assertThat(check(new ColumnDef(null, "decimal", Aggregation.NONE, "赔付率", false,
+                    new com.liusongboyy.chatdata.engine.semantic.DerivedMetric(
+                            com.liusongboyy.chatdata.engine.semantic.DerivedMetric.Kind.RATIO,
+                            "赔付金额", "不存在的列", null, null, null))))
+                    .noneMatch(v -> v.category() == EngineConfigViolation.Category.BROKEN_DERIVED_METRIC);
+        }
+    }
 }

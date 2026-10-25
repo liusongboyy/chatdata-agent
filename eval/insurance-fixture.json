@@ -751,6 +751,32 @@
       "note": "夹具数据；gold 结果 6 行。"
     },
     {
+      "id": "insurance-061",
+      "difficulty": "HARD",
+      "question": "赔付金额占申请金额的比例是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT SUM(settle_amount) / NULLIF(SUM(claim_amount), 0) AS ratio FROM ins_claim",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "derived",
+        "ratio"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-062",
+      "difficulty": "HARD",
+      "question": "赔付金额比申请金额少多少？",
+      "goldSql": "SELECT SUM(settle_amount) - SUM(claim_amount) AS diff FROM ins_claim",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "derived",
+        "diff"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
       "id": "insurance-060",
       "difficulty": "HARD",
       "question": "2025 年生效的保单中，健康险的保费合计是多少？",

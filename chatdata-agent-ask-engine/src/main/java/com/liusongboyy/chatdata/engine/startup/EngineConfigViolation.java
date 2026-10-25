@@ -88,7 +88,16 @@ public record EngineConfigViolation(
          * 解析后注入谓词），所以配了也不会生效。**不生效的"限制"比没有更危险**：
          * 管理员以为自己保护了数据，实际没有。故为 ERROR。
          */
-        RAW_DOMAIN_WITH_RULES("直连模式配了行/列规则", Severity.ERROR);
+        RAW_DOMAIN_WITH_RULES("直连模式配了行/列规则", Severity.ERROR),
+
+        /**
+         * 派生指标（比值 / 差值 / 时长）的输入引用解析不到。
+         *
+         * <p>表现为"这个指标问不出来"，而报错发生在用户提问时——离配置现场很远。
+         * 并且它常常只坏一半：同域的普通指标全都正常，只有这一个不可用，
+         * 比整域不可用更难被发现。故为 ERROR。
+         */
+        BROKEN_DERIVED_METRIC("派生指标引用无效", Severity.ERROR);
 
         /** 严重度。 */
         public enum Severity {

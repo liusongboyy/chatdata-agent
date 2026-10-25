@@ -4,8 +4,11 @@ import com.liusongboyy.chatdata.engine.datasource.DatasourceDef;
 import com.liusongboyy.chatdata.engine.datasource.dialect.SqlDialects;
 import com.liusongboyy.chatdata.engine.permission.AssistantPermission;
 import com.liusongboyy.chatdata.engine.semantic.Assistant;
+import com.liusongboyy.chatdata.engine.semantic.ColumnDef;
 import com.liusongboyy.chatdata.engine.semantic.Domain;
 import com.liusongboyy.chatdata.engine.semantic.RegisteredTable;
+import com.liusongboyy.chatdata.engine.semantic.SemanticException;
+import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +37,7 @@ import java.util.TreeSet;
  *   <tr><td>没有可用的表</td><td>域问不出任何东西，却仍占着路由位置</td></tr>
  *   <tr><td>表关联引用无效</td><td>多表问题会失败，单表问题却正常——**部分可用比全不可用更难发现**</td></tr>
  *   <tr><td>没有可用字段</td><td>同上，且往往意味着列定义被整批关掉了</td></tr>
+ *   <tr><td>派生指标引用无效</td><td>只坏一个指标，同域其他指标都正常——最难发现</td></tr>
  * </table>
  */
 public final class EngineConfigValidator {
@@ -143,7 +147,43 @@ public final class EngineConfigValidator {
                         "表关联 %d 引用了域内不存在的注册表：left=%s right=%s。现有注册表 id：%s"
                                 .formatted(j.id(), j.leftTableId(), j.rightTableId(), tableIds))));
 
+        // ⑥ 派生指标的输入引用
+        violations.addAll(validateDerived(domain));
+
         return violations;
+    }
+
+    /**
+     * 校验派生指标的输入能否解析。
+     *
+     * <p>派生指标存的是**别名**（{@code left: "赔付金额"}），不是列名。
+     * 别名改过一次、或同名匹配到多张表，这个指标就永远问不出来——
+     * 而 DSL 里的写法与普通指标一样，模型和用户都看不出差别。
+     *
+     * <p>用 {@link SemanticModel#resolveMetricRef} 而不是自己比对字符串：
+     * 启动校验的判据必须与运行时完全一致，否则会出现"启动说没问题、问的时候报错"。
+     */
+    private static List<EngineConfigViolation> validateDerived(Domain domain) {
+        List<EngineConfigViolation> out = new ArrayList<>();
+        SemanticModel model = new SemanticModel(domain);
+
+        for (RegisteredTable t : domain.visibleTables()) {
+            for (ColumnDef c : t.columns()) {
+                if (c.derived() == null || !c.enabled()) {
+                    continue;
+                }
+                try {
+                    model.resolveMetricRef(c.alias());
+                } catch (SemanticException e) {
+                    out.add(new EngineConfigViolation(
+                            EngineConfigViolation.Category.BROKEN_DERIVED_METRIC,
+                            domain.id(), domain.displayName(),
+                            "表「" + t.displayName() + "」的派生指标「" + c.displayName() + "」无法解析："
+                                    + e.getMessage()));
+                }
+            }
+        }
+        return out;
     }
 
     /**

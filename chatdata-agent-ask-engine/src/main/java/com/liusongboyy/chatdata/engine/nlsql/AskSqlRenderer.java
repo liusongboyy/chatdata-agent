@@ -7,6 +7,7 @@ import com.liusongboyy.chatdata.engine.permission.SqlPredicate;
 import com.liusongboyy.chatdata.engine.semantic.FieldRef;
 import com.liusongboyy.chatdata.engine.semantic.JoinPlanner;
 import com.liusongboyy.chatdata.engine.semantic.RegisteredTable;
+import com.liusongboyy.chatdata.engine.semantic.MetricRef;
 import com.liusongboyy.chatdata.engine.semantic.SemanticException;
 import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
 import com.liusongboyy.chatdata.engine.semantic.TableJoin;
@@ -76,15 +77,17 @@ public final class AskSqlRenderer {
         }
 
         // ① 解析字段 → 确定涉及哪些表
-        List<FieldRef> metricRefs = dsl.metrics().stream()
-                .map(model::resolveMetric)
+        List<MetricRef> metricRefs = dsl.metrics().stream()
+                .map(model::resolveMetricRef)
                 .toList();
         List<FieldRef> dimRefs = dsl.dimensions().stream()
                 .map(model::resolveDimension)
                 .toList();
 
         Set<String> involvedAliases = new LinkedHashSet<>();
-        metricRefs.forEach(r -> involvedAliases.add(r.tableAlias()));
+        for (MetricRef m : metricRefs) {
+            involvedAliases.addAll(aliasesOf(m));
+        }
         dimRefs.forEach(r -> involvedAliases.add(r.tableAlias()));
 
         // ② 过滤条件里的字段也要参与"涉及哪些表"的判断
@@ -122,7 +125,7 @@ public final class AskSqlRenderer {
         //    若指标为空（纯维度查询）则退化为无偏好，仍按 id 排序保证确定性。
         String preferredRoot = metricRefs.isEmpty()
                 ? null
-                : model.tableIdOfAlias(metricRefs.get(0).tableAlias());
+                : model.tableIdOfAlias(aliasesOf(metricRefs.get(0)).iterator().next());
 
         JoinPlanner.JoinPlan plan = JoinPlanner.plan(model.domain(), involvedTableIds, preferredRoot);
         String alias = model.aliasOfTable(plan.rootTableId());
@@ -151,20 +154,26 @@ public final class AskSqlRenderer {
         }
 
         for (int i = 0; i < metricRefs.size(); i++) {
-            FieldRef r = metricRefs.get(i);
+            MetricRef m = metricRefs.get(i);
             String name = dsl.metrics().get(i);
-            // 同上：用列自己所属的表别名
-            String quoted = dialect.quoteQualified(r.tableAlias() + "." + r.column());
 
-            if (isMasked(masked, r.column())) {
-                // 查询前脱敏：该列不进 SELECT，直接给常量。数据根本不出现
-                selectParts.add("'***' AS " + dialect.quoteIdentifier(name));
-                outColumns.add(new RenderedSql.OutputColumn(name, "'***'", true));
+            String expr;
+            boolean maskedOut;
+            if (m instanceof MetricRef.Column cm) {
+                FieldRef r = cm.ref();
+                maskedOut = isMasked(masked, r.column());
+                expr = maskedOut ? "'***'"
+                        : r.agg().wrap(dialect.quoteQualified(r.tableAlias() + "." + r.column()));
             } else {
-                String expr = r.agg().wrap(quoted);
-                selectParts.add(expr + " AS " + dialect.quoteIdentifier(name));
-                outColumns.add(new RenderedSql.OutputColumn(name, expr, false));
+                MetricRef.Derived dm = (MetricRef.Derived) m;
+                // **脱敏必须传导。** 派生指标由输入列算出，若任一输入被脱敏，
+                // 直接计算再输出等于让受限用户通过比值反推出被脱敏的金额。
+                maskedOut = dm.inputs().stream().anyMatch(r -> isMasked(masked, r.column()));
+                expr = maskedOut ? "'***'" : renderDerived(dm, dialect);
             }
+
+            selectParts.add(expr + " AS " + dialect.quoteIdentifier(name));
+            outColumns.add(new RenderedSql.OutputColumn(name, expr, maskedOut));
         }
 
         if (selectParts.isEmpty()) {
@@ -445,6 +454,42 @@ public final class AskSqlRenderer {
         // Unrestricted / ImplicitUnrestricted：不附加谓词。
         // 隐式全量在 PermissionGuard 里已记 WARN 日志，这里不再重复。
         // Denied 到不了这里——PermissionGuard 已经把它转成 Denied 决策了。
+    }
+
+    /** 一个指标引用涉及的表别名。派生指标要把所有输入列所在的表都算上。 */
+    private static Set<String> aliasesOf(MetricRef m) {
+        if (m instanceof MetricRef.Column cm) {
+            return Set.of(cm.ref().tableAlias());
+        }
+        MetricRef.Derived dm = (MetricRef.Derived) m;
+        Set<String> out = new LinkedHashSet<>();
+        dm.inputs().forEach(r -> out.add(r.tableAlias()));
+        return out;
+    }
+
+    /**
+     * 展开派生指标。
+     *
+     * <p>比值用 {@code NULLIF(…, 0)} 兜底：分母为 0 时返回 NULL，
+     * 而不是抛"除数为零"——那会让用户以为系统坏了，而实际只是这批数据里没有分母。
+     *
+     * <p>差值与比值都先各自聚合再运算（{@code SUM(a)/SUM(b)}），
+     * 不是逐行相除再求和——后者在多数场景下是错的，且错得不明显。
+     */
+    private static String renderDerived(MetricRef.Derived m, SqlDialect dialect) {
+        List<FieldRef> in = m.inputs();
+        String left = aggregated(in.get(0), dialect);
+        String right = aggregated(in.get(1), dialect);
+        return switch (m.spec().kind()) {
+            case RATIO -> "(" + left + ") / NULLIF(" + right + ", 0)";
+            case DIFF -> "(" + left + ") - (" + right + ")";
+            case DURATION -> "AVG(" + dialect.timeDiffToNumber(m.spec().unit(), left, right) + ")";
+        };
+    }
+
+    /** 一列的「引用 + 聚合」表达式。时长的输入是维度列，agg 为 NONE，原样返回。 */
+    private static String aggregated(FieldRef r, SqlDialect dialect) {
+        return r.agg().wrap(dialect.quoteQualified(r.tableAlias() + "." + r.column()));
     }
 
     private static boolean isMasked(Set<String> masked, String column) {

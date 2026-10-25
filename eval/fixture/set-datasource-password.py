@@ -22,7 +22,7 @@ import pymysql
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 DATASOURCE_ID = 100
-CONFIG_DB = os.environ.get("CONFIG_DB", "jimureport")
+CONFIG_DB = os.environ.get("CONFIG_DB", "chatdata_ask")
 DB_USER = os.environ.get("DB_USER", "root")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "root")
 
