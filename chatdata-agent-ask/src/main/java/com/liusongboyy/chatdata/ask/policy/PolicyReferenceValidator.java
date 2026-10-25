@@ -64,12 +64,49 @@ public class PolicyReferenceValidator {
         }
         DomainPermission perm = DomainPermission.from(json);
 
+        checkRowRuleValues(perm);
+
         Set<String> roles = new LinkedHashSet<>(perm.grantRoles());
         roles.addAll(perm.unrestrictedRoles());
         for (RowRule r : perm.rowRules()) add(roles, r.role());
         for (ColRule c : perm.colRules()) add(roles, c.role());
 
         check(roles, perm.grantUsers());
+    }
+
+    /** 引擎认识的动态变量名。静态规则的取值写成这些名字，必然是漏勾了「动态」。 */
+    private static final Set<String> KNOWN_SYS_VARS =
+            Set.of("orgCode", "orgPath", "orgPaths", "userCode", "userId");
+
+    /**
+     * 行规则的取值语义。
+     *
+     * <p><strong>拦的是哪一种错：</strong>管理员想配动态规则，却把变量名
+     * {@code orgPaths} 填进了「条件值」，同时没勾「动态」。保存能过——
+     * 校验只要求"静态规则必须有值"，而它确实有值。
+     *
+     * <p>后果是**静默的**：渲染出 {@code org_path LIKE 'orgPaths%'}，
+     * 匹配不到任何行，用户看到 0 条数据，既没有报错也没有提示。
+     * 只有把 SQL 摊开看才能发现，而那通常已经过了很久。
+     *
+     * <p>为什么直接拒绝而不是警告：一个组织路径字段的取值恰好等于
+     * {@code orgPaths} 这种字面量，现实中不存在；而放过去的代价是
+     * 数据静默不可见。两侧不对等，故选拒绝。
+     */
+    private static void checkRowRuleValues(DomainPermission perm) {
+        for (RowRule r : perm.rowRules()) {
+            if (r.dynamic()) {
+                continue;
+            }
+            String value = r.value() == null ? "" : r.value().trim();
+            if (KNOWN_SYS_VARS.contains(value)) {
+                throw new AdminException(
+                        ("行规则 %d 的条件值写的是「%s」——这是一个动态变量名，不是取值。"
+                                + "你是想按当前登录用户的范围过滤吧？请勾选「动态」并在变量里选 %s；"
+                                + "否则这条规则会拼成 LIKE '%s%%'，一条数据都匹配不到。")
+                                .formatted(r.id(), value, value, value));
+            }
+        }
     }
 
     /** 校验助理策略。 */

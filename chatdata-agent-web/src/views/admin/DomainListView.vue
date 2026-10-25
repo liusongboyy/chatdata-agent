@@ -603,7 +603,10 @@ function grantSummary(d: Domain): string {
   background: var(--surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  /* 必须能横向滚动：表头每格都是 nowrap，加上「授权」列会列出全部角色，
+     整张表常比卡片宽。用 overflow:hidden 会把右侧的「编辑/删除」直接裁掉，
+     而且**没有任何滚动条**——看起来像按钮消失了。 */
+  overflow-x: auto;
 }
 
 .strong {

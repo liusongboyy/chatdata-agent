@@ -218,7 +218,8 @@ async function remove(e: SqlExample): Promise<void> {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  /* 与语义域列表同因：单元格 nowrap，表比卡片宽时 hidden 会把右侧操作列裁掉 */
+  overflow-x: auto;
 }
 
 .row-actions {

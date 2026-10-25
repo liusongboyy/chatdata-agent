@@ -53,6 +53,37 @@ class PolicyReferenceValidatorTest {
     }
 
     @Test
+    @DisplayName("★ 静态规则的条件值写成动态变量名 → 拒绝，并说清怎么改")
+    void staticRuleWithSysVarNameRejects() {
+        when(roleDirectory.roles()).thenReturn(List.of(role("store_level", true)));
+
+        // 真实踩到过的配置：想按当前用户范围过滤，却把变量名填进了「条件值」，
+        // 同时没勾「动态」。保存能过，查询会拼成 LIKE 'orgPaths%'，一条都匹配不到
+        String json = """
+                {"grantRoles":["store_level"],
+                 "rowRules":[{"id":5,"role":"store_level","field":"org_path",
+                              "op":"前缀","value":"orgPaths","sysVar":"","dynamic":false}]}""";
+
+        assertThatThrownBy(() -> validator.validateDomain(json))
+                .isInstanceOf(AdminException.class)
+                .hasMessageContaining("orgPaths")
+                .hasMessageContaining("动态");
+    }
+
+    @Test
+    @DisplayName("动态规则不受该检查影响")
+    void dynamicRuleIsAllowed() {
+        when(roleDirectory.roles()).thenReturn(List.of(role("store_level", true)));
+
+        String json = """
+                {"grantRoles":["store_level"],
+                 "rowRules":[{"id":5,"role":"store_level","field":"org_path",
+                              "op":"前缀","value":"","sysVar":"orgPaths","dynamic":true}]}""";
+
+        assertThatCode(() -> validator.validateDomain(json)).doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("角色不存在 → 拒绝保存，并列出全部缺失的角色")
     void missingRoleRejects() {
         when(roleDirectory.roles()).thenReturn(List.of(role("analyst", true)));

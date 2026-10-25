@@ -69,6 +69,9 @@ export const ROW_OPERATORS = ['=', '!=', '>', '>=', '<', '<=', '包含', '前缀
 
 export const MASK_ACTION = '脱敏'
 
+/** 引擎认识的动态变量名。与后端 PolicyReferenceValidator 的 KNOWN_SYS_VARS 一致 */
+export const KNOWN_SYS_VARS: readonly string[] = ['orgCode', 'orgPath', 'orgPaths', 'userCode', 'userId']
+
 export function emptyDomainPolicy(): DomainPolicy {
   return {
     v: 1,
@@ -214,6 +217,13 @@ export function validateDomainPolicy(p: DomainPolicy): DomainPolicyErrors {
       if (!r.sysVar.trim()) errors.rows.push(`行规则 ${no}：动态规则未选择变量`)
     } else if (!r.value.trim()) {
       errors.rows.push(`行规则 ${no}：未填写条件值`)
+    } else if (KNOWN_SYS_VARS.includes(r.value.trim())) {
+      // 变量名被填进了「条件值」框：拼出来是 LIKE 'orgPaths%'，一条都匹配不到，
+      // 而且不报错。保存前就拦下来，比事后从 SQL 里发现要省事得多
+      errors.rows.push(
+        `行规则 ${no}：「${r.value.trim()}」是动态变量名，不是取值。` +
+          `如果想按当前登录用户过滤，请勾选「动态」并选择变量`,
+      )
     }
   }
 
