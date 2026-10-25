@@ -582,7 +582,7 @@ async function submitPassword(): Promise<void> {
 }
 
 .search:focus-within {
-  border-color: var(--accent);
+  border-color: var(--ink);
   box-shadow: var(--focus-ring);
 }
 
@@ -615,7 +615,7 @@ async function submitPassword(): Promise<void> {
 
 .select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--ink);
   box-shadow: var(--focus-ring);
 }
 
@@ -703,7 +703,7 @@ async function submitPassword(): Promise<void> {
   height: 32px;
   flex: none;
   border-radius: 50%;
-  background: linear-gradient(135deg, #dfe4ff, #eef0ff);
+  background: var(--off-soft);
   color: var(--accent-deep);
   font-size: 12px;
   font-weight: 700;

@@ -1229,7 +1229,7 @@ async function logout(): Promise<void> {
   color: #fff;
   font-size: 13px;
   font-weight: 800;
-  box-shadow: 0 7px 16px rgba(91, 108, 255, 0.26);
+  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.14);
 }
 
 .wordmark {
@@ -1288,7 +1288,7 @@ async function logout(): Promise<void> {
 }
 
 .assistant-pick:hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 
 /* 单助理时的静态标签，与下拉占同样的位置，视觉上不跳 */
@@ -1378,10 +1378,13 @@ async function logout(): Promise<void> {
 }
 
 .empty-title span {
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* 淡黄绿做**背景高亮**，文字仍是近黑——这是强调色唯一安全又有辨识度的用法 */
+  background: var(--accent);
+  color: var(--ink);
+  padding: 0 0.16em;
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .empty-sub {
@@ -1530,7 +1533,7 @@ async function logout(): Promise<void> {
   flex: none;
   order: 2;
   border-radius: 50%;
-  background: linear-gradient(135deg, #dfe4ff, #eef0ff);
+  background: var(--off-soft);
   color: var(--accent-deep);
   font-size: 10.5px;
   font-weight: 700;
@@ -1541,13 +1544,13 @@ async function logout(): Promise<void> {
   order: 1;
   max-width: 78%;
   padding: 10px 15px;
-  border-radius: 16px 16px 4px 16px;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
   background: var(--gradient-accent);
   color: #fff;
   font-size: 13px;
   font-weight: 550;
   line-height: 1.6;
-  box-shadow: 0 8px 20px rgba(91, 108, 255, 0.22);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
 .question-action {
@@ -1672,7 +1675,8 @@ async function logout(): Promise<void> {
 }
 
 .stage-active .stage-dot {
-  background: var(--accent);
+  /* 淡黄绿在白底上几乎看不见；指示点必须是强信号 */
+  background: var(--ink);
   transform: scale(1.5);
   animation: pulse 1.4s var(--ease-in-out) infinite;
 }
@@ -1795,13 +1799,13 @@ async function logout(): Promise<void> {
   gap: 10px;
   padding: 10px 10px 10px 16px;
   background: var(--surface);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   transition: box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .composer-box:focus-within {
-  box-shadow: var(--shadow), 0 0 0 4px rgba(91, 108, 255, 0.12);
+  box-shadow: var(--shadow), var(--focus-ring);
 }
 
 .composer-input {
@@ -1843,7 +1847,7 @@ async function logout(): Promise<void> {
   color: #fff;
   font-size: 17px;
   font-weight: 700;
-  box-shadow: 0 6px 16px rgba(91, 108, 255, 0.3);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
   transition:
     transform var(--duration-fast) var(--ease-out),
     opacity var(--duration-fast) var(--ease-out);

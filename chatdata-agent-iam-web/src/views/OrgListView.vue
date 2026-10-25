@@ -574,7 +574,7 @@ async function toggleEnabled(org: OrgView): Promise<void> {
 }
 
 .search:focus-within {
-  border-color: var(--accent);
+  border-color: var(--ink);
   box-shadow: var(--focus-ring);
 }
 
@@ -607,7 +607,7 @@ async function toggleEnabled(org: OrgView): Promise<void> {
 
 .select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--ink);
   box-shadow: var(--focus-ring);
 }
 
@@ -693,7 +693,7 @@ async function toggleEnabled(org: OrgView): Promise<void> {
 }
 
 .twist:hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
   color: var(--accent-deep);
 }
 

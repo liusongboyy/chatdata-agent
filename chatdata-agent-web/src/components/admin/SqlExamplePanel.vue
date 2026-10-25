@@ -239,6 +239,6 @@ async function remove(e: SqlExample): Promise<void> {
 }
 
 .checkbox input {
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 </style>

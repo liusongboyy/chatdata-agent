@@ -518,7 +518,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 .avatar-on {
-  border-color: var(--accent);
+  border-color: var(--ink);
   background: var(--accent-soft);
 }
 

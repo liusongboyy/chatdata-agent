@@ -234,7 +234,7 @@ onMounted(async () => {
   height: 760px;
   left: -240px;
   top: -300px;
-  background: radial-gradient(circle, rgba(91, 108, 255, 0.22), transparent 66%);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.12), transparent 66%);
 }
 
 .glow-b {
@@ -242,7 +242,7 @@ onMounted(async () => {
   height: 680px;
   right: -200px;
   bottom: -320px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.2), transparent 66%);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.05), transparent 66%);
 }
 
 .lg-top {
@@ -268,7 +268,7 @@ onMounted(async () => {
   color: #fff;
   font-size: 15px;
   font-weight: 800;
-  box-shadow: 0 8px 18px rgba(91, 108, 255, 0.28);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
 }
 
 .lg-top small {
@@ -315,10 +315,13 @@ onMounted(async () => {
 }
 
 .hero h1 span {
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* 强调色是淡黄绿，只能当**背景**；当文字色在白底上几乎不可见 */
+  background: var(--accent);
+  color: var(--ink);
+  padding: 0 0.14em;
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .hero p {
@@ -435,7 +438,7 @@ onMounted(async () => {
 .mini-bars i {
   flex: 1;
   border-radius: 3px 3px 0 0;
-  background: linear-gradient(to top, var(--accent), #a9b3ff);
+  background: linear-gradient(to top, var(--ink), hsl(0 0% 62%));
 }
 
 .chat-foot {
@@ -496,13 +499,13 @@ onMounted(async () => {
   padding: 0 13px;
   background: var(--surface-sunk);
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  font-size: 13px;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--ink);
   background: var(--surface);
   box-shadow: var(--focus-ring);
 }

@@ -70,7 +70,7 @@ onMounted(() => {
   height: 720px;
   left: -240px;
   top: -320px;
-  background: radial-gradient(circle, rgba(91, 108, 255, 0.22), transparent 66%);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.12), transparent 66%);
 }
 
 .glow-b {
@@ -78,7 +78,7 @@ onMounted(() => {
   height: 640px;
   right: -220px;
   bottom: -340px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.2), transparent 66%);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.05), transparent 66%);
 }
 
 .brand {
@@ -103,7 +103,7 @@ onMounted(() => {
   color: #fff;
   font-size: 15px;
   font-weight: 800;
-  box-shadow: 0 8px 18px rgba(91, 108, 255, 0.28);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
 }
 
 .brand small {
@@ -133,7 +133,7 @@ onMounted(() => {
   height: 30px;
   margin-bottom: 18px;
   border: 3px solid var(--accent-soft);
-  border-top-color: var(--accent);
+  border-top-color: var(--ink);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

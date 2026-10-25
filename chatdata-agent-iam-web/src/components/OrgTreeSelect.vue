@@ -577,7 +577,7 @@ onBeforeUnmount(() => {
 }
 
 .org-twist:hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
   color: var(--accent-deep);
 }
 

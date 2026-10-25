@@ -151,7 +151,7 @@ function onEnter(): void {
 }
 
 .ms-box:focus-within {
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 
 .chip {

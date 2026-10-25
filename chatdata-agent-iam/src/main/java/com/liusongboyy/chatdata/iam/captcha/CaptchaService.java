@@ -80,16 +80,18 @@ public class CaptchaService {
 
             g.setStroke(new BasicStroke(1.2f));
             for (int i = 0; i < 6; i++) {
-                g.setColor(new Color(150 + random.nextInt(80), 150 + random.nextInt(80),
-                        150 + random.nextInt(80)));
+                // 中性暖灰。三通道独立随机会得到彩色噪点，与整站的单色语言冲突
+                int v = 196 + random.nextInt(34);
+                g.setColor(new Color(v, v, v - 6));
                 g.drawLine(random.nextInt(WIDTH), random.nextInt(HEIGHT),
                         random.nextInt(WIDTH), random.nextInt(HEIGHT));
             }
 
             g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
             for (int i = 0; i < code.length(); i++) {
-                g.setColor(new Color(30 + random.nextInt(90), 30 + random.nextInt(90),
-                        120 + random.nextInt(90)));
+                // 三通道同值 → 中性深灰。原先蓝通道恒高（120+），字符总是偏蓝紫
+                int v = 24 + random.nextInt(46);
+                g.setColor(new Color(v, v, v));
                 int x = 14 + i * 26 + random.nextInt(5);
                 int y = 30 + random.nextInt(6);
                 g.drawString(String.valueOf(code.charAt(i)), x, y);

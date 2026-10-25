@@ -24,7 +24,7 @@ defineProps<{
       <span class="value">{{ it.value }}</span>
       <span
         class="accent"
-        :style="{ background: items.length > 1 ? seriesColor(i) : 'var(--accent)' }"
+        :style="{ background: items.length > 1 ? seriesColor(i) : 'var(--ink)' }"
         aria-hidden="true"
       />
     </li>

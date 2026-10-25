@@ -906,7 +906,7 @@ async function remove(t: DomainTable): Promise<void> {
 }
 
 .back:hover {
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .cols {
@@ -1149,7 +1149,7 @@ async function remove(t: DomainTable): Promise<void> {
 .join-editor {
   margin-top: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--ink);
   border-radius: var(--radius);
   background: var(--surface);
   display: grid;
@@ -1232,7 +1232,7 @@ async function remove(t: DomainTable): Promise<void> {
 .term-editor {
   margin-top: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--ink);
   border-radius: var(--radius);
   background: var(--surface);
   display: flex;
@@ -1268,7 +1268,7 @@ async function remove(t: DomainTable): Promise<void> {
 }
 
 .chip-on {
-  border-color: var(--accent);
+  border-color: var(--ink);
   background: var(--accent-soft);
   color: var(--accent-deep);
   font-weight: 600;

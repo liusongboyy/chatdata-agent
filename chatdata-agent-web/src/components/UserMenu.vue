@@ -116,7 +116,7 @@ onBeforeUnmount(() => {
   height: 32px;
   flex: none;
   border-radius: 50%;
-  background: linear-gradient(135deg, #dfe4ff, #eef0ff);
+  background: var(--off-soft);
   color: var(--accent-deep);
   font-size: 12px;
   font-weight: 700;

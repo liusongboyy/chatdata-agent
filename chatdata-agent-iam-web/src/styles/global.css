@@ -1,8 +1,10 @@
 /* ═══════════════ 全局样式 ═══════════════
  *
- * 方向：**轻量友好 SaaS**（样张 C）。
- * 浅蓝灰底 + 白色圆角面板 + 双色渐变主操作；大圆角、柔和投影、胶囊标签。
+ * 方向：**终端质感**（参照 opencode.ai 的视觉语言）。
+ * 暖白底、等宽字体、近黑作为"强"元素、淡黄绿只做背景高亮与焦点。
  * 共享原语放在这里（按钮、输入、标签、表格、卡片、弹窗），页面只写自己的排版。
+ *
+ * 改色请改 tokens.css，不要在这里写死色值。
  */
 
 *,
@@ -95,7 +97,7 @@ input, textarea, select {
   font-weight: 650;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .label {
@@ -131,7 +133,7 @@ input, textarea, select {
   gap: var(--space-2);
   padding: 0.55em 1.05em;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: var(--text-sm);
   font-weight: 650;
   white-space: nowrap;
@@ -156,11 +158,11 @@ input, textarea, select {
 .btn-primary {
   background: var(--gradient-accent);
   color: #fff;
-  box-shadow: 0 8px 20px rgba(91, 108, 255, 0.26);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
 }
 
 .btn-primary:not(:disabled):hover {
-  box-shadow: 0 10px 26px rgba(91, 108, 255, 0.36);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.20);
   transform: translateY(-1px);
 }
 
@@ -171,7 +173,7 @@ input, textarea, select {
 }
 
 .btn-quiet:not(:disabled):hover {
-  border-color: #c9d0f5;
+  border-color: var(--line-strong);
   color: var(--accent-deep);
 }
 
@@ -187,7 +189,7 @@ input, textarea, select {
 
 .btn-sm {
   padding: 0.32em 0.72em;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 0.6875rem;
   font-weight: 550;
 }
@@ -204,7 +206,10 @@ input, textarea, select {
   padding: 0.58em 0.8em;
   background: var(--surface-sunk);
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius);
+  /* 字号必须显式给：控件默认继承 body 的 15–16px，比列表的 13px 大一圈，
+     看起来像另一套设计 */
+  font-size: var(--text-sm);
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
@@ -212,12 +217,12 @@ input, textarea, select {
 }
 
 .input:hover {
-  border-color: #c3cbe4;
+  border-color: var(--line-strong);
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--ink);
   background: var(--surface);
   box-shadow: var(--focus-ring);
 }
@@ -472,14 +477,14 @@ input, textarea, select {
 }
 
 .check:has(input:checked) {
-  border-color: #c9d0f5;
+  border-color: var(--line-strong);
   background: var(--accent-soft);
   color: var(--accent-deep);
   font-weight: 600;
 }
 
 .check input {
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 
 /* ── 弹窗 ──
@@ -491,7 +496,7 @@ input, textarea, select {
   display: grid;
   place-items: center;
   padding: var(--space-5);
-  background: rgba(27, 35, 64, 0.34);
+  background: rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(4px);
 }
 
@@ -501,18 +506,18 @@ input, textarea, select {
   max-width: 760px;
   max-height: 88dvh;
   overflow: auto;
-  padding: 1.75rem 1.875rem 1.5rem;
+  padding: 1.5rem;
   background: var(--surface);
-  border: none;
-  border-radius: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
 
 .modal-title {
   margin-bottom: var(--space-4);
   font-family: var(--font-display);
-  font-size: 1.3125rem;
-  font-weight: 750;
+  font-size: var(--text-lg);
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
