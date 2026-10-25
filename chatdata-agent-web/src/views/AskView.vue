@@ -1378,13 +1378,8 @@ async function logout(): Promise<void> {
 }
 
 .empty-title span {
-  /* 淡黄绿做**背景高亮**，文字仍是近黑——这是强调色唯一安全又有辨识度的用法 */
-  background: var(--accent);
+  /* 不再加底色：黄底实看太跳。强调靠字重与断句，不靠颜色 */
   color: var(--ink);
-  padding: 0 0.16em;
-  border-radius: 3px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
 }
 
 .empty-sub {

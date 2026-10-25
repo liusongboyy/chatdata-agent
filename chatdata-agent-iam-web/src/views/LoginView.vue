@@ -315,13 +315,8 @@ onMounted(async () => {
 }
 
 .hero h1 span {
-  /* 强调色是淡黄绿，只能当**背景**；当文字色在白底上几乎不可见 */
-  background: var(--accent);
+  /* 不再加底色：黄底实看太跳。强调靠字重与断句，不靠颜色 */
   color: var(--ink);
-  padding: 0 0.14em;
-  border-radius: 4px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
 }
 
 .hero p {
