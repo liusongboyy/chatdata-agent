@@ -69,6 +69,6 @@ public final class AnalysisPlanGenerator implements AnalysisPlanSource {
         if (json == null || json.isBlank()) {
             throw new DslGenerationException("模型返回的分析计划为空");
         }
-        return AnalysisPlanParser.parse(json);
+        return AnalysisPlanParser.parse(json, question);
     }
 }

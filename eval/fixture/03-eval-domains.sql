@@ -39,7 +39,7 @@ VALUES
    '[{"col":"premium","type":"decimal","agg":"SUM","alias":"保费","enabled":true},{"col":"policy_no","type":"varchar","agg":"COUNT","alias":"保单数","enabled":true},{"col":"coverage_amount","type":"decimal","agg":"SUM","alias":"保额","enabled":true},{"col":"region","type":"varchar","agg":"","alias":"区域","enabled":true},{"col":"status","type":"varchar","agg":"","alias":"保单状态","enabled":true},{"col":"product_type","type":"varchar","agg":"","alias":"险种类型","enabled":true},{"col":"channel","type":"varchar","agg":"","alias":"销售渠道","enabled":true},{"col":"province","type":"varchar","agg":"","alias":"出单省份","enabled":true},{"col":"effect_date","type":"date","agg":"","alias":"生效日期","enabled":true},{"col":"sign_date","type":"date","agg":"","alias":"投保年份","enabled":true},{"col":"term_years","type":"int","agg":"AVG","alias":"平均保障年限","enabled":true}]',
    1, 0, 'eval-fixture'),
   (200102, 2001, 'ins_customer', '客户表', 'TABLE', NULL,
-   '[{"col":"cust_name","type":"varchar","agg":"","alias":"客户姓名","enabled":true},{"col":"gender","type":"varchar","agg":"","alias":"性别","enabled":true},{"col":"age","type":"int","agg":"AVG","alias":"平均年龄","enabled":true},{"col":"cust_level","type":"varchar","agg":"","alias":"客户等级","enabled":true},{"col":"occupation","type":"varchar","agg":"","alias":"职业","enabled":true},{"col":"city","type":"varchar","agg":"","alias":"城市","enabled":true}]',
+   '[{"col":"cust_name","type":"varchar","agg":"COUNT","alias":"客户数","enabled":true},{"col":"cust_name","type":"varchar","agg":"","alias":"客户姓名","enabled":true},{"col":"gender","type":"varchar","agg":"","alias":"性别","enabled":true},{"col":"age","type":"int","agg":"AVG","alias":"平均年龄","enabled":true},{"col":"age","type":"int","agg":"","alias":"年龄","enabled":true},{"col":"cust_level","type":"varchar","agg":"","alias":"客户等级","enabled":true},{"col":"occupation","type":"varchar","agg":"","alias":"职业","enabled":true},{"col":"city","type":"varchar","agg":"","alias":"城市","enabled":true},{"col":"reg_date","type":"date","agg":"","alias":"注册日期","enabled":true}]',
    1, 1, 'eval-fixture'),
   (200103, 2001, 'ins_claim', '理赔表', 'TABLE', NULL,
    '[{"col":"claim_no","type":"varchar","agg":"COUNT","alias":"理赔件数","enabled":true},{"col":"claim_amount","type":"decimal","agg":"SUM","alias":"申请理赔金额","enabled":true},{"col":"settle_amount","type":"decimal","agg":"SUM","alias":"赔付金额","enabled":true},{"col":"status","type":"varchar","agg":"","alias":"理赔状态","enabled":true},{"col":"claim_type","type":"varchar","agg":"","alias":"理赔类型","enabled":true},{"col":"report_date","type":"date","agg":"","alias":"统计日期","enabled":true},{"col":"province","type":"varchar","agg":"","alias":"出险省份","enabled":true},{"col":"","type":"decimal","agg":"NONE","alias":"赔付率","enabled":true,"derived":{"kind":"ratio","left":"赔付金额","right":"申请理赔金额"}},{"col":"","type":"decimal","agg":"NONE","alias":"赔付差额","enabled":true,"derived":{"kind":"diff","left":"赔付金额","right":"申请理赔金额"}}]',
@@ -69,7 +69,7 @@ VALUES
    1, 1, 'eval-fixture'),
   (200203, 2002, 'ticket_comment', '工单评论', 'SQL',
    'SELECT * FROM ticket_comment WHERE deleted = 0',
-   '[{"col":"id","type":"bigint","agg":"COUNT","alias":"评论数","enabled":true},{"col":"is_internal","type":"int","agg":"","alias":"内部备注标记","enabled":true}]',
+   '[{"col":"id","type":"bigint","agg":"COUNT","alias":"评论数","enabled":true},{"col":"id","type":"bigint","agg":"","alias":"评论条数","enabled":true},{"col":"is_internal","type":"int","agg":"","alias":"内部备注标记","enabled":true}]',
    1, 2, 'eval-fixture'),
   (200204, 2002, 'ticket_flow', '工单流转记录', 'SQL',
    'SELECT * FROM ticket_flow WHERE deleted = 0',
@@ -113,6 +113,10 @@ VALUES
   (2001, '理赔状态', '["理赔进度"]', '取值：待审核、已赔付、已拒赔', 'none', 1, 'eval-fixture'),
   (2001, '险种类型', '["险种"]', '取值：寿险、健康险、车险、意外险、财产险', 'none', 2, 'eval-fixture'),
   (2001, '大区', '["区域"]', '取值：华东、华南、华北、华中、西南、西北', 'none', 3, 'eval-fixture'),
+  -- 时间口径：显式声明「按客户维度的时间」落在注册日期上。
+  -- 不声明的话，引擎只能按「生效日期」猜，而那是保单的日期，不是客户的
+  (2001, '注册日期', '["投保时间","注册时间"]', '客户注册日期', 'time', 4, 'eval-fixture'),
+  (2001, '报案日期', '["出险日期"]', '理赔报案日期', 'time', 5, 'eval-fixture'),
   (2002, '状态', '["工单状态"]', '取值是英文码：OPEN=待处理/新建，IN_PROGRESS=处理中，RESOLVED=已解决，CLOSED=已关闭。用户说中文时按此映射', 'none', 0, 'eval-fixture'),
   (2002, '来源', '["工单来源","渠道"]', '取值是英文码：WEB=网页，APP=手机应用，EMAIL=邮件，API=接口', 'none', 1, 'eval-fixture'),
   (2002, '内部备注标记', '["内部备注","内部评论"]', '取值：1 表示是内部备注，0 表示是普通评论', 'none', 2, 'eval-fixture'),

@@ -101,6 +101,43 @@ class AnalysisPlanParserTest {
     }
 
     @Test
+    @DisplayName("★ 同比缺 timeRange → 从问题里捞出年份补上，不丢掉对比")
+    void infersTimeRangeForCompare() {
+        AnalysisPlan plan = AnalysisPlanParser.parse("""
+                {"intent":"同比","steps":[{"id":"s1","dsl":{
+                   "metrics":["保费"],"dimensions":[],"filters":[],
+                   "compare":{"mode":"yoy"}}}]}""", "2025 年保费比 2024 年下降了吗，2025 年的情况？");
+
+        assertThat(plan.steps().get(0).dsl().timeRange().kind()).isEqualTo("2025年");
+        assertThat(plan.steps().get(0).dsl().compare()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("★ 同比按天分组 → 提到按月，而不是丢掉对比")
+    void bumpsGranularityForYearOverYear() {
+        AnalysisPlan plan = AnalysisPlanParser.parse("""
+                {"intent":"同比","steps":[{"id":"s1","dsl":{
+                   "metrics":["保费"],"dimensions":["生效日期"],"filters":[],
+                   "granularity":"day","timeRange":{"kind":"2025年"},
+                   "compare":{"mode":"yoy"}}}]}""", "2025 年各月保费同比");
+
+        assertThat(plan.steps().get(0).dsl().granularity())
+                .isEqualTo(com.liusongboyy.chatdata.engine.nlsql.AskDsl.Granularity.MONTH);
+        assertThat(plan.steps().get(0).dsl().compare()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("问题里没有明确年份、compare 又缺 timeRange → 才丢弃对比")
+    void dropsCompareOnlyWhenUnfixable() {
+        AnalysisPlan plan = AnalysisPlanParser.parse("""
+                {"intent":"x","steps":[{"id":"s1","dsl":{
+                   "metrics":["保费"],"dimensions":[],"filters":[],
+                   "compare":{"mode":"yoy"}}}]}""", "保费同比怎么样");
+
+        assertThat(plan.steps().get(0).dsl().compare()).isNull();
+    }
+
+    @Test
     @DisplayName("套了 markdown 代码块也能解析")
     void markdownFence() {
         AnalysisPlan plan = AnalysisPlanParser.parse("""

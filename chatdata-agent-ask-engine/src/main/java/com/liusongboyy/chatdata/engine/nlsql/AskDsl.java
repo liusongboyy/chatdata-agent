@@ -221,6 +221,18 @@ public record AskDsl(
      * <p>单查询链路**不做**这个降级：那里 compare 是用户明确要求的，
      * 悄悄丢掉等于答应了一次没做的对比。
      */
+    /** 换一个时间范围，保留其余一切。 */
+    public AskDsl withTimeRange(TimeRange range) {
+        return new AskDsl(metrics, dimensions, range, filters, granularity,
+                sort, limit, shareOf, compare);
+    }
+
+    /** 换一个粒度，保留其余一切。 */
+    public AskDsl withGranularity(Granularity g) {
+        return new AskDsl(metrics, dimensions, timeRange, filters, g,
+                sort, limit, shareOf, compare);
+    }
+
     public AskDsl withoutCompare() {
         return new AskDsl(metrics, dimensions, timeRange, filters, granularity,
                 sort, limit, shareOf, null);

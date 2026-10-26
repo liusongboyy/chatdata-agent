@@ -132,7 +132,7 @@ public final class SemanticModel {
      * @throws SemanticException 找不到、有歧义、或角色不符
      */
     public FieldRef resolve(String name, FieldKind kind) {
-        Candidate c = requireCandidate(name);
+        Candidate c = requireCandidate(name, kind);
         ColumnDef col = c.column();
 
         // 派生指标没有单一物理列，FieldRef 表达不了。要取派生指标请用 resolveMetricRef
@@ -165,6 +165,25 @@ public final class SemanticModel {
      * 而漂移的表现是"同一个名字，一个入口能解析、另一个说找不到"。
      */
     private Candidate requireCandidate(String name) {
+        return requireCandidate(name, null);
+    }
+
+    /**
+     * 解析一个名字到唯一候选；给了 {@code kind} 时**按角色择优**。
+     *
+     * <h2>为什么必须按角色择优，而不是一律判歧义</h2>
+     *
+     * <p>同一个业务名登记两行是**刻意的建模手法**：「年龄」既要能求和求平均（指标），
+     * 又要能写 {@code age > 50}（维度）；「评论数」既是 {@code COUNT(id)}（指标），
+     * 又要能按它过滤（维度）。管理员为此额外加一行不聚合的列定义，这是对的。
+     *
+     * <p>若这里一律判歧义，「50 岁以上的客户有多少人」这类问题就永远问不出来——
+     * 而它恰恰是最常见的一类。故：**候选里恰好有一个符合期望角色时就用它**。
+     * 一个都不符合、或多个都符合（真的歧义）仍然拒绝——那才是需要人介入的情况。
+     *
+     * @param kind 期望角色；{@code null} 表示不限定（权限字段定位等场景）
+     */
+    private Candidate requireCandidate(String name, FieldKind kind) {
         if (name == null || name.isBlank()) {
             throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND, "字段名为空");
         }
@@ -176,12 +195,24 @@ public final class SemanticModel {
                     "本数据域内找不到字段「" + name + "」。可用字段见域内已启用的注册表");
         }
 
+        if (candidates.size() > 1 && kind != null) {
+            List<Candidate> fitting = candidates.stream()
+                    .filter(c -> fitsRole(c.column(), kind))
+                    .toList();
+            if (fitting.size() == 1) {
+                return fitting.get(0);
+            }
+            // 落到下面统一报歧义：一个都不符合是"角色不符"，
+            // 多个都符合则是真的同名冲突——两者都不该猜
+        }
+
         // 歧义：同名匹配到多个列。**不猜，直接拒绝**。
         // 判定用 size 而非"不同表数"——同一张表内两列撞名同样是歧义，
         // 按"不同表数"判会让它静默取第一个，那也是猜。
         if (candidates.size() > 1) {
             List<String> names = candidates.stream()
-                    .map(c -> c.table().displayName() + "." + c.column().displayName())
+                    .map(c -> c.table().displayName() + "." + c.column().displayName()
+                            + "（" + (c.column().isMetric() ? "指标" : "维度") + "）")
                     .distinct()
                     .toList();
             throw new SemanticException(SemanticException.Reason.FIELD_AMBIGUOUS,
@@ -189,6 +220,14 @@ public final class SemanticModel {
                             + "。请为它们设置不同的业务名，或关闭不用的列");
         }
         return candidates.get(0);
+    }
+
+    /** 该列能不能充当期望的角色。派生指标只可能是指标。 */
+    private static boolean fitsRole(ColumnDef col, FieldKind kind) {
+        return switch (kind) {
+            case METRIC -> col.isMetric();
+            case DIMENSION -> !col.isMetric();
+        };
     }
 
     /**
@@ -199,7 +238,7 @@ public final class SemanticModel {
      * 解析失败直接抛——输入列配错时宁可拒绝，也不要渲染出一条语义不明的 SQL。
      */
     public MetricRef resolveMetricRef(String name) {
-        Candidate c = requireCandidate(name);
+        Candidate c = requireCandidate(name, FieldKind.METRIC);
         ColumnDef col = c.column();
 
         if (col.derived() == null) {

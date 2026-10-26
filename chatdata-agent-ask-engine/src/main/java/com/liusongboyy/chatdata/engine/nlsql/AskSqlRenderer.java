@@ -12,6 +12,7 @@ import com.liusongboyy.chatdata.engine.semantic.MetricRef;
 import com.liusongboyy.chatdata.engine.semantic.SemanticException;
 import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
 import com.liusongboyy.chatdata.engine.semantic.TableJoin;
+import com.liusongboyy.chatdata.engine.semantic.Term;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -588,28 +589,53 @@ public final class AskSqlRenderer {
      */
     private static String resolveTimeColumn(SemanticModel model, SqlDialect dialect,
                                             Set<String> involvedTableIds, AskDsl.TimeRange tr) {
+        // ① **术语显式声明优先。** 管理员在术语上写了 apply_kind=time，
+        //    就是明确说了"这个说法落在哪一列"，比按别名猜可靠得多。
+        //    实测：域里同时有「生效日期」「报案日期」时，按名字猜会一律落到生效日期，
+        //    于是「按报案日期查」得到的是另一段时间的数据——数字看着正常，只是错的。
+        for (Term term : model.domain().terms()) {
+            if (term.applyKind() != Term.ApplyKind.TIME) {
+                continue;
+            }
+            // 术语名本身就指一个时间列（如「投保时间」→ 生效日期）。
+            // 名称在某些域里是"口径名"而非列名，解析不到就跳到下一个
+            String col = tryTimeColumn(model, dialect, involvedTableIds, term.name());
+            if (col != null) {
+                return col;
+            }
+        }
+
+        // ② 没有声明的，退回按别名猜
         for (String candidate : TIME_COLUMN_CANDIDATES) {
-            try {
-                FieldRef r = model.resolveDimension(candidate);
-                // **时间列必须落在本次参与 FROM 的表上。** 否则渲染出
-                // `FROM ins_customer WHERE t2.effect_date >= ?`——t2 不在 FROM 里，
-                // MySQL 报 Unknown column，用户看到的是"查询失败"而不是"这个域查不了时间"。
-                //
-                // 这一条此前只写在注释里、没有实现：域里只要有多张带日期列的表，
-                // 而查询只用到其中一张，就可能选中另一张。
-                // 时间列可以在任意一张**参与查询**的表上——多表场景下它未必在主表。
-                if (!involvedTableIds.contains(model.tableIdOfAlias(r.tableAlias()))) {
-                    continue;
-                }
-                return dialect.quoteQualified(r.tableAlias() + "." + r.column());
-            } catch (SemanticException ignored) {
-                // 这个名字在本域内不可解析，试下一个
+            String col = tryTimeColumn(model, dialect, involvedTableIds, candidate);
+            if (col != null) {
+                return col;
             }
         }
         throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND,
                 "问数里带了时间条件（" + tr.kind() + "），但本域内找不到可用的日期列。"
                         + "请在语义建模中把日期列的别名设为「生效日期」「统计日期」等，"
-                        + "或改用业务术语显式声明时间口径");
+                        + "或把业务术语的应用方式设为「时间口径」并指向要用的日期列");
+    }
+
+    /**
+     * 试解析一个名字为时间列；不可用返回 null。
+     *
+     * <p>**时间列必须落在本次参与 FROM 的表上。** 否则渲染出
+     * {@code FROM ins_customer WHERE t2.effect_date >= ?}——t2 不在 FROM 里，
+     * MySQL 报 Unknown column，用户看到的是"查询失败"而不是"这个域查不了时间"。
+     */
+    private static String tryTimeColumn(SemanticModel model, SqlDialect dialect,
+                                        Set<String> involvedTableIds, String name) {
+        try {
+            FieldRef r = model.resolveDimension(name);
+            if (!involvedTableIds.contains(model.tableIdOfAlias(r.tableAlias()))) {
+                return null;
+            }
+            return dialect.quoteQualified(r.tableAlias() + "." + r.column());
+        } catch (SemanticException e) {
+            return null;
+        }
     }
 
     /**

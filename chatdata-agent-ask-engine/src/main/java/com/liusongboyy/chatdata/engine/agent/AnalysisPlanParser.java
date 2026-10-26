@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -34,11 +36,20 @@ public final class AnalysisPlanParser {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisPlanParser.class);
     private static final ObjectMapper M = new ObjectMapper();
+    /** 明确的年份写法。相对时间（今年/上季度）不在此推断，见 inferTimeRange。 */
+    private static final Pattern YEAR = Pattern.compile("(20\\d{2})\\s*年");
 
     private AnalysisPlanParser() {
     }
 
     public static AnalysisPlan parse(String json) {
+        return parse(json, null);
+    }
+
+    /**
+     * @param question 用户原话。用于补全 compare 缺的时间范围（见 sanitize）
+     */
+    public static AnalysisPlan parse(String json, String question) {
         if (json == null || json.isBlank()) {
             throw new DslGenerationException("分析计划为空");
         }
@@ -93,7 +104,7 @@ public final class AnalysisPlanParser {
                         "步骤「" + id + "」与前面的步骤是同一个查询，请合并或换成不同角度");
             }
 
-            dsl = sanitize(id, dsl);
+            dsl = sanitize(id, dsl, question);
             steps.add(new PlanStep(id, textOrNull(n.path("label")),
                     textOrNull(n.path("purpose")), dsl));
         }
@@ -118,25 +129,67 @@ public final class AnalysisPlanParser {
      *
      * @return 修好的 DSL（可能去掉了 compare）
      */
-    private static AskDsl sanitize(String id, AskDsl dsl) {
+    /**
+     * @param question 用户原话。用于在 compare 缺 timeRange 时<b>补</b>出时间范围，
+     *                 而不是把对比丢掉
+     */
+    private static AskDsl sanitize(String id, AskDsl dsl, String question) {
         if (dsl.compare() == null) {
             return dsl;
         }
+
+        // ① 同比/环比缺 timeRange：先从问题里把时间捞出来补上。
+        //    **不能直接丢掉 compare**——用户明确说了「同比」，丢掉等于答应了一次没做的对比。
+        //    实测就是这么翻车的：模型拆对了步骤，只是没把「2025 年」填进 timeRange
+        if (dsl.timeRange() == null) {
+            AskDsl.TimeRange inferred = inferTimeRange(question);
+            if (inferred != null) {
+                log.info("分析步骤「{}」的 compare 缺时间范围，已从问题推断为「{}」",
+                        id, inferred.kind());
+                dsl = dsl.withTimeRange(inferred);
+            }
+        }
+
         boolean bad = false;
         if (dsl.timeRange() == null) {
-            // 没有时间范围就没有"上期"
+            // 推断不出来：这才是真的没法比
             bad = true;
         } else if (dsl.compare().mode() == AskDsl.Compare.Mode.YOY
                 && !dsl.dimensions().isEmpty()
                 && dsl.granularity() == AskDsl.Granularity.DAY) {
-            // 按天做同比会踩到 2 月 29 日并组
-            bad = true;
+            // ② 按天做同比会踩到 2 月 29 日并组——这个**可以安全修**：
+            //    把粒度提到月，语义仍是"逐期同比"
+            dsl = dsl.withGranularity(AskDsl.Granularity.MONTH);
+            log.info("分析步骤「{}」同比按天分组，已改为按月", id);
         }
         if (!bad) {
             return dsl;
         }
-        log.info("分析步骤「{}」的对比期不成立，已丢弃该增强并继续", id);
+        log.info("分析步骤「{}」的 compare 无从对齐，已丢弃该增强并继续", id);
         return dsl.withoutCompare();
+    }
+
+    /**
+     * 从问题里找出一个「明确的年份」，用来补 compare 缺的时间范围。
+     *
+     * <p>只认 {@code 20xx 年} 这种写法——它无歧义。相对说法（「今年」「上季度」）
+     * 不在这里推断：那要依赖"今天是几号"，而计划阶段与执行阶段可能跨零点，
+     * 两份判断不一致时，回显与 SQL 就会对不上。
+     *
+     * @return 形如 {@code new AskDsl.TimeRange("2025年", null, null)}；找不到返回 null
+     */
+    private static AskDsl.TimeRange inferTimeRange(String question) {
+        if (question == null) {
+            return null;
+        }
+        Matcher m = YEAR.matcher(question);
+        String found = null;
+        // 取**最后一个**年份：中文问法里限定期通常出现在后半句
+        // （「保费比 2024 年下降了吗，2025 年的情况」→ 2025）
+        while (m.find()) {
+            found = m.group(1);
+        }
+        return found == null ? null : new AskDsl.TimeRange(found + "年", null, null);
     }
 
     private static String textOrNull(JsonNode n) {
