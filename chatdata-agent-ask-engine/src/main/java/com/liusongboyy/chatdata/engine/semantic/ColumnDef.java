@@ -16,13 +16,21 @@ import java.util.Locale;
  *                为空时退化为用 {@code col} 匹配
  * @param enabled 是否对 LLM 可见。关闭的列不参与解析，也不进 prompt
  * @param derived 派生指标定义；普通列为 null。见 {@link DerivedMetric}
+ * @param condition 统计条件：只把满足条件的行计入这一列；无条件的列为 null。
+ *                  见 {@link MetricCondition}。与 {@code derived} 互斥
  */
 public record ColumnDef(String col, String type, Aggregation agg, String alias,
-                        boolean enabled, DerivedMetric derived) {
+                        boolean enabled, DerivedMetric derived, MetricCondition condition) {
 
-    /** 普通列：没有派生定义。绝大多数调用点用这个。 */
+    /** 普通列：没有派生定义、没有统计条件。绝大多数调用点用这个。 */
     public ColumnDef(String col, String type, Aggregation agg, String alias, boolean enabled) {
-        this(col, type, agg, alias, enabled, null);
+        this(col, type, agg, alias, enabled, null, null);
+    }
+
+    /** 普通列或派生指标，不带统计条件。 */
+    public ColumnDef(String col, String type, Aggregation agg, String alias,
+                     boolean enabled, DerivedMetric derived) {
+        this(col, type, agg, alias, enabled, derived, null);
     }
 
     public ColumnDef {
@@ -44,6 +52,24 @@ public record ColumnDef(String col, String type, Aggregation agg, String alias,
             }
         }
         agg = agg == null ? Aggregation.NONE : agg;
+
+        if (condition != null) {
+            if (isDerived) {
+                throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                        "「" + alias + "」不能同时是派生指标和带条件的指标");
+            }
+            // 条件只对聚合有意义：给维度加条件等于"这一列只显示部分行"，
+            // 那会让分组结果少行且不报错
+            if (!agg.isAggregating()) {
+                throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                        "「" + displayNameOf(alias, col) + "」配置了统计条件，但没有聚合方式——"
+                                + "条件只对指标有意义");
+            }
+        }
+    }
+
+    private static String displayNameOf(String alias, String col) {
+        return (alias == null || alias.isBlank()) ? col : alias;
     }
 
     /**

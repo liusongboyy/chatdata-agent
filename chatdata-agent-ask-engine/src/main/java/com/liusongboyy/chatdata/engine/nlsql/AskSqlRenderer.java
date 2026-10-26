@@ -140,6 +140,9 @@ public final class AskSqlRenderer {
 
         AskDsl.Compare compare = dsl.compare();
         ResolvedTime prevRt = null;
+        // 把**对比期**的行平移到本期时间轴所用的单位与数量。没有分组时用不到
+        String shiftUnit = null;
+        int shiftAmount = 0;
         if (compare != null) {
             if (rt == null || timeCol == null) {
                 // 没有时间范围就无从"与上期比"。猜一个（如减去一年）会给出一个
@@ -147,26 +150,67 @@ public final class AskSqlRenderer {
                 throw new IllegalArgumentException(
                         "同环比需要明确的时间范围（如「今年」「上季度」「2025 年」），当前问题没有给出");
             }
-            boolean hasTemporalDim = dimRefs.stream().anyMatch(model::isTemporal);
-            if (hasTemporalDim) {
-                // 粒度决定平移后能否对齐。按天做同比会踩到 2 月 29 日：
-                // 平移到上一年会落到 2 月 28 日，与当年的 2 月 28 日撞进同一组
-                boolean ok = switch (compare) {
-                    case YOY -> dsl.granularity() == AskDsl.Granularity.MONTH
-                            || dsl.granularity() == AskDsl.Granularity.YEAR;
-                    case MOM -> dsl.granularity() == AskDsl.Granularity.DAY
-                            || dsl.granularity() == AskDsl.Granularity.MONTH;
-                };
-                if (!ok) {
-                    throw new IllegalArgumentException(compare == AskDsl.Compare.YOY
-                            ? "同比需要按月或按年分组（granularity=month/year）。按天分组会踩到 2 月 29 日，"
-                              + "平移后无法对齐，增长率会静默算错"
-                            : "环比需要按天或按月分组（granularity=day/month）");
+            switch (compare.mode()) {
+                case YOY -> {
+                    prevRt = new ResolvedTime(
+                            rt.startInclusive().minusYears(1), rt.endExclusive().minusYears(1));
+                    shiftUnit = "YEAR";
+                    shiftAmount = 1;
+                }
+                case MOM -> {
+                    prevRt = new ResolvedTime(
+                            rt.startInclusive().minusMonths(1), rt.endExclusive().minusMonths(1));
+                    shiftUnit = "MONTH";
+                    shiftAmount = 1;
+                }
+                case CUSTOM -> {
+                    TimeRangeResolver.ResolvedRange baseline = TimeRangeResolver.resolve(
+                            null, compare.start(), compare.end(), today);
+                    if (baseline == null) {
+                        throw new IllegalArgumentException(
+                                "自定义对比期解析失败：" + compare.start() + " ~ " + compare.end());
+                    }
+                    prevRt = new ResolvedTime(
+                            baseline.startInclusive(), baseline.endExclusive());
+
+                    if (dimRefs.stream().anyMatch(model::isTemporal)) {
+                        // 分组键要对齐，就得知道"把对比期平移多久才落到本期"。
+                        // 优先按整月，其次按整天；都不是整数关系就拒绝——
+                        // 近似出来的对齐会让两组数据错位合并，且不报错
+                        long months = java.time.temporal.ChronoUnit.MONTHS.between(
+                                prevRt.startInclusive(), rt.startInclusive());
+                        if (prevRt.startInclusive().plusMonths(months).equals(rt.startInclusive())
+                                && prevRt.endExclusive().plusMonths(months).equals(rt.endExclusive())) {
+                            shiftUnit = "MONTH";
+                            shiftAmount = Math.toIntExact(months);
+                        } else {
+                            long days = java.time.temporal.ChronoUnit.DAYS.between(
+                                    prevRt.startInclusive(), rt.startInclusive());
+                            if (prevRt.startInclusive().plusDays(days).equals(rt.startInclusive())
+                                    && prevRt.endExclusive().plusDays(days).equals(rt.endExclusive())) {
+                                shiftUnit = "DAY";
+                                shiftAmount = Math.toIntExact(days);
+                            } else {
+                                throw new IllegalArgumentException(
+                                        "对比期（" + compare.start() + " ~ " + compare.end()
+                                                + "）与本期长度或起止相位不同，无法按分组对齐。"
+                                                + "请改用长度相同的两段——整年对整年、整月对整月");
+                            }
+                        }
+                    }
                 }
             }
-            prevRt = compare == AskDsl.Compare.YOY
-                    ? new ResolvedTime(rt.startInclusive().minusYears(1), rt.endExclusive().minusYears(1))
-                    : new ResolvedTime(rt.startInclusive().minusMonths(1), rt.endExclusive().minusMonths(1));
+
+            // 没有时间维度时，粒度与平移都无关（就是"本期总额 vs 对比期总额"），
+            // 这条限制只在真的按时间分组时才有意义
+            boolean hasTemporalDim = dimRefs.stream().anyMatch(model::isTemporal);
+            if (hasTemporalDim && dsl.granularity() == AskDsl.Granularity.DAY
+                    && shiftUnit != null && !"DAY".equals(shiftUnit)) {
+                throw new IllegalArgumentException(
+                        "按天分组时只能做**按天平移**的对比：按" + ("YEAR".equals(shiftUnit) ? "年" : "月")
+                                + "平移会把不同的天并进同一组（月末 31 日 → 30 日、闰年 2 月 29 日），"
+                                + "增长率会静默算错。请按月或按年分组，或改用相差整天的两段对比期");
+            }
         }
 
         // ⑤ SELECT 子句。脱敏列渲染成常量，数据不出库
@@ -194,8 +238,7 @@ public final class AskSqlRenderer {
                 // 把上一期的行平移到本期：2024-03 → 2025-03，两者才落在同一组。
                 // 判据用 timeCol 而不是这一列本身——窗口是由 timeCol 划定的，
                 // 维度列可能是另一个日期字段
-                String shifted = dialect.addInterval(
-                        compare == AskDsl.Compare.YOY ? "YEAR" : "MONTH", expr, 1);
+                String shifted = dialect.addInterval(shiftUnit, expr, shiftAmount);
                 expr = "CASE WHEN " + timeCol + " < ? THEN " + shifted + " ELSE " + expr + " END";
                 shiftParam = rt.startInclusive();
                 params.add(shiftParam);
@@ -235,29 +278,29 @@ public final class AskSqlRenderer {
             if (compare != null) {
                 String curCond = timeCol + " >= ? AND " + timeCol + " < ?";
                 String prevCond = timeCol + " >= ? AND " + timeCol + " < ?";
-                curWrap = col -> {
-                    params.add(rt.startInclusive());
-                    params.add(rt.endExclusive());
-                    return "CASE WHEN " + curCond + " THEN " + col + " END";
+                curWrap = p -> {
+                    p.add(rt.startInclusive());
+                    p.add(rt.endExclusive());
+                    return col -> "CASE WHEN " + curCond + " THEN " + col + " END";
                 };
-                prevWrap = col -> {
-                    params.add(prevRange.startInclusive());
-                    params.add(prevRange.endExclusive());
-                    return "CASE WHEN " + prevCond + " THEN " + col + " END";
+                prevWrap = p -> {
+                    p.add(prevRange.startInclusive());
+                    p.add(prevRange.endExclusive());
+                    return col -> "CASE WHEN " + prevCond + " THEN " + col + " END";
                 };
             }
 
             if (compare == null) {
                 addColumn(selectParts, outColumns, dialect, name,
-                        maskedOut ? "'***'" : renderMetric(m, dialect, IDENTITY), maskedOut);
+                        maskedOut ? "'***'" : renderMetric(m, dialect, IDENTITY, params), maskedOut);
             } else {
                 // 本期 / 上期 / 增长率。只给增长率看不出量级，只给两期又要用户自己算
-                String curExpr = maskedOut ? "'***'" : renderMetric(m, dialect, curWrap);
-                String prevExpr = maskedOut ? "'***'" : renderMetric(m, dialect, prevWrap);
+                String curExpr = maskedOut ? "'***'" : renderMetric(m, dialect, curWrap, params);
+                String prevExpr = maskedOut ? "'***'" : renderMetric(m, dialect, prevWrap, params);
                 String growthExpr = maskedOut ? "'***'"
-                        : "(" + renderMetric(m, dialect, curWrap)
-                        + " - " + renderMetric(m, dialect, prevWrap) + ") / NULLIF("
-                        + renderMetric(m, dialect, prevWrap) + ", 0)";
+                        : "(" + renderMetric(m, dialect, curWrap, params)
+                        + " - " + renderMetric(m, dialect, prevWrap, params) + ") / NULLIF("
+                        + renderMetric(m, dialect, prevWrap, params) + ", 0)";
                 addColumn(selectParts, outColumns, dialect, name, curExpr, maskedOut);
                 addColumn(selectParts, outColumns, dialect, name + "上期", prevExpr, maskedOut);
                 addColumn(selectParts, outColumns, dialect, name + compare.label(), growthExpr, maskedOut);
@@ -273,8 +316,8 @@ public final class AskSqlRenderer {
                     shareExpr = "'***'";
                 } else {
                     ColumnWrapper w = compare == null ? IDENTITY : curWrap;
-                    shareExpr = "(" + renderMetric(m, dialect, w) + ") / NULLIF(SUM("
-                            + renderMetric(m, dialect, w) + ") OVER (), 0)";
+                    shareExpr = "(" + renderMetric(m, dialect, w, params) + ") / NULLIF(SUM("
+                            + renderMetric(m, dialect, w, params) + ") OVER (), 0)";
                 }
                 addColumn(selectParts, outColumns, dialect, shareName, shareExpr, maskedOut);
             }
@@ -604,32 +647,91 @@ public final class AskSqlRenderer {
         // Denied 到不了这里——PermissionGuard 已经把它转成 Denied 决策了。
     }
 
-    /** 一个指标引用涉及的表别名。派生指标要把所有输入列所在的表都算上。 */
+    /**
+     * 一个指标引用涉及的表别名。
+     *
+     * <p>派生指标要把所有输入所在的表算上；带条件的指标还要把**条件字段**所在的表算上——
+     * 星型模型里状态、渠道这类条件字段通常在维表上，不拉进来就是
+     * {@code Unknown column t5.status}。
+     */
     private static Set<String> aliasesOf(MetricRef m) {
-        if (m instanceof MetricRef.Column cm) {
-            return Set.of(cm.ref().tableAlias());
-        }
-        MetricRef.Derived dm = (MetricRef.Derived) m;
         Set<String> out = new LinkedHashSet<>();
-        dm.inputs().forEach(r -> out.add(r.tableAlias()));
+        collectAliases(m, out);
         return out;
     }
 
-    /** 把一个已引用的列表达式再包一层。同环比用它加窗口过滤。 */
+    private static void collectAliases(MetricRef m, Set<String> out) {
+        if (m instanceof MetricRef.Column cm) {
+            out.add(cm.ref().tableAlias());
+            if (cm.condition() != null) {
+                out.add(cm.condition().field().tableAlias());
+            }
+            return;
+        }
+        ((MetricRef.Derived) m).inputs().forEach(input -> collectAliases(input, out));
+    }
+
+    /**
+     * 把一个已引用的列表达式再包一层。同环比用它加窗口过滤。
+     *
+     * <p><strong>两段式</strong>：先 {@link #begin} 追加参数，再 {@code apply} 包表达式。
+     * 同环比的 CASE 在外层、指标的统计条件在内层，而 SQL 文本里外层占位符在前——
+     * 若等包完再追加参数，两边的参数顺序就反了，查询会静默算出错的数。
+     */
     @FunctionalInterface
     private interface ColumnWrapper {
-        String wrap(String quotedColumn);
+        java.util.function.UnaryOperator<String> begin(List<Object> params);
     }
 
     /** 不包装。绝大多数查询走这一条。 */
-    private static final ColumnWrapper IDENTITY = c -> c;
+    private static final ColumnWrapper IDENTITY = params -> java.util.function.UnaryOperator.identity();
 
     /** 按指标类型渲染表达式。包装器对普通列与派生指标的每个输入都生效。 */
-    private static String renderMetric(MetricRef m, SqlDialect dialect, ColumnWrapper w) {
+    private static String renderMetric(MetricRef m, SqlDialect dialect,
+                                       ColumnWrapper w, List<Object> params) {
         if (m instanceof MetricRef.Column cm) {
-            return aggregated(cm.ref(), dialect, w);
+            return renderColumn(cm, dialect, w, params);
         }
-        return renderDerived((MetricRef.Derived) m, dialect, w);
+        return renderDerived((MetricRef.Derived) m, dialect, w, params);
+    }
+
+    /**
+     * 一列指标：{@code AGG(包装(CASE 条件 THEN 列 END))}。
+     *
+     * <p>条件用 CASE 而不是 WHERE：它只作用于**这一列**，
+     * 同一条查询里的其它指标、以及分组都不受影响。
+     */
+    private static String renderColumn(MetricRef.Column cm, SqlDialect dialect,
+                                       ColumnWrapper w, List<Object> params) {
+        java.util.function.UnaryOperator<String> shell = w.begin(params);
+        String expr = columnRef(cm.ref(), dialect);
+        if (cm.condition() != null) {
+            expr = conditionCase(cm.condition(), expr, dialect, params);
+        }
+        return cm.ref().agg().wrap(shell.apply(expr));
+    }
+
+    /** 把统计条件渲染成 ARG 位置上的 CASE。取值一律走占位符。 */
+    private static String conditionCase(MetricRef.Condition c, String columnExpr,
+                                        SqlDialect dialect, List<Object> params) {
+        String field = columnRef(c.field(), dialect);
+        String cond;
+        if ("IN".equals(c.op())) {
+            List<String> values = splitInValues(c.value());
+            if (values.isEmpty()) {
+                throw new IllegalStateException("统计条件 in 的取值为空：" + c.value());
+            }
+            values.forEach(params::add);
+            cond = field + " IN (" + String.join(", ",
+                    Collections.nCopies(values.size(), "?")) + ")";
+        } else if ("LIKE".equals(c.op())) {
+            params.add(c.value());
+            cond = field + " LIKE ?";
+        } else {
+            params.add(c.value());
+            cond = field + ("!=".equals(c.op()) ? " <> " : " " + c.op() + " ") + "?";
+        }
+        return "CASE WHEN " + cond + " THEN " + columnExpr + " END";
     }
 
     /** 该指标是否必须脱敏。派生指标看它的**全部**输入。 */
@@ -638,7 +740,7 @@ public final class AskSqlRenderer {
             return isMasked(masked, cm.ref().column());
         }
         return ((MetricRef.Derived) m).inputs().stream()
-                .anyMatch(r -> isMasked(masked, r.column()));
+                .anyMatch(input -> isMetricMasked(input, masked));
     }
 
     private static void addColumn(List<String> selectParts,
@@ -657,17 +759,20 @@ public final class AskSqlRenderer {
      * <p>差值与比值都先各自聚合再运算（{@code SUM(a)/SUM(b)}），
      * 不是逐行相除再求和——后者在多数场景下是错的，且错得不明显。
      */
-    private static String renderDerived(MetricRef.Derived m, SqlDialect dialect, ColumnWrapper w) {
-        List<FieldRef> in = m.inputs();
+    private static String renderDerived(MetricRef.Derived m, SqlDialect dialect,
+                                        ColumnWrapper w, List<Object> params) {
+        List<MetricRef> in = m.inputs();
         if (m.spec().kind() == DerivedMetric.Kind.DURATION) {
             // 起止各自包一层：窗口外的行两端都成 NULL，TIMESTAMPDIFF 得 NULL，
             // AVG 自动忽略——比在整条差值外面包 CASE 更直白
             return "AVG(" + dialect.timeDiffToNumber(m.spec().unit(),
-                    w.wrap(columnRef(in.get(0), dialect)),
-                    w.wrap(columnRef(in.get(1), dialect))) + ")";
+                    durationOperand(in.get(0), dialect, w, params),
+                    durationOperand(in.get(1), dialect, w, params)) + ")";
         }
-        String left = aggregated(in.get(0), dialect, w);
-        String right = aggregated(in.get(1), dialect, w);
+        // 输入自己可能带统计条件（例如「已解决占比」的分子），
+        // 走 renderMetric 才能把条件带上
+        String left = renderMetric(in.get(0), dialect, w, params);
+        String right = renderMetric(in.get(1), dialect, w, params);
         return switch (m.spec().kind()) {
             case RATIO -> "(" + left + ") / NULLIF(" + right + ", 0)";
             case DIFF -> "(" + left + ") - (" + right + ")";
@@ -675,9 +780,13 @@ public final class AskSqlRenderer {
         };
     }
 
-    /** 一列的「引用 + 聚合」表达式。时长的输入是维度列，agg 为 NONE，原样返回。 */
-    private static String aggregated(FieldRef r, SqlDialect dialect, ColumnWrapper w) {
-        return r.agg().wrap(w.wrap(columnRef(r, dialect)));
+    /** 时长的输入是时间列本身（agg=NONE），包装后直接取用，不再套聚合。 */
+    private static String durationOperand(MetricRef m, SqlDialect dialect,
+                                          ColumnWrapper w, List<Object> params) {
+        if (!(m instanceof MetricRef.Column cm)) {
+            throw new IllegalStateException("时长的输入必须是物理列");
+        }
+        return w.begin(params).apply(columnRef(cm.ref(), dialect));
     }
 
     private static String columnRef(FieldRef r, SqlDialect dialect) {

@@ -64,7 +64,7 @@ INSERT INTO `ask_domain_table` (`id`,`domain_id`,`name`,`label`,`mode`,`sql_text
  (230001,2300,'f_order','门店商品订购','TABLE',NULL,
   '[{"col":"amount","type":"decimal","agg":"SUM","alias":"订单金额","enabled":true},{"col":"id","type":"bigint","agg":"COUNT","alias":"订单数","enabled":true}]',1,0,'demo'),
  (230002,2300,'f_stock','门店商品库存','TABLE',NULL,
-  '[{"col":"qty","type":"int","agg":"SUM","alias":"库存数量","enabled":true}]',1,1,'demo'),
+  '[{"col":"qty","type":"int","agg":"SUM","alias":"库存数量","enabled":true},{"col":"id","type":"bigint","agg":"COUNT","alias":"高库存门店数","enabled":true,"condition":{"field":"库存数量","op":">","value":"60"}}]',1,1,'demo'),
  (230003,2300,'f_scrap','门店商品报废','TABLE',NULL,
   '[{"col":"amount","type":"decimal","agg":"SUM","alias":"报废金额","enabled":true}]',1,2,'demo'),
  (230004,2300,'f_attendance','门店员工打卡','TABLE',NULL,

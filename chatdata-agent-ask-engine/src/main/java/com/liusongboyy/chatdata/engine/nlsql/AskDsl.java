@@ -104,45 +104,91 @@ public record AskDsl(
     }
 
     /**
-     * 同环比。
+     * 同环比 / 自定义对比期。
      *
-     * <h2>只做两种，且与粒度绑定</h2>
+     * <h2>三种对比方式</h2>
      *
-     * <p>同比按**年**平移、环比按**月**平移。粒度决定平移后能否对齐：
      * <ul>
-     *   <li>同比：按月或按年分组。按天分组会踩到 2 月 29 日——平移到上一年会落到
-     *       2 月 28 日，与当年的 2 月 28 日撞进同一组，比例静默算错</li>
-     *   <li>环比：按天或按月分组</li>
+     *   <li><b>同比（yoy）</b>：与上一年同期比。粒度必须是月或年——按天分组会踩到
+     *       2 月 29 日，平移到上一年会落到 2 月 28 日，与当年的 2 月 28 日撞进同一组</li>
+     *   <li><b>环比（mom）</b>：与上一个月比。粒度是月或天</li>
+     *   <li><b>自定义（custom）</b>：与用户点名的某段时间比（「比 2023 年」）。
+     *       两个窗口长度、相位一致时才能把上一期平移到本期；否则在没有时间维度时仍可用
+     *       （就是"本期总额 vs 那一期总额"），有分组时**拒绝**而不是近似</li>
      * </ul>
-     * 其余组合在渲染前直接拒绝，不做近似。
+     *
+     * <p>对比期由系统计算，不接受用户直接给偏移量——那等于让模型做算术。
      */
-    public enum Compare {
-        /** 同比：与上个年度的同一时段比。 */
-        YOY("同比"),
-        /** 环比：与上个周期（月）比。 */
-        MOM("环比");
+    public record Compare(Mode mode, String start, String end) {
 
-        private final String label;
-
-        Compare(String label) {
-            this.label = label;
+        public enum Mode {
+            YOY, MOM, CUSTOM
         }
 
-        /** 中文标签，用于生成输出列名（如「保费同比」）。 */
+        public Compare {
+            if (mode == null) {
+                throw new IllegalArgumentException("compare 缺少 mode");
+            }
+            if (mode != Mode.CUSTOM) {
+                start = null;
+                end = null;
+            } else {
+                if (start == null || start.isBlank() || end == null || end.isBlank()) {
+                    throw new IllegalArgumentException(
+                            "自定义对比期必须同时给出 start 与 end（yyyy-MM-dd）");
+                }
+                start = requireIsoDate(start, "start");
+                end = requireIsoDate(end, "end");
+                java.time.LocalDate s = java.time.LocalDate.parse(start);
+                java.time.LocalDate e = java.time.LocalDate.parse(end);
+                if (!s.isBefore(e)) {
+                    throw new IllegalArgumentException(
+                            "自定义对比期的起点必须早于终点：" + start + " ~ " + end);
+                }
+            }
+        }
+
+        private static String requireIsoDate(String raw, String field) {
+            try {
+                return java.time.LocalDate.parse(raw.trim()).toString();
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new IllegalArgumentException(
+                        "自定义对比期的 " + field + " 不是合法日期（应为 yyyy-MM-dd）：" + raw);
+            }
+        }
+
+        public static Compare yoy() {
+            return new Compare(Mode.YOY, null, null);
+        }
+
+        public static Compare mom() {
+            return new Compare(Mode.MOM, null, null);
+        }
+
+        public static Compare custom(String start, String end) {
+            return new Compare(Mode.CUSTOM, start, end);
+        }
+
+        /** 中文标签，用于生成输出列名（如「保费同比」「保费对比」）。 */
         public String label() {
-            return label;
+            return switch (mode) {
+                case YOY -> "同比";
+                case MOM -> "环比";
+                case CUSTOM -> "对比";
+            };
         }
 
-        /** 解析。null / 空返回 null（不对比）；不认识的取值抛异常，不静默忽略。 */
+        /** 解析 yoy / mom / 同比 / 环比。null / 空返回 null；不认识的取值抛异常。 */
         public static Compare parse(String raw) {
             if (raw == null || raw.isBlank()) {
                 return null;
             }
             return switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
-                case "yoy", "同比" -> YOY;
-                case "mom", "环比" -> MOM;
+                case "yoy", "同比" -> yoy();
+                case "mom", "环比" -> mom();
                 default -> throw new IllegalArgumentException(
-                        "compare 只能是 yoy / mom（或「同比」「环比」），实际：" + raw);
+                        "compare 只能填 yoy / mom，或 {\"mode\":\"custom\",\"start\":\"...\",\"end\":\"...\"}"
+                                + "（也接受「同比」「环比」），实际：" + raw);
             };
         }
     }

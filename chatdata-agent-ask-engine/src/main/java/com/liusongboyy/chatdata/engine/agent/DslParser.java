@@ -63,7 +63,7 @@ public final class DslParser {
                     sort(root.path("sort")),
                     limit(root.path("limit")),
                     stringList(root.path("shareOf")),
-                    AskDsl.Compare.parse(root.path("compare").asText(null)));
+                    compare(root.path("compare")));
         } catch (IllegalArgumentException e) {
             // AskDsl 的构造期校验（排序方向、limit、compare 取值）抛的是
             // IllegalArgumentException；对上层统一成"模型给的 DSL 不合法"，
@@ -119,6 +119,31 @@ public final class DslParser {
             return new AskDsl.Sort(parts[0], null);
         }
         return new AskDsl.Sort(parts[0], parts[1]);
+    }
+
+    /**
+     * 同环比 / 自定义对比期。
+     *
+     * <p>容忍两种形态：字符串（{@code "yoy"}）与对象
+     * （{@code {"mode":"custom","start":"2023-01-01","end":"2023-12-31"}}）。
+     */
+    private static AskDsl.Compare compare(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            return AskDsl.Compare.parse(node.asText());
+        }
+        if (node.isObject()) {
+            String mode = textOrNull(node.path("mode"));
+            if (mode == null || "custom".equalsIgnoreCase(mode.trim())) {
+                // 只有 start/end 没写 mode 时按自定义处理：这是最自然的写法
+                return AskDsl.Compare.custom(textOrNull(node.path("start")), textOrNull(node.path("end")));
+            }
+            return AskDsl.Compare.parse(mode);
+        }
+        throw new DslGenerationException(
+                "compare 的格式不对：应为字符串（yoy/mom）或对象（mode/start/end）");
     }
 
     /**

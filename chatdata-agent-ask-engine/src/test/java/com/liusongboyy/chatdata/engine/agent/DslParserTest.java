@@ -255,7 +255,41 @@ class DslParserTest {
                      "shareOf":["保费"],"compare":"yoy"}""");
 
             assertThat(dsl.shareOf()).containsExactly("保费");
-            assertThat(dsl.compare()).isEqualTo(AskDsl.Compare.YOY);
+            assertThat(dsl.compare().mode()).isEqualTo(AskDsl.Compare.Mode.YOY);
+        }
+
+        @Test
+        @DisplayName("自定义对比期：对象形态，字符串形态也兼容")
+        void customCompare() {
+            AskDsl dsl = DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":["生效日期"],"filters":[],
+                     "compare":{"mode":"custom","start":"2023-01-01","end":"2023-12-31"}}""");
+
+            assertThat(dsl.compare().mode()).isEqualTo(AskDsl.Compare.Mode.CUSTOM);
+            assertThat(dsl.compare().start()).isEqualTo("2023-01-01");
+            assertThat(dsl.compare().end()).isEqualTo("2023-12-31");
+
+            // 只给 start/end 不写 mode，按自定义处理
+            AskDsl noMode = DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],
+                     "compare":{"start":"2023-01-01","end":"2023-12-31"}}""");
+            assertThat(noMode.compare().mode()).isEqualTo(AskDsl.Compare.Mode.CUSTOM);
+        }
+
+        @Test
+        @DisplayName("自定义对比期缺日期 / 日期不合法 → 拒绝")
+        void invalidCustomCompare() {
+            assertThatThrownBy(() -> DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],
+                     "compare":{"mode":"custom","start":"2023-01-01"}}"""))
+                    .isInstanceOf(DslGenerationException.class)
+                    .hasMessageContaining("start");
+
+            assertThatThrownBy(() -> DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],
+                     "compare":{"mode":"custom","start":"2023-13-01","end":"2023-12-31"}}"""))
+                    .isInstanceOf(DslGenerationException.class)
+                    .hasMessageContaining("yyyy-MM-dd");
         }
 
         @Test

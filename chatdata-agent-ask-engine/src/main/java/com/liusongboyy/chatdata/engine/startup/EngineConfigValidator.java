@@ -169,16 +169,20 @@ public final class EngineConfigValidator {
 
         for (RegisteredTable t : domain.visibleTables()) {
             for (ColumnDef c : t.columns()) {
-                if (c.derived() == null || !c.enabled()) {
+                // 派生指标与带条件的指标都要解析一遍：两者都引用别的字段，
+                // 引错时只有在用户提问那一刻才暴露
+                boolean derived = c.derived() != null;
+                if (!c.enabled() || (!derived && c.condition() == null)) {
                     continue;
                 }
                 try {
                     model.resolveMetricRef(c.alias());
                 } catch (SemanticException e) {
-                    out.add(new EngineConfigViolation(
-                            EngineConfigViolation.Category.BROKEN_DERIVED_METRIC,
+                    out.add(new EngineConfigViolation(derived
+                            ? EngineConfigViolation.Category.BROKEN_DERIVED_METRIC
+                            : EngineConfigViolation.Category.BROKEN_METRIC_CONDITION,
                             domain.id(), domain.displayName(),
-                            "表「" + t.displayName() + "」的派生指标「" + c.displayName() + "」无法解析："
+                            "表「" + t.displayName() + "」的指标「" + c.displayName() + "」无法解析："
                                     + e.getMessage()));
                 }
             }

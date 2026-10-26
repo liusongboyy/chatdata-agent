@@ -108,6 +108,18 @@ const DERIVED_KIND_OPTIONS: { value: '' | DerivedKind; label: string }[] = [
   { value: 'duration', label: '派生·时长' },
 ]
 
+/** 统计条件的运算符。展示用 ≠ / ≥，传后端的是 ASCII 写法。 */
+const CONDITION_OPS = [
+  { value: '=', label: '= 等于' },
+  { value: '!=', label: '≠ 不等于' },
+  { value: '>', label: '> 大于' },
+  { value: '<', label: '< 小于' },
+  { value: '>=', label: '≥ 大于等于' },
+  { value: '<=', label: '≤ 小于等于' },
+  { value: 'in', label: 'in 属于（逗号分隔）' },
+  { value: 'like', label: 'like 包含' },
+]
+
 const DURATION_UNITS = [
   { value: 'SECOND', label: '秒' },
   { value: 'MINUTE', label: '分钟' },
@@ -200,6 +212,22 @@ function addColumn(): void {
   ]
 }
 
+function addCondition(c: ColumnDef): void {
+  c.condition = { field: '', op: '=', value: '' }
+}
+
+function removeCondition(c: ColumnDef): void {
+  c.condition = null
+}
+
+/** 条件的人话写法，用于预览与列表展示。 */
+function conditionText(c: ColumnDef): string {
+  const d = c.condition
+  if (!d) return ''
+  const op = d.op === '!=' ? '≠' : d.op
+  return `${d.field || '?'} ${op} ${d.value || '?'}`
+}
+
 function addDerivedColumn(): void {
   form.value.columns = [
     ...form.value.columns,
@@ -227,6 +255,7 @@ function onKindChange(c: ColumnDef, event: Event): void {
   // 否则保存时会被后端拒绝（规则与运行时同一份）
   c.col = ''
   c.agg = ''
+  c.condition = null
 }
 
 /**
@@ -283,6 +312,22 @@ async function save(): Promise<void> {
   saving.value = true
   formError.value = ''
   try {
+    const badCondition = form.value.columns.find(
+      (c) => c.condition && (!c.condition.field || !(c.condition.value ?? '').trim()),
+    )
+    if (badCondition) {
+      formError.value = `列「${badCondition.alias || badCondition.col}」的统计条件还没填完`
+      return
+    }
+    const conditionOnDimension = form.value.columns.find(
+      (c) => c.condition && !c.derived && !c.agg,
+    )
+    if (conditionOnDimension) {
+      formError.value = `列「${conditionOnDimension.alias || conditionOnDimension.col}」配了统计条件，`
+        + '但没有聚合方式——条件只对指标有意义'
+      return
+    }
+
     const nameless = form.value.columns.find(
       (c) => c.derived && (c.alias ?? '').trim() === '',
     )
@@ -629,6 +674,7 @@ async function remove(t: DomainTable): Promise<void> {
             <span v-if="c.derived" class="col-derived mono">{{ derivedFormula(c) }}</span>
             <span v-else class="col-name mono">{{ c.col }}</span>
             <span v-if="c.agg" class="col-agg">{{ c.agg }}</span>
+            <span v-if="c.condition" class="col-cond">仅 {{ conditionText(c) }}</span>
             <span v-if="!c.enabled" class="col-off">已关闭</span>
           </li>
           <li v-if="parseColumns(t.columnsJson).length === 0" class="sub">（没有列定义）</li>
@@ -980,6 +1026,43 @@ async function remove(t: DomainTable): Promise<void> {
                 </button>
               </div>
 
+              <!-- 统计条件：只影响这一列的聚合，用 CASE 渲染 -->
+              <div v-if="c.condition" class="derived-row">
+                <label class="derived-slot">
+                  <span>条件字段</span>
+                  <select v-model="c.condition.field" class="input mono">
+                    <option value="">选择字段…</option>
+                    <option v-for="o in fieldOptions" :key="o.name" :value="o.name">
+                      {{ o.name }} · {{ o.table }}
+                    </option>
+                  </select>
+                </label>
+                <label class="derived-slot">
+                  <span>运算符</span>
+                  <select v-model="c.condition.op" class="input">
+                    <option v-for="o in CONDITION_OPS" :key="o.value" :value="o.value">
+                      {{ o.label }}
+                    </option>
+                  </select>
+                </label>
+                <label class="derived-slot">
+                  <span>取值</span>
+                  <input v-model="c.condition.value" class="input" placeholder="已解决" />
+                </label>
+                <p class="derived-formula mono">
+                  仅统计满足「{{ conditionText(c) }}」的行
+                  <button class="link-btn" type="button" @click="removeCondition(c)">移除条件</button>
+                </p>
+              </div>
+              <button
+                v-else-if="!c.derived && c.agg"
+                class="link-btn cond-add"
+                type="button"
+                @click="addCondition(c)"
+              >
+                ＋ 统计条件
+              </button>
+
               <!-- 派生指标的输入：只有选全了才保存得下去 -->
               <div v-if="c.derived" class="derived-row">
                 <template v-if="c.derived.kind === 'duration'">
@@ -1149,6 +1232,11 @@ async function remove(t: DomainTable): Promise<void> {
   font-size: var(--text-xs);
 }
 
+.col-cond {
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+}
+
 /* ── 弹层 ── */
 .self-end {
   align-self: end;
@@ -1219,6 +1307,28 @@ async function remove(t: DomainTable): Promise<void> {
   margin: 0;
   font-size: var(--text-xs);
   color: var(--ink-faint);
+}
+
+/* 轻量按钮：用于"＋ 统计条件""移除条件"这类就地动作，
+   用整颗按钮会把列编辑器挤成一堆色块 */
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--ink);
+}
+
+.cond-add {
+  align-self: flex-start;
+  margin-left: var(--space-3);
 }
 
 .col-head {

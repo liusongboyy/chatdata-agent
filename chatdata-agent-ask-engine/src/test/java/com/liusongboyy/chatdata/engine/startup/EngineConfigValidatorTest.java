@@ -409,6 +409,21 @@ class EngineConfigValidatorTest {
         }
 
         @Test
+        @DisplayName("★ 统计条件字段写错 → 启动时报，不等到提问")
+        void brokenConditionReported() {
+            RegisteredTable t = new RegisteredTable("3", "ticket", "工单表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "已解决工单数", true,
+                            null, new com.liusongboyy.chatdata.engine.semantic.MetricCondition(
+                                    "不存在的列", "=", "RESOLVED"))));
+            Domain domain = goodDomain(granted(), List.of(t), List.of());
+
+            assertThat(EngineConfigValidator.validate(domain, DATASOURCES))
+                    .anySatisfy(v -> assertThat(v.category())
+                            .isEqualTo(EngineConfigViolation.Category.BROKEN_METRIC_CONDITION));
+        }
+
+        @Test
         @DisplayName("列被关掉 → 不报：模型本来也问不到它")
         void disabledDerivedSkipped() {
             assertThat(check(new ColumnDef(null, "decimal", Aggregation.NONE, "赔付率", false,

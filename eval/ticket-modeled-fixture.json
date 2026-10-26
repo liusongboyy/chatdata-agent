@@ -771,6 +771,31 @@
       "note": "夹具数据；gold 结果 1 行。"
     },
     {
+      "id": "ticket-m-064",
+      "difficulty": "MEDIUM",
+      "question": "已解决的工单占全部工单的比例是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT COUNT(CASE WHEN status = 'RESOLVED' THEN ticket_no END) / COUNT(ticket_no) AS ratio FROM ticket WHERE deleted = 0",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "condition",
+        "derived"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-065",
+      "difficulty": "SIMPLE",
+      "question": "已解决的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'RESOLVED'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "condition"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
       "id": "ticket-m-062",
       "difficulty": "MEDIUM",
       "question": "工单数最多的 5 个分类分别是哪几个？",

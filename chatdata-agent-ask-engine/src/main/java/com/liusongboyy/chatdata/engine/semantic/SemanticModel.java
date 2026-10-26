@@ -209,18 +209,54 @@ public final class SemanticModel {
                                 + "请在语义建模中为它设置 SUM / COUNT 等聚合，或把它当维度用");
             }
             return new MetricRef.Column(new FieldRef(
-                    aliasByTableId.get(c.table().id()), col.col(), col.agg(), FieldKind.METRIC));
+                    aliasByTableId.get(c.table().id()), col.col(), col.agg(), FieldKind.METRIC),
+                    conditionOf(col));
         }
 
         DerivedMetric d = col.derived();
-        List<FieldRef> inputs = d.kind() == DerivedMetric.Kind.DURATION
+        List<MetricRef> inputs = d.kind() == DerivedMetric.Kind.DURATION
                 // 时间列本身是维度（agg=NONE），时长由渲染器用方言函数算差
-                ? List.of(resolve(d.start(), FieldKind.DIMENSION),
-                          resolve(d.end(), FieldKind.DIMENSION))
-                // 比值/差值的两侧是聚合后的指标
-                : List.of(resolve(d.left(), FieldKind.METRIC),
-                          resolve(d.right(), FieldKind.METRIC));
+                ? List.of(new MetricRef.Column(resolve(d.start(), FieldKind.DIMENSION)),
+                          new MetricRef.Column(resolve(d.end(), FieldKind.DIMENSION)))
+                // 比值/差值的两侧是聚合后的指标；输入自己也可能带统计条件，
+                // 所以走 metricColumn 而不是 resolve——丢条件等于分子分母口径不一致
+                : List.of(metricColumn(d.left()), metricColumn(d.right()));
         return new MetricRef.Derived(d, inputs);
+    }
+
+    /**
+     * 解析一个可作为**聚合输入**的指标列。
+     *
+     * <p>与 {@link #resolveMetricRef} 的区别：后者允许派生指标，这里只允许物理列——
+     * 派生指标不能再当别的派生指标的输入（{@code resolve} 会拒绝）。
+     *
+     * <p>必须保留统计条件：派生指标的分子分母各自的条件是口径的一部分。
+     */
+    private MetricRef.Column metricColumn(String name) {
+        Candidate c = requireCandidate(name);
+        FieldRef ref = resolve(name, FieldKind.METRIC);
+        return new MetricRef.Column(ref, conditionOf(c.column()));
+    }
+
+    /**
+     * 把列定义上的统计条件解析成"哪个表的哪个列"。
+     *
+     * <p>条件字段不做角色校验：状态、渠道这类列在建模里通常是维度，
+     * 但它们完全可以出现在指标的条件里。
+     */
+    private MetricRef.Condition conditionOf(ColumnDef col) {
+        MetricCondition mc = col.condition();
+        if (mc == null) {
+            return null;
+        }
+        Candidate cond = requireCandidate(mc.field());
+        if (cond.column().derived() != null) {
+            throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
+                    "统计条件「" + mc.display() + "」引用的是派生指标「" + mc.field()
+                            + "」，条件里只能引用物理列");
+        }
+        FieldRef ref = resolveAny(mc.field());
+        return new MetricRef.Condition(ref, mc.op(), mc.value());
     }
 
     /** 解析指标。 */

@@ -97,7 +97,15 @@ public record EngineConfigViolation(
          * 并且它常常只坏一半：同域的普通指标全都正常，只有这一个不可用，
          * 比整域不可用更难被发现。故为 ERROR。
          */
-        BROKEN_DERIVED_METRIC("派生指标引用无效", Severity.ERROR);
+        BROKEN_DERIVED_METRIC("派生指标引用无效", Severity.ERROR),
+
+        /**
+         * 带条件的指标里，条件字段解析不到。
+         *
+         * <p>与派生指标同一个道理：条件字段写错时指标仍然"能问"，
+         * 只是算出来是空集或报 Unknown column，而错因离配置现场很远。
+         */
+        BROKEN_METRIC_CONDITION("指标统计条件无效", Severity.ERROR);
 
         /** 严重度。 */
         public enum Severity {

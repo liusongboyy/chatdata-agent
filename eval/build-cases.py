@@ -385,6 +385,13 @@ INSURANCE_2 = [
      "SUM(premium) / (SELECT SUM(premium) FROM ins_policy) AS ratio "
      "FROM ins_policy GROUP BY region",
      False, ["share"]),
+    ("insurance-066", "HARD", "2025 年全年保费比 2023 年全年增长了多少？用 0 到 1 之间的小数表示",
+     "SELECT cur, prev, (cur - prev) / prev AS growth FROM ("
+     "SELECT (SELECT SUM(premium) FROM ins_policy "
+     "        WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01') AS cur, "
+     "       (SELECT SUM(premium) FROM ins_policy "
+     "        WHERE effect_date >= '2023-01-01' AND effect_date < '2024-01-01') AS prev) t",
+     False, ["compare", "custom"]),
     ("insurance-065", "HARD", "2025 年全年保费比 2024 年全年增长了多少？用 0 到 1 之间的小数表示",
      "SELECT cur, prev, (cur - prev) / prev AS growth FROM ("
      "SELECT (SELECT SUM(premium) FROM ins_policy "
@@ -495,6 +502,13 @@ TICKET_MODELED_2 = [
     ("ticket-m-060", "HARD", "处理人 7 的工单里，平均解决时长（小时）是多少？",
      "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket "
      "WHERE deleted = 0 AND assignee_id = 7 AND resolved_at IS NOT NULL", False, ["business"]),
+    ("ticket-m-064", "MEDIUM", "已解决的工单占全部工单的比例是多少？用 0 到 1 之间的小数表示",
+     "SELECT COUNT(CASE WHEN status = 'RESOLVED' THEN ticket_no END) / COUNT(ticket_no) AS ratio "
+     "FROM ticket WHERE deleted = 0",
+     False, ["condition", "derived"]),
+    ("ticket-m-065", "SIMPLE", "已解决的工单有多少张？",
+     "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'RESOLVED'",
+     False, ["condition"]),
     ("ticket-m-062", "MEDIUM", "工单数最多的 5 个分类分别是哪几个？",
      "SELECT c.name, COUNT(*) AS cnt FROM ticket t "
      "JOIN ticket_category c ON t.category_id = c.id "

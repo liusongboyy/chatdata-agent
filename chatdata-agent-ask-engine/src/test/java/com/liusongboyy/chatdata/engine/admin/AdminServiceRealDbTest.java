@@ -359,8 +359,10 @@ class AdminServiceRealDbTest {
             MetricRef.Derived d = (MetricRef.Derived) ref;
             assertThat(d.spec().kind()).isEqualTo(DerivedMetric.Kind.RATIO);
             assertThat(d.inputs()).hasSize(2);
-            assertThat(d.inputs().get(0).column()).isEqualTo("settle_amount");
-            assertThat(d.inputs().get(1).column()).isEqualTo("apply_amount");
+            assertThat(((MetricRef.Column) d.inputs().get(0)).ref().column())
+                    .isEqualTo("settle_amount");
+            assertThat(((MetricRef.Column) d.inputs().get(1)).ref().column())
+                    .isEqualTo("apply_amount");
         }
 
         @Test

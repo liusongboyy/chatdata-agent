@@ -66,8 +66,11 @@ public final class PromptAssembler {
                    说「前 N」时另填 limit=N。没有排名要求时不要填 sort，也不要填 limit。
                 9. 用户说「占比/比重/构成/各占多少」时，把要算占比的指标名填进 shareOf，
                    **不要新造一个"占比"指标**。占比是相对本次结果总和而言的。
-                10. 用户明确说「同比/环比/比去年同期/比上月」时填 compare（yoy 或 mom），
-                    并且必须同时给出 timeRange 与 month 或 year 的粒度。
+                10. 用户要求对比时填 compare，并且必须同时给出 timeRange：
+                    - 说「同比 / 比去年同期」→ mode 填 yoy；说「环比 / 比上月」→ mode 填 mom。
+                      做同比时 granularity 必须是 month 或 year。
+                    - 点名了要对比的**具体时间段**（如「比 2023 年」「对比 2019 年全年」）→
+                      mode 填 custom，并给出该时间段的 start 与 end（yyyy-MM-dd）。
                     没说就不填——系统只在有明确对比意图时才算，猜一个对比口径会给出错误的增长率。
                 """);
 

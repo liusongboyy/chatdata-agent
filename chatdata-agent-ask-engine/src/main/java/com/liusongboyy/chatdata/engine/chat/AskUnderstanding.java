@@ -143,7 +143,14 @@ public record AskUnderstanding(
 
         return new AskUnderstanding(metrics, dimensions, timeWindow(dsl, today), filters,
                 dataScope(decision, model),
-                dsl.compare() == null ? null : dsl.compare().label());
+                dsl.compare() == null ? null : compareText(dsl.compare()));
+    }
+
+    /** 对比期回显。自定义对比期必须带上具体日期，否则用户不知道在跟哪一段比。 */
+    private static String compareText(AskDsl.Compare c) {
+        return c.mode() == AskDsl.Compare.Mode.CUSTOM
+                ? c.label() + " " + c.start() + " ~ " + c.end()
+                : c.label();
     }
 
     /**

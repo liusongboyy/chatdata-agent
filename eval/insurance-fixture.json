@@ -816,6 +816,19 @@
       "note": "夹具数据；gold 结果 6 行。"
     },
     {
+      "id": "insurance-066",
+      "difficulty": "HARD",
+      "question": "2025 年全年保费比 2023 年全年增长了多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT cur, prev, (cur - prev) / prev AS growth FROM (SELECT (SELECT SUM(premium) FROM ins_policy         WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01') AS cur,        (SELECT SUM(premium) FROM ins_policy         WHERE effect_date >= '2023-01-01' AND effect_date < '2024-01-01') AS prev) t",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "compare",
+        "custom"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
       "id": "insurance-065",
       "difficulty": "HARD",
       "question": "2025 年全年保费比 2024 年全年增长了多少？用 0 到 1 之间的小数表示",

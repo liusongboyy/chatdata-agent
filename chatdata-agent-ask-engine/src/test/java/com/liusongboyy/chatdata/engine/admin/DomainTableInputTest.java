@@ -59,6 +59,67 @@ class DomainTableInputTest {
     }
 
     @Nested
+    @DisplayName("统计条件")
+    class Condition {
+
+        private DomainTableInput.ColumnInput conditional(String alias, String op) {
+            return new DomainTableInput.ColumnInput("ticket_no", "varchar", "COUNT", alias, true,
+                    null, new DomainTableInput.ConditionInput("状态", op, "已解决"));
+        }
+
+        @Test
+        @DisplayName("★ 条件被写进 columns_json，且能按运行时同一份规则读回")
+        void serializesCondition() throws Exception {
+            DomainTableInput v = input(conditional("已解决工单数", "=")).validated();
+
+            JsonNode cv = M.readTree(v.columnsJson()).get(0).path("condition");
+            assertThat(cv.path("field").asText()).isEqualTo("状态");
+            assertThat(cv.path("op").asText()).isEqualTo("=");
+            assertThat(cv.path("value").asText()).isEqualTo("已解决");
+
+            com.liusongboyy.chatdata.engine.semantic.MetricCondition back =
+                    com.liusongboyy.chatdata.engine.semantic.MetricCondition.from(cv);
+            assertThat(back.field()).isEqualTo("状态");
+        }
+
+        @Test
+        @DisplayName("运算符写法被规范化：<> → !=")
+        void normalizesOperator() throws Exception {
+            DomainTableInput v = input(conditional("未解决工单数", "<>")).validated();
+
+            assertThat(M.readTree(v.columnsJson()).get(0).path("condition").path("op").asText())
+                    .isEqualTo("!=");
+        }
+
+        @Test
+        @DisplayName("维度加条件 → 拒绝（会让分组静默少行）")
+        void dimensionConditionRejected() {
+            DomainTableInput.ColumnInput c = new DomainTableInput.ColumnInput(
+                    "status", "varchar", "", "状态", true, null,
+                    new DomainTableInput.ConditionInput("状态", "=", "已解决"));
+
+            assertThatThrownBy(() -> input(c).validated())
+                    .isInstanceOf(AdminException.class)
+                    .hasMessageContaining("条件只对指标有意义");
+        }
+
+        @Test
+        @DisplayName("不认识的运算符 → 保存时就拒绝")
+        void unknownOperatorRejected() {
+            assertThatThrownBy(() -> input(conditional("X", "contains")).validated())
+                    .isInstanceOf(AdminException.class)
+                    .hasMessageContaining("运算符不受支持");
+        }
+
+        @Test
+        @DisplayName("没有条件时不写 condition 键")
+        void noConditionKey() throws Exception {
+            DomainTableInput v = input(plain("premium", "保费", "SUM")).validated();
+            assertThat(M.readTree(v.columnsJson()).get(0).has("condition")).isFalse();
+        }
+    }
+
+    @Nested
     @DisplayName("派生指标")
     class Derived {
 

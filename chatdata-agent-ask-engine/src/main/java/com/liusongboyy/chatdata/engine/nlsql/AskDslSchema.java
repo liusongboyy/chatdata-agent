@@ -125,12 +125,20 @@ public final class AskDslSchema {
                         + "其余情况返回空数组。占比是相对本次查询结果总和而言的。"));
 
         ObjectNode compare = props.putObject("compare");
-        compare.put("type", "string");
+        compare.put("type", "object");
         compare.put("description",
-                "同环比：同比填 yoy（与上一年同期比），环比填 mom（与上一个月比）。"
-                        + "只在用户明确说「同比」「环比」「比去年同期」「比上月」时填，"
-                        + "并且必须同时给出 timeRange 与 month/year 粒度；其余情况省略。");
-        compare.putArray("enum").add("yoy").add("mom");
+                "对比期。用户说「同比」填 mode=yoy（与上一年同期比）；说「环比」填 mode=mom"
+                        + "（与上一个月比）；用户点名了要对比的**具体时间段**（如「比 2023 年」）"
+                        + "填 mode=custom 并给出 start/end。必须同时提供 timeRange；"
+                        + "做同比时 granularity 必须是 month 或 year。其余情况整体省略。");
+        ObjectNode cmpProps = compare.putObject("properties");
+        ObjectNode cmpMode = cmpProps.putObject("mode");
+        cmpMode.put("type", "string");
+        cmpMode.put("description", "yoy（同比）/ mom（环比）/ custom（自定义对比期）");
+        cmpMode.putArray("enum").add("yoy").add("mom").add("custom");
+        cmpProps.set("start", string("自定义对比期的起始日期 yyyy-MM-dd（仅 mode=custom）"));
+        cmpProps.set("end", string("自定义对比期的结束日期 yyyy-MM-dd（仅 mode=custom，含当天）"));
+        compare.putArray("required").add("mode");
 
         // 显式声明 required：spike 实测模型会直接省略未声明为必需的字段
         ArrayNode required = root.putArray("required");

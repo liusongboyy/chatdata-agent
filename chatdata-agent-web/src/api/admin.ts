@@ -95,6 +95,20 @@ export interface DerivedDef {
   unit?: string | null
 }
 
+/**
+ * 指标的统计条件：只把满足条件的行计入这一列。
+ *
+ * 例如「已解决工单数」= COUNT(工单号)，条件是 `状态 = 已解决`。
+ * 用 CASE 渲染，不影响同一条查询里的其它指标；字段可以跨表。
+ */
+export interface MetricConditionDef {
+  field: string
+  /** = / != / > / < / >= / <= / in / like */
+  op: string
+  /** in 用逗号分隔多个取值 */
+  value: string
+}
+
 export interface ColumnDef {
   /** 物理列名。**派生指标没有物理列**，此处为空串 */
   col: string
@@ -104,6 +118,8 @@ export interface ColumnDef {
   enabled: boolean
   /** 派生指标定义；普通列为 null。见 [DerivedDef] */
   derived?: DerivedDef | null
+  /** 统计条件；无则为 null */
+  condition?: MetricConditionDef | null
 }
 
 export interface DomainTable {

@@ -194,7 +194,7 @@ class AnalyticsDslRenderTest {
         void yearOverYearMonthly() {
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
                     List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
-                    AskDsl.Compare.YOY);
+                    AskDsl.Compare.yoy());
 
             RenderedSql r = render(dsl, "MYSQL5.7");
 
@@ -216,7 +216,7 @@ class AnalyticsDslRenderTest {
         void compareParamsCarryBothWindows() {
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
                     List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
-                    AskDsl.Compare.YOY);
+                    AskDsl.Compare.yoy());
 
             List<Object> params = render(dsl, "MYSQL5.7").params();
 
@@ -229,11 +229,11 @@ class AnalyticsDslRenderTest {
         }
 
         @Test
-        @DisplayName("★ 环比按天、PostgreSQL：平移用 INTERVAL '1 month'")
+        @DisplayName("★ 环比按月、PostgreSQL：平移用 INTERVAL '1 month'")
         void monthOverMonthPg() {
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
-                    List.of(), AskDsl.Granularity.DAY, List.of(), null, List.of(),
-                    AskDsl.Compare.MOM);
+                    List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
+                    AskDsl.Compare.mom());
 
             RenderedSql r = render(dsl, "POSTGRESQL");
 
@@ -243,11 +243,66 @@ class AnalyticsDslRenderTest {
         }
 
         @Test
+        @DisplayName("★ 自定义对比期：整年对整年，平移 24 个月把基线挪到本期时间轴")
+        void customBaselineAligned() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
+                    List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
+                    AskDsl.Compare.custom("2023-01-01", "2023-12-31"));
+
+            RenderedSql r = render(dsl, "MYSQL5.7");
+
+            assertThat(r.sql())
+                    .contains("DATE_ADD(`t1`.`order_date`, INTERVAL 24 MONTH)")
+                    .contains("AS `订单金额上期`")
+                    .contains("AS `订单金额对比`");
+            assertThat(r.params()).containsSubsequence(
+                    LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1));
+        }
+
+        @Test
+        @DisplayName("★ 两段长度/相位对不齐 → 拒绝，不近似合并分组")
+        void customBaselineMisalignedRejected() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
+                    List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
+                    AskDsl.Compare.custom("2023-02-01", "2023-12-31"));
+
+            assertThatThrownBy(() -> render(dsl, "MYSQL5.7"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("无法按分组对齐");
+        }
+
+        @Test
+        @DisplayName("自定义对比期按月平移 + 按天分组 → 拒绝（月末会并组）")
+        void customMonthlyShiftRejectsDayGranularity() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
+                    List.of(), AskDsl.Granularity.DAY, List.of(), null, List.of(),
+                    AskDsl.Compare.custom("2023-01-01", "2023-12-31"));
+
+            assertThatThrownBy(() -> render(dsl, "MYSQL5.7"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("按天分组");
+        }
+
+        @Test
+        @DisplayName("没有时间维度时，任意两段都能比：就是「本期总额 vs 对比期总额」")
+        void customBaselineWithoutTimeDimension() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of(), year2025(),
+                    List.of(), AskDsl.Granularity.DAY, List.of(), null, List.of(),
+                    AskDsl.Compare.custom("2023-04-15", "2023-05-20"));
+
+            RenderedSql r = render(dsl, "MYSQL5.7");
+
+            assertThat(r.sql()).contains("AS `订单金额对比`");
+            assertThat(r.params()).containsSubsequence(
+                    LocalDate.of(2023, 4, 15), LocalDate.of(2023, 5, 21));
+        }
+
+        @Test
         @DisplayName("没有时间范围 → 拒绝：无从'与上期比'，猜一个会给出用户没问过的对比")
         void compareNeedsTimeRange() {
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), null,
                     List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
-                    AskDsl.Compare.YOY);
+                    AskDsl.Compare.yoy());
 
             assertThatThrownBy(() -> render(dsl, "MYSQL5.7"))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -259,7 +314,7 @@ class AnalyticsDslRenderTest {
         void yearOverYearRejectsDayGranularity() {
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
                     List.of(), AskDsl.Granularity.DAY, List.of(), null, List.of(),
-                    AskDsl.Compare.YOY);
+                    AskDsl.Compare.yoy());
 
             assertThatThrownBy(() -> render(dsl, "MYSQL5.7"))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -271,7 +326,7 @@ class AnalyticsDslRenderTest {
         void compareWithoutTimeDimension() {
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of(), year2025(),
                     List.of(), AskDsl.Granularity.DAY, List.of(), null, List.of(),
-                    AskDsl.Compare.YOY);
+                    AskDsl.Compare.yoy());
 
             RenderedSql r = render(dsl, "MYSQL5.7");
 
@@ -289,7 +344,7 @@ class AnalyticsDslRenderTest {
                      "colRules":[{"id":1,"role":"分析师","field":"amount","action":"脱敏"}]}""");
             AskDsl dsl = new AskDsl(List.of("订单金额"), List.of("统计日期"), year2025(),
                     List.of(), AskDsl.Granularity.MONTH, List.of(), null, List.of(),
-                    AskDsl.Compare.YOY);
+                    AskDsl.Compare.yoy());
 
             RenderedSql r = AskSqlRenderer.render(dsl, model(), SqlDialects.of("MYSQL5.7"),
                     allowed(maskedPerm), TODAY);

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.liusongboyy.chatdata.engine.semantic.Aggregation;
 import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
+import com.liusongboyy.chatdata.engine.semantic.MetricCondition;
 import com.liusongboyy.chatdata.engine.semantic.SemanticException;
 
 import java.util.List;
@@ -45,8 +46,9 @@ public record DomainTableInput(
      * @param agg     聚合方式；维度列留空
      * @param alias   业务名。问数时用户与模型使用的名字
      * @param enabled 是否对 LLM 可见
-     * @param derived 派生指标定义；普通列为 null。派生指标**没有物理列**，
-     *                故此时 {@code col} 可以留空
+     * @param derived   派生指标定义；普通列为 null。派生指标**没有物理列**，
+     *                  故此时 {@code col} 可以留空
+     * @param condition 统计条件：只统计满足条件的行；无则为 null
      */
     public record ColumnInput(
             String col,
@@ -54,11 +56,33 @@ public record DomainTableInput(
             String agg,
             String alias,
             boolean enabled,
-            DerivedInput derived
+            DerivedInput derived,
+            ConditionInput condition
     ) {
-        /** 兼容旧调用方与测试：普通列没有派生定义。 */
+        /** 兼容旧调用方与测试：普通列没有派生定义、没有统计条件。 */
         public ColumnInput(String col, String type, String agg, String alias, boolean enabled) {
-            this(col, type, agg, alias, enabled, null);
+            this(col, type, agg, alias, enabled, null, null);
+        }
+
+        /** 兼容：派生指标，不带统计条件。 */
+        public ColumnInput(String col, String type, String agg, String alias, boolean enabled,
+                           DerivedInput derived) {
+            this(col, type, agg, alias, enabled, derived, null);
+        }
+    }
+
+    /**
+     * 统计条件入参。字段名与 {@code columns_json} 里的 {@code condition} 块一致。
+     *
+     * <p>校验交给 {@link MetricCondition}——管理面与运行时同一份判据。
+     */
+    public record ConditionInput(String field, String op, String value) {
+        MetricCondition validated() {
+            try {
+                return new MetricCondition(field, op, value);
+            } catch (Exception e) {
+                throw new AdminException("统计条件配置有误：" + e.getMessage());
+            }
         }
     }
 
@@ -110,12 +134,21 @@ public record DomainTableInput(
             require(c.col(), "列名");
             // 聚合方式在保存时就校验。未知取值如果放行，要到渲染时才抛异常，
             // 而那时用户看到的是"这个问题涉及的数据还没配置好"，指不到真正的原因
+            Aggregation agg;
             try {
-                Aggregation.parse(c.agg());
+                agg = Aggregation.parse(c.agg());
             } catch (Exception e) {
                 throw new AdminException(
                         "列「%s」的聚合方式不受支持：%s。可用：SUM / COUNT / COUNT_DISTINCT / AVG / MAX / MIN"
                                 .formatted(c.col(), c.agg()));
+            }
+            if (c.condition() != null) {
+                if (!agg.isAggregating()) {
+                    throw new AdminException(
+                            "列「" + (c.alias() == null ? c.col() : c.alias()) + "」配置了统计条件，"
+                                    + "但没有聚合方式——条件只对指标有意义");
+                }
+                c.condition().validated();
             }
         }
 
@@ -136,6 +169,13 @@ public record DomainTableInput(
             node.put("agg", c.derived() != null || c.agg() == null ? "" : c.agg().trim());
             node.put("alias", c.alias() == null ? "" : c.alias().trim());
             node.put("enabled", c.enabled());
+            if (c.condition() != null && c.derived() == null) {
+                MetricCondition mc = c.condition().validated();
+                ObjectNode cv = node.putObject("condition");
+                cv.put("field", mc.field());
+                cv.put("op", mc.op());
+                cv.put("value", mc.value());
+            }
             if (c.derived() != null) {
                 // 校验已通过，这里再解析一次是为了拿到**规范化后**的值：
                 // kind 统一成小写、unit 统一成大写，避免同一份配置写出两种形态
