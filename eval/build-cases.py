@@ -506,6 +506,12 @@ TICKET_MODELED_2 = [
      "SELECT COUNT(CASE WHEN status = 'RESOLVED' THEN ticket_no END) / COUNT(ticket_no) AS ratio "
      "FROM ticket WHERE deleted = 0",
      False, ["condition", "derived"]),
+    ("ticket-m-066", "MEDIUM", "已解决且优先级高于 2 的工单有多少张？",
+     "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'RESOLVED' AND priority > 2",
+     False, ["condition", "and"]),
+    ("ticket-m-067", "MEDIUM", "还没完成的工单（待处理或处理中）有多少张？",
+     "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status IN ('OPEN', 'IN_PROGRESS')",
+     False, ["condition", "or"]),
     ("ticket-m-065", "SIMPLE", "已解决的工单有多少张？",
      "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'RESOLVED'",
      False, ["condition"]),

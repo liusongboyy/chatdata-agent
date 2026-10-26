@@ -259,6 +259,22 @@ class DslParserTest {
         }
 
         @Test
+        @DisplayName("★ 筛选条件可以与另一个字段比：rightField；同时给 value 时以它为准")
+        void filterRightField() {
+            AskDsl dsl = DslParser.parse("""
+                    {"metrics":["工单数"],"dimensions":[],"filters":[
+                      {"field":"关闭时间","op":">","rightField":"SLA截止时间"},
+                      {"field":"状态","op":"=","value":"CLOSED","rightField":"状态"}]}""");
+
+            assertThat(dsl.filters().get(0).comparesWithField()).isTrue();
+            assertThat(dsl.filters().get(0).rightField()).isEqualTo("SLA截止时间");
+            assertThat(dsl.filters().get(0).value()).isNull();
+
+            assertThat(dsl.filters().get(1).rightField()).as("rightField 优先").isEqualTo("状态");
+            assertThat(dsl.filters().get(1).value()).isNull();
+        }
+
+        @Test
         @DisplayName("自定义对比期：对象形态，字符串形态也兼容")
         void customCompare() {
             AskDsl dsl = DslParser.parse("""

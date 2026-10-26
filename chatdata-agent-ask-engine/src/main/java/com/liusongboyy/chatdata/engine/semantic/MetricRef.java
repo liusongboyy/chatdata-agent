@@ -39,8 +39,30 @@ public sealed interface MetricRef {
      *
      * <p>字段在这里已经解析成 {@link FieldRef}，渲染器才知道它该写在哪张表的别名上——
      * 条件字段可能是**跨表**的（星型模型里状态在维表上很常见）。
+     *
+     * @param logic AND / OR
+     * @param terms 已解析的条件项，顺序即渲染顺序
      */
-    record Condition(FieldRef field, String op, String value) {
+    record Condition(MetricCondition.Logic logic, List<Term> terms) {
+
+        public Condition {
+            terms = terms == null ? List.of() : List.copyOf(terms);
+        }
+    }
+
+    /**
+     * 一个已解析的条件项。
+     *
+     * @param left  左侧列
+     * @param op    运算符（已规范化：IN / LIKE 大写，其余为符号）
+     * @param value 与常量比较的取值；与字段比较时为 null
+     * @param right 与字段比较时的右侧列；与常量比较时为 null
+     */
+    record Term(FieldRef left, String op, String value, FieldRef right) {
+
+        public boolean comparesWithField() {
+            return right != null;
+        }
     }
 
     /**

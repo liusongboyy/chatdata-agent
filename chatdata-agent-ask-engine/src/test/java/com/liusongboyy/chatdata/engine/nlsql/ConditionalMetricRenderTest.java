@@ -8,6 +8,7 @@ import com.liusongboyy.chatdata.engine.permission.PermissionDecision;
 import com.liusongboyy.chatdata.engine.permission.PermissionGuard;
 import com.liusongboyy.chatdata.engine.semantic.Aggregation;
 import com.liusongboyy.chatdata.engine.semantic.ColumnDef;
+import com.liusongboyy.chatdata.engine.semantic.ConditionTerm;
 import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
 import com.liusongboyy.chatdata.engine.semantic.Domain;
 import com.liusongboyy.chatdata.engine.semantic.MetricCondition;
@@ -78,6 +79,19 @@ class ConditionalMetricRenderTest {
                         null, new MetricCondition("状态", "=", "已解决")),
                 new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "分类已解决工单数", true,
                         null, new MetricCondition("分类名称", "=", "支付")),
+                new ColumnDef("priority", "int", Aggregation.NONE, "优先级", true),
+                new ColumnDef("closed_at", "datetime", Aggregation.NONE, "关闭时间", true),
+                new ColumnDef("sla_deadline", "datetime", Aggregation.NONE, "SLA截止时间", true),
+                new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "高优已解决工单数", true,
+                        null, new MetricCondition(MetricCondition.Logic.AND, List.of(
+                                new ConditionTerm("状态", "=", "RESOLVED", null),
+                                new ConditionTerm("优先级", ">", "2", null)))),
+                new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "未完成工单数", true,
+                        null, new MetricCondition(MetricCondition.Logic.OR, List.of(
+                                new ConditionTerm("状态", "=", "OPEN", null),
+                                new ConditionTerm("状态", "=", "IN_PROGRESS", null)))),
+                new ColumnDef("ticket_no", "varchar", Aggregation.COUNT, "超时关闭工单数", true,
+                        null, new MetricCondition("关闭时间", ">", null, "SLA截止时间")),
                 new ColumnDef(null, "decimal", Aggregation.NONE, "已解决占比", true,
                         new DerivedMetric(DerivedMetric.Kind.RATIO,
                                 "已解决工单数", "工单数", null, null, null), null)));
@@ -168,6 +182,39 @@ class ConditionalMetricRenderTest {
             assertThat(r.params().subList(1, 4))
                     .as("占位符在文本里是「窗口、条件」，参数顺序必须一致")
                     .containsExactly(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), "已解决");
+        }
+
+        @Test
+        @DisplayName("★ 多条件 AND：整体加括号，两个取值都进参数")
+        void andGroup() {
+            RenderedSql r = render("高优已解决工单数");
+
+            assertThat(r.sql()).contains(
+                    "CASE WHEN (`t2`.`status` = ? AND `t2`.`priority` > ?) THEN `t2`.`ticket_no` END");
+            assertThat(r.params()).containsExactly("RESOLVED", "2");
+        }
+
+        @Test
+        @DisplayName("多条件 OR：用 OR 连接")
+        void orGroup() {
+            RenderedSql r = render("未完成工单数");
+
+            assertThat(r.sql()).contains(
+                    "CASE WHEN (`t2`.`status` = ? OR `t2`.`status` = ?) THEN `t2`.`ticket_no` END");
+            assertThat(r.params()).containsExactly("OPEN", "IN_PROGRESS");
+        }
+
+        @Test
+        @DisplayName("★ 字段与字段比较：两侧都是列引用，不产生参数")
+        void fieldComparison() {
+            RenderedSql r = render("超时关闭工单数");
+
+            assertThat(r.sql())
+                    .contains("CASE WHEN `t2`.`closed_at` > `t2`.`sla_deadline` "
+                            + "THEN `t2`.`ticket_no` END")
+                    .as("列与列比较没有常量，也就没有参数")
+                    .doesNotContain("?");
+            assertThat(r.params()).isEmpty();
         }
 
         @Test

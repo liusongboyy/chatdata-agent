@@ -80,7 +80,11 @@ public final class AskDslSchema {
         fiProps.set("field", string("字段名，必须是语义域中已注册的字段"));
         fiProps.set("op", string("运算符：= / != / > / < / in / like。"
                 + "必须用这些符号或英文单词，不要写中文（如「在」「等于」）"));
-        fiProps.set("value", string("比较值"));
+        fiProps.set("value", string(
+                "比较值。如果比较对象是**另一个字段**（如「关闭时间晚于 SLA 截止时间」），"
+                        + "这里可以留空，并把右侧字段名填进 rightField"));
+        fiProps.set("rightField", string(
+                "要比较的另一个字段名。只在「两个字段比大小」时填；与 value 同时出现时以它为准"));
         ArrayNode fiRequired = filterItem.putArray("required");
         fiRequired.add("field").add("op").add("value");
 

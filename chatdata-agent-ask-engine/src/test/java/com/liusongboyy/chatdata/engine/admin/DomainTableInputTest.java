@@ -1,6 +1,8 @@
 package com.liusongboyy.chatdata.engine.admin;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
 import org.junit.jupiter.api.DisplayName;
@@ -62,24 +64,77 @@ class DomainTableInputTest {
     @DisplayName("统计条件")
     class Condition {
 
+        /** 与常量比较的一项。 */
+        private JsonNode leaf(String field, String op, String value) {
+            ObjectNode n = M.createObjectNode();
+            n.put("field", field);
+            n.put("op", op);
+            n.put("value", value);
+            return n;
+        }
+
+        /** 与另一个字段比较的一项。 */
+        private JsonNode fieldTerm(String field, String op, String rightField) {
+            ObjectNode n = M.createObjectNode();
+            n.put("field", field);
+            n.put("op", op);
+            n.put("rightField", rightField);
+            return n;
+        }
+
+        private JsonNode group(String logic, JsonNode... terms) {
+            ObjectNode n = M.createObjectNode();
+            n.put("logic", logic);
+            ArrayNode arr = n.putArray("conditions");
+            for (JsonNode t : terms) {
+                arr.add(t);
+            }
+            return n;
+        }
+
         private DomainTableInput.ColumnInput conditional(String alias, String op) {
             return new DomainTableInput.ColumnInput("ticket_no", "varchar", "COUNT", alias, true,
-                    null, new DomainTableInput.ConditionInput("状态", op, "已解决"));
+                    null, leaf("状态", op, "RESOLVED"));
         }
 
         @Test
-        @DisplayName("★ 条件被写进 columns_json，且能按运行时同一份规则读回")
-        void serializesCondition() throws Exception {
+        @DisplayName("★ 单条件写成扁平形态，且能按运行时同一份规则读回")
+        void serializesFlatCondition() throws Exception {
             DomainTableInput v = input(conditional("已解决工单数", "=")).validated();
 
             JsonNode cv = M.readTree(v.columnsJson()).get(0).path("condition");
             assertThat(cv.path("field").asText()).isEqualTo("状态");
             assertThat(cv.path("op").asText()).isEqualTo("=");
-            assertThat(cv.path("value").asText()).isEqualTo("已解决");
+            assertThat(cv.path("value").asText()).isEqualTo("RESOLVED");
+            assertThat(cv.has("conditions")).as("单条件不包一层").isFalse();
 
             com.liusongboyy.chatdata.engine.semantic.MetricCondition back =
                     com.liusongboyy.chatdata.engine.semantic.MetricCondition.from(cv);
-            assertThat(back.field()).isEqualTo("状态");
+            assertThat(back.terms()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("多个条件写成 logic + conditions，AND/OR 都保留")
+        void serializesGroup() throws Exception {
+            DomainTableInput v = input(new DomainTableInput.ColumnInput(
+                    "ticket_no", "varchar", "COUNT", "高优已解决工单数", true, null,
+                    group("AND", leaf("状态", "=", "RESOLVED"), leaf("优先级", ">", "2")))).validated();
+
+            JsonNode cv = M.readTree(v.columnsJson()).get(0).path("condition");
+            assertThat(cv.path("logic").asText()).isEqualTo("and");
+            assertThat(cv.path("conditions")).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("与字段比较写成 rightField，不写 value")
+        void serializesFieldComparison() throws Exception {
+            DomainTableInput v = input(new DomainTableInput.ColumnInput(
+                    "ticket_no", "varchar", "COUNT", "超时关闭工单数", true, null,
+                    fieldTerm("关闭时间", ">", "SLA截止时间"))).validated();
+
+            JsonNode cv = M.readTree(v.columnsJson()).get(0).path("condition");
+            assertThat(cv.path("rightField").asText()).isEqualTo("SLA截止时间");
+            assertThat(cv.has("value")).isFalse();
         }
 
         @Test
@@ -95,8 +150,7 @@ class DomainTableInputTest {
         @DisplayName("维度加条件 → 拒绝（会让分组静默少行）")
         void dimensionConditionRejected() {
             DomainTableInput.ColumnInput c = new DomainTableInput.ColumnInput(
-                    "status", "varchar", "", "状态", true, null,
-                    new DomainTableInput.ConditionInput("状态", "=", "已解决"));
+                    "status", "varchar", "", "状态", true, null, leaf("状态", "=", "已解决"));
 
             assertThatThrownBy(() -> input(c).validated())
                     .isInstanceOf(AdminException.class)

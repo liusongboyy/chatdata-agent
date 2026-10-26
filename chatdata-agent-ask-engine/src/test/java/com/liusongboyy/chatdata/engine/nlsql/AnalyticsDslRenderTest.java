@@ -63,6 +63,7 @@ class AnalyticsDslRenderTest {
                 RegisteredTable.Mode.TABLE, null, true, List.of(
                 new ColumnDef("order_date", "date", Aggregation.NONE, "统计日期", true),
                 new ColumnDef("region", "varchar", Aggregation.NONE, "区域", true),
+                new ColumnDef("closed_date", "date", Aggregation.NONE, "关闭日期", true),
                 new ColumnDef("amount", "decimal", Aggregation.SUM, "订单金额", true),
                 new ColumnDef("id", "bigint", Aggregation.COUNT, "订单数", true)));
 
@@ -139,6 +140,24 @@ class AnalyticsDslRenderTest {
                     .isInstanceOf(SemanticException.class)
                     .hasMessageContaining("不在本次查询的输出里")
                     .hasMessageContaining("订单金额");
+        }
+    }
+
+    @Nested
+    @DisplayName("筛选条件的字段比较")
+    class FilterFieldCompare {
+
+        @Test
+        @DisplayName("★ 「关闭日期晚于统计日期」：两侧都是列引用，不产生参数")
+        void comparesTwoFields() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of(), null,
+                    List.of(new AskDsl.Filter("统计日期", ">", null, "关闭日期")),
+                    AskDsl.Granularity.DAY, List.of(), null, List.of(), null);
+
+            RenderedSql r = render(dsl, "MYSQL5.7");
+
+            assertThat(r.sql()).contains("`t1`.`order_date` > `t1`.`closed_date`");
+            assertThat(r.params()).isEmpty();
         }
     }
 

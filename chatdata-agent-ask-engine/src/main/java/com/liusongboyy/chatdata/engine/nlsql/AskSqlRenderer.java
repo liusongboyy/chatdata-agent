@@ -96,7 +96,14 @@ public final class AskSqlRenderer {
         for (AskDsl.Filter f : dsl.filters()) {
             FieldRef ref = model.resolveDimension(f.field());
             involvedAliases.add(ref.tableAlias());
-            filters.add(new ResolvedFilter(ref, f.field(), f.op(), f.value()));
+            // 与字段比较时右侧也是列：它所在的表同样要参与 JOIN 规划，
+            // 否则就是"条件里的列不在 FROM 里"
+            FieldRef right = null;
+            if (f.comparesWithField()) {
+                right = model.resolveDimension(f.rightField());
+                involvedAliases.add(right.tableAlias());
+            }
+            filters.add(new ResolvedFilter(ref, f.field(), f.op(), f.value(), right));
         }
 
         // ③ 收集用到的**表 id**。别名是渲染期分配的，而 join 配置里存的是表 id，
@@ -372,6 +379,14 @@ public final class AskSqlRenderer {
             String col = dialect.quoteQualified(f.ref().tableAlias() + "." + f.ref().column());
             String op = normalizeFilterOp(f.op());
 
+            if (f.right() != null) {
+                // 列与列比较：两侧都是列引用，没有取值也就不产生参数。
+                // 不在这里做类型校验——库自己会报，而我们没有可靠的类型信息
+                whereParts.add(col + " " + op + " "
+                        + dialect.quoteQualified(f.right().tableAlias() + "." + f.right().column()));
+                continue;
+            }
+
             boolean temporal = model.isTemporal(f.ref());
 
             if ("IN".equals(op)) {
@@ -466,7 +481,12 @@ public final class AskSqlRenderer {
     }
 
     /** @param name 模型写的原始字段名。报错时要用它——用户认识的是这个名字，不是物理列名 */
-    private record ResolvedFilter(FieldRef ref, String name, String op, String value) {
+    /**
+     * 已解析的筛选条件。
+     *
+     * @param right 与字段比较时的右侧列；与常量比较时为 null
+     */
+    private record ResolvedFilter(FieldRef ref, String name, String op, String value, FieldRef right) {
     }
 
     /**
@@ -664,7 +684,12 @@ public final class AskSqlRenderer {
         if (m instanceof MetricRef.Column cm) {
             out.add(cm.ref().tableAlias());
             if (cm.condition() != null) {
-                out.add(cm.condition().field().tableAlias());
+                for (MetricRef.Term t : cm.condition().terms()) {
+                    out.add(t.left().tableAlias());
+                    if (t.comparesWithField()) {
+                        out.add(t.right().tableAlias());
+                    }
+                }
             }
             return;
         }
@@ -711,27 +736,44 @@ public final class AskSqlRenderer {
         return cm.ref().agg().wrap(shell.apply(expr));
     }
 
-    /** 把统计条件渲染成 ARG 位置上的 CASE。取值一律走占位符。 */
+    /**
+     * 把统计条件渲染成 ARG 位置上的 CASE。
+     *
+     * <p>多个条件用 AND / OR 连起来并整体加括号；取值一律走占位符，
+     * 字段与字段比较则两侧都是列引用、不产生参数。
+     */
     private static String conditionCase(MetricRef.Condition c, String columnExpr,
                                         SqlDialect dialect, List<Object> params) {
-        String field = columnRef(c.field(), dialect);
-        String cond;
-        if ("IN".equals(c.op())) {
-            List<String> values = splitInValues(c.value());
+        List<String> parts = new ArrayList<>(c.terms().size());
+        for (MetricRef.Term t : c.terms()) {
+            parts.add(termSql(t, dialect, params));
+        }
+        String cond = parts.size() == 1
+                ? parts.get(0)
+                : "(" + String.join(" " + c.logic().keyword() + " ", parts) + ")";
+        return "CASE WHEN " + cond + " THEN " + columnExpr + " END";
+    }
+
+    /** 一个条件项。 */
+    private static String termSql(MetricRef.Term t, SqlDialect dialect, List<Object> params) {
+        String left = columnRef(t.left(), dialect);
+        String op = "!=".equals(t.op()) ? " <> " : " " + t.op() + " ";
+
+        if (t.comparesWithField()) {
+            // 列与列比较：没有取值，也就没有参数
+            return left + op + columnRef(t.right(), dialect);
+        }
+        if ("IN".equals(t.op())) {
+            List<String> values = splitInValues(t.value());
             if (values.isEmpty()) {
-                throw new IllegalStateException("统计条件 in 的取值为空：" + c.value());
+                throw new IllegalStateException("统计条件 in 的取值为空：" + t.value());
             }
             values.forEach(params::add);
-            cond = field + " IN (" + String.join(", ",
+            return left + " IN (" + String.join(", ",
                     Collections.nCopies(values.size(), "?")) + ")";
-        } else if ("LIKE".equals(c.op())) {
-            params.add(c.value());
-            cond = field + " LIKE ?";
-        } else {
-            params.add(c.value());
-            cond = field + ("!=".equals(c.op()) ? " <> " : " " + c.op() + " ") + "?";
         }
-        return "CASE WHEN " + cond + " THEN " + columnExpr + " END";
+        params.add(t.value());
+        return left + op + "?";
     }
 
     /** 该指标是否必须脱敏。派生指标看它的**全部**输入。 */

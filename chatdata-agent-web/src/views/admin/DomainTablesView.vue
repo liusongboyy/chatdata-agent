@@ -22,7 +22,9 @@ import {
   updateTopic,
   updateTable,
   type ColumnDef,
+  type ConditionTermDef,
   type DerivedKind,
+  type MetricConditionDef,
   type DomainTable,
   type DomainTableForm,
   type TableJoin,
@@ -94,7 +96,31 @@ const listError = ref('')
 
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
-const form = ref<DomainTableForm>(emptyForm())
+/** 条件编辑器里的一项。`mode` 只是编辑态，保存时再转成 columns_json 的形态。 */
+interface CondTermDraft {
+  field: string
+  op: string
+  mode: 'value' | 'field'
+  value: string
+  rightField: string
+}
+
+interface CondDraft {
+  logic: 'AND' | 'OR'
+  terms: CondTermDraft[]
+}
+
+/**
+ * 列草稿：条件在表单里用 {@link CondDraft}（带 mode），
+ * 保存时转回 columns_json 的扁平/分组形态。
+ */
+type ColumnDraft = Omit<ColumnDef, 'condition'> & { cond?: CondDraft | null }
+
+interface TableForm extends Omit<DomainTableForm, 'columns'> {
+  columns: ColumnDraft[]
+}
+
+const form = ref<TableForm>(emptyForm())
 const saving = ref(false)
 const formError = ref('')
 
@@ -144,13 +170,65 @@ const AGG_OPTIONS = [
   { value: 'MIN', label: 'MIN 最小' },
 ]
 
-function emptyForm(): DomainTableForm {
+function emptyColumnDraft(): ColumnDraft {
+  return { col: '', type: '', agg: '', alias: '', enabled: true, derived: null, cond: null }
+}
+
+function emptyTerm(): CondTermDraft {
+  return { field: '', op: '=', mode: 'value', value: '', rightField: '' }
+}
+
+/** columns_json 里的条件 → 表单草稿。单条件与分组两种形态都收。 */
+function toCondDraft(d: MetricConditionDef | null | undefined): CondDraft | null {
+  if (!d) return null
+  const fromTerm = (t: ConditionTermDef): CondTermDraft => ({
+    field: t.field ?? '',
+    op: t.op ?? '=',
+    mode: t.rightField ? 'field' : 'value',
+    value: t.value ?? '',
+    rightField: t.rightField ?? '',
+  })
+  if (d.conditions && d.conditions.length > 0) {
+    return { logic: d.logic === 'OR' ? 'OR' : 'AND', terms: d.conditions.map(fromTerm) }
+  }
+  return {
+    logic: 'AND',
+    terms: [
+      fromTerm({
+        field: d.field ?? '',
+        op: d.op ?? '=',
+        value: d.value ?? null,
+        rightField: d.rightField ?? null,
+      }),
+    ],
+  }
+}
+
+/** 表单草稿 → columns_json 的形态：单个条件写扁平，多个才写 logic + conditions。 */
+function toWireCondition(d: CondDraft): MetricConditionDef {
+  const terms: ConditionTermDef[] = d.terms.map((t) =>
+    t.mode === 'field'
+      ? { field: t.field, op: t.op, rightField: t.rightField }
+      : { field: t.field, op: t.op, value: t.value },
+  )
+  const single = terms.length === 1 ? terms[0] : undefined
+  return single ?? { logic: d.logic, conditions: terms }
+}
+
+function toWireColumns(columns: ColumnDraft[]): ColumnDef[] {
+  return columns.map(({ cond, ...rest }) => ({
+    ...rest,
+    condition: cond && cond.terms.length > 0 ? toWireCondition(cond) : null,
+  }))
+}
+
+function emptyForm(): TableForm {
   return {
     name: '',
     label: '',
     mode: 'TABLE',
     sqlText: null,
-    columns: [{ col: '', type: '', agg: '', alias: '', enabled: true, derived: null }],
+    columns: [emptyColumnDraft()],
     enabled: true,
     sortNo: 0,
   }
@@ -194,44 +272,79 @@ function startEdit(t: DomainTable): void {
     label: t.label ?? '',
     mode: t.mode,
     sqlText: t.sqlText,
-    columns: parseColumns(t.columnsJson),
+    columns: parseColumns(t.columnsJson).map((c) => ({ ...c, cond: toCondDraft(c.condition) })),
     enabled: t.enabled,
     sortNo: 0,
   }
   if (form.value.columns.length === 0) {
-    form.value.columns = [{ col: '', type: '', agg: '', alias: '', enabled: true, derived: null }]
+    form.value.columns = [emptyColumnDraft()]
   }
   formError.value = ''
   showForm.value = true
 }
 
 function addColumn(): void {
-  form.value.columns = [
-    ...form.value.columns,
-    { col: '', type: '', agg: '', alias: '', enabled: true, derived: null },
-  ]
+  form.value.columns = [...form.value.columns, emptyColumnDraft()]
 }
 
-function addCondition(c: ColumnDef): void {
-  c.condition = { field: '', op: '=', value: '' }
+function addCondition(c: ColumnDraft): void {
+  c.cond = { logic: 'AND', terms: [emptyTerm()] }
 }
 
-function removeCondition(c: ColumnDef): void {
-  c.condition = null
+function removeCondition(c: ColumnDraft): void {
+  c.cond = null
 }
 
-/** 条件的人话写法，用于预览与列表展示。 */
+function addTerm(c: ColumnDraft): void {
+  if (!c.cond) return
+  c.cond = { ...c.cond, terms: [...c.cond.terms, emptyTerm()] }
+}
+
+function removeCondTerm(c: ColumnDraft, index: number): void {
+  if (!c.cond) return
+  c.cond = { ...c.cond, terms: c.cond.terms.filter((_, i) => i !== index) }
+}
+
+function termText(t: CondTermDraft): string {
+  const op = t.op === '!=' ? '≠' : t.op
+  const right = t.mode === 'field' ? t.rightField : t.value
+  return `${t.field || '?'} ${op} ${right || '?'}`
+}
+
+/** 编辑态预览。 */
+function draftConditionText(c: ColumnDraft): string {
+  const d = c.cond
+  if (!d) return ''
+  return d.terms.map(termText).join(d.logic === 'OR' ? ' 或 ' : ' 且 ')
+}
+
+/** columns_json 形态的人话写法，用于卡片展示。 */
 function conditionText(c: ColumnDef): string {
   const d = c.condition
   if (!d) return ''
-  const op = d.op === '!=' ? '≠' : d.op
-  return `${d.field || '?'} ${op} ${d.value || '?'}`
+  const terms: ConditionTermDef[] =
+    d.conditions && d.conditions.length > 0
+      ? d.conditions
+      : [{
+          field: d.field ?? '',
+          op: d.op ?? '=',
+          value: d.value ?? null,
+          rightField: d.rightField ?? null,
+        }]
+  const text = (t: ConditionTermDef): string => {
+    const op = t.op === '!=' ? '≠' : t.op
+    return `${t.field || '?'} ${op} ${t.rightField || t.value || '?'}`
+  }
+  return terms.map(text).join(d.logic === 'OR' ? ' 或 ' : ' 且 ')
 }
 
 function addDerivedColumn(): void {
   form.value.columns = [
     ...form.value.columns,
-    { col: '', type: '', agg: '', alias: '', enabled: true, derived: { kind: 'ratio', left: '', right: '' } },
+    {
+      ...emptyColumnDraft(),
+      derived: { kind: 'ratio', left: '', right: '' },
+    },
   ]
 }
 
@@ -240,7 +353,7 @@ function columnKind(c: ColumnDef): '' | DerivedKind {
   return c.derived?.kind ?? ''
 }
 
-function onKindChange(c: ColumnDef, event: Event): void {
+function onKindChange(c: ColumnDraft, event: Event): void {
   const raw = (event.target as HTMLSelectElement).value
   if (!raw) {
     c.derived = null
@@ -255,7 +368,7 @@ function onKindChange(c: ColumnDef, event: Event): void {
   // 否则保存时会被后端拒绝（规则与运行时同一份）
   c.col = ''
   c.agg = ''
-  c.condition = null
+  c.cond = null
 }
 
 /**
@@ -312,15 +425,23 @@ async function save(): Promise<void> {
   saving.value = true
   formError.value = ''
   try {
-    const badCondition = form.value.columns.find(
-      (c) => c.condition && (!c.condition.field || !(c.condition.value ?? '').trim()),
+    const emptyCondition = form.value.columns.find((c) => c.cond && c.cond.terms.length === 0)
+    if (emptyCondition) {
+      formError.value = `列「${emptyCondition.alias || emptyCondition.col}」的统计条件为空，`
+        + '请补全或直接移除'
+      return
+    }
+    const badTerm = form.value.columns.find((c) =>
+      c.cond?.terms.some(
+        (t) => !t.field || (t.mode === 'field' ? !t.rightField : !t.value.trim()),
+      ),
     )
-    if (badCondition) {
-      formError.value = `列「${badCondition.alias || badCondition.col}」的统计条件还没填完`
+    if (badTerm) {
+      formError.value = `列「${badTerm.alias || badTerm.col}」的统计条件还没填完`
       return
     }
     const conditionOnDimension = form.value.columns.find(
-      (c) => c.condition && !c.derived && !c.agg,
+      (c) => c.cond && !c.derived && !c.agg,
     )
     if (conditionOnDimension) {
       formError.value = `列「${conditionOnDimension.alias || conditionOnDimension.col}」配了统计条件，`
@@ -350,8 +471,10 @@ async function save(): Promise<void> {
     // **派生指标没有物理列**，判空要看业务名而不是列名
     const cleaned: DomainTableForm = {
       ...form.value,
-      columns: form.value.columns.filter((c) =>
-        c.derived ? (c.alias ?? '').trim() !== '' : (c.col ?? '').trim() !== '',
+      columns: toWireColumns(
+        form.value.columns.filter((c) =>
+          c.derived ? (c.alias ?? '').trim() !== '' : (c.col ?? '').trim() !== '',
+        ),
       ),
     }
     if (editingId.value !== null) {
@@ -1026,33 +1149,74 @@ async function remove(t: DomainTable): Promise<void> {
                 </button>
               </div>
 
-              <!-- 统计条件：只影响这一列的聚合，用 CASE 渲染 -->
-              <div v-if="c.condition" class="derived-row">
-                <label class="derived-slot">
-                  <span>条件字段</span>
-                  <select v-model="c.condition.field" class="input mono">
-                    <option value="">选择字段…</option>
-                    <option v-for="o in fieldOptions" :key="o.name" :value="o.name">
-                      {{ o.name }} · {{ o.table }}
-                    </option>
+              <!-- 统计条件：只影响这一列的聚合，用 CASE 渲染。
+                   多个条件用同一个 AND / OR 连接，不支持嵌套分组 -->
+              <div v-if="c.cond" class="cond-editor">
+                <div class="cond-head">
+                  <span class="cond-title">统计条件</span>
+                  <select v-model="c.cond.logic" class="input cond-logic">
+                    <option value="AND">全部满足（AND）</option>
+                    <option value="OR">任一满足（OR）</option>
                   </select>
-                </label>
-                <label class="derived-slot">
-                  <span>运算符</span>
-                  <select v-model="c.condition.op" class="input">
-                    <option v-for="o in CONDITION_OPS" :key="o.value" :value="o.value">
-                      {{ o.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="derived-slot">
-                  <span>取值</span>
-                  <input v-model="c.condition.value" class="input" placeholder="已解决" />
-                </label>
-                <p class="derived-formula mono">
-                  仅统计满足「{{ conditionText(c) }}」的行
-                  <button class="link-btn" type="button" @click="removeCondition(c)">移除条件</button>
-                </p>
+                  <button class="link-btn" type="button" @click="removeCondition(c)">
+                    移除条件
+                  </button>
+                </div>
+
+                <div v-for="(t, ti) in c.cond.terms" :key="ti" class="derived-row">
+                  <label class="derived-slot">
+                    <span>条件字段</span>
+                    <select v-model="t.field" class="input mono">
+                      <option value="">选择字段…</option>
+                      <option v-for="o in fieldOptions" :key="o.name" :value="o.name">
+                        {{ o.name }} · {{ o.table }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="derived-slot">
+                    <span>运算符</span>
+                    <select v-model="t.op" class="input">
+                      <option v-for="o in CONDITION_OPS" :key="o.value" :value="o.value">
+                        {{ o.label }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="derived-slot">
+                    <span>比较对象</span>
+                    <select v-model="t.mode" class="input">
+                      <option value="value">常量</option>
+                      <option value="field">另一个字段</option>
+                    </select>
+                  </label>
+                  <label v-if="t.mode === 'value'" class="derived-slot">
+                    <span>取值</span>
+                    <input v-model="t.value" class="input" placeholder="RESOLVED" />
+                  </label>
+                  <label v-else class="derived-slot">
+                    <span>右侧字段</span>
+                    <select v-model="t.rightField" class="input mono">
+                      <option value="">选择字段…</option>
+                      <option v-for="o in fieldOptions" :key="o.name" :value="o.name">
+                        {{ o.name }} · {{ o.table }}
+                      </option>
+                    </select>
+                  </label>
+                  <p class="derived-formula mono">
+                    仅统计满足「{{ draftConditionText(c) }}」的行
+                    <button
+                      v-if="c.cond.terms.length > 1"
+                      class="link-btn"
+                      type="button"
+                      @click="removeCondTerm(c, ti)"
+                    >
+                      移除这一项
+                    </button>
+                  </p>
+                </div>
+
+                <button class="link-btn cond-add" type="button" @click="addTerm(c)">
+                  ＋ 再加一项
+                </button>
               </div>
               <button
                 v-else-if="!c.derived && c.agg"
@@ -1307,6 +1471,38 @@ async function remove(t: DomainTable): Promise<void> {
   margin: 0;
   font-size: var(--text-xs);
   color: var(--ink-faint);
+}
+
+.cond-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+}
+
+.cond-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cond-title {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.cond-logic {
+  width: auto;
+  padding: 0.3em 0.6em;
+  font-size: var(--text-xs);
+}
+
+/* 条件行比派生行多一列（比较对象），单独覆盖栅格 */
+.cond-editor .derived-row {
+  grid-template-columns: 1fr 0.8fr 0.9fr 1fr;
+  padding-left: 0;
+  border-left: none;
 }
 
 /* 轻量按钮：用于"＋ 统计条件""移除条件"这类就地动作，

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.liusongboyy.chatdata.engine.semantic.Aggregation;
 import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.liusongboyy.chatdata.engine.semantic.ConditionTerm;
 import com.liusongboyy.chatdata.engine.semantic.MetricCondition;
 import com.liusongboyy.chatdata.engine.semantic.SemanticException;
 
@@ -48,7 +50,10 @@ public record DomainTableInput(
      * @param enabled 是否对 LLM 可见
      * @param derived   派生指标定义；普通列为 null。派生指标**没有物理列**，
      *                  故此时 {@code col} 可以留空
-     * @param condition 统计条件：只统计满足条件的行；无则为 null
+     * @param condition 统计条件：只统计满足条件的行；无则为 null。
+     *                  **原样接收 {@code columns_json} 里的 condition 对象**，
+     *                  由 {@link MetricCondition#from} 解析——管理面与运行时同一份判据，
+     *                  也天然兼容"单条件"与"AND/OR 多条件"两种形态
      */
     public record ColumnInput(
             String col,
@@ -57,7 +62,7 @@ public record DomainTableInput(
             String alias,
             boolean enabled,
             DerivedInput derived,
-            ConditionInput condition
+            JsonNode condition
     ) {
         /** 兼容旧调用方与测试：普通列没有派生定义、没有统计条件。 */
         public ColumnInput(String col, String type, String agg, String alias, boolean enabled) {
@@ -71,20 +76,6 @@ public record DomainTableInput(
         }
     }
 
-    /**
-     * 统计条件入参。字段名与 {@code columns_json} 里的 {@code condition} 块一致。
-     *
-     * <p>校验交给 {@link MetricCondition}——管理面与运行时同一份判据。
-     */
-    public record ConditionInput(String field, String op, String value) {
-        MetricCondition validated() {
-            try {
-                return new MetricCondition(field, op, value);
-            } catch (Exception e) {
-                throw new AdminException("统计条件配置有误：" + e.getMessage());
-            }
-        }
-    }
 
     /**
      * 派生指标入参。
@@ -142,13 +133,13 @@ public record DomainTableInput(
                         "列「%s」的聚合方式不受支持：%s。可用：SUM / COUNT / COUNT_DISTINCT / AVG / MAX / MIN"
                                 .formatted(c.col(), c.agg()));
             }
-            if (c.condition() != null) {
+            if (hasCondition(c)) {
                 if (!agg.isAggregating()) {
                     throw new AdminException(
                             "列「" + (c.alias() == null ? c.col() : c.alias()) + "」配置了统计条件，"
                                     + "但没有聚合方式——条件只对指标有意义");
                 }
-                c.condition().validated();
+                parseCondition(c);
             }
         }
 
@@ -169,12 +160,8 @@ public record DomainTableInput(
             node.put("agg", c.derived() != null || c.agg() == null ? "" : c.agg().trim());
             node.put("alias", c.alias() == null ? "" : c.alias().trim());
             node.put("enabled", c.enabled());
-            if (c.condition() != null && c.derived() == null) {
-                MetricCondition mc = c.condition().validated();
-                ObjectNode cv = node.putObject("condition");
-                cv.put("field", mc.field());
-                cv.put("op", mc.op());
-                cv.put("value", mc.value());
+            if (hasCondition(c)) {
+                writeCondition(node.putObject("condition"), parseCondition(c));
             }
             if (c.derived() != null) {
                 // 校验已通过，这里再解析一次是为了拿到**规范化后**的值：
@@ -193,6 +180,49 @@ public record DomainTableInput(
             }
         }
         return arr.toString();
+    }
+
+    private static boolean hasCondition(ColumnInput c) {
+        return c.condition() != null && !c.condition().isNull() && !c.condition().isMissingNode();
+    }
+
+    /** 解析统计条件。判据复用 {@link MetricCondition}，与运行时同一份。 */
+    private static MetricCondition parseCondition(ColumnInput c) {
+        try {
+            return MetricCondition.from(c.condition());
+        } catch (Exception e) {
+            throw new AdminException(
+                    "列「" + (c.alias() == null ? c.col() : c.alias()) + "」的统计条件有误："
+                            + e.getMessage());
+        }
+    }
+
+    /**
+     * 写回 {@code columns_json}。
+     *
+     * <p>单个条件写成扁平形态（与老配置一致），多个条件才写成
+     * {@code {logic, conditions:[...]}}——省得每份夹具都被包一层。
+     */
+    private static void writeCondition(ObjectNode target, MetricCondition mc) {
+        if (mc.terms().size() == 1) {
+            writeTerm(target, mc.terms().get(0));
+            return;
+        }
+        target.put("logic", mc.logic().name().toLowerCase(java.util.Locale.ROOT));
+        ArrayNode arr = target.putArray("conditions");
+        for (ConditionTerm t : mc.terms()) {
+            writeTerm(arr.addObject(), t);
+        }
+    }
+
+    private static void writeTerm(ObjectNode node, ConditionTerm t) {
+        node.put("field", t.field());
+        node.put("op", t.op());
+        if (t.comparesWithField()) {
+            node.put("rightField", t.rightField());
+        } else {
+            node.put("value", t.value());
+        }
     }
 
     /** 派生指标的入参校验。判据复用 {@link DerivedMetric}，与运行时同一份。 */

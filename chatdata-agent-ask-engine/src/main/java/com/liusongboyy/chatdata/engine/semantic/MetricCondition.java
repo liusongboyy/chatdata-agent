@@ -1,5 +1,9 @@
 package com.liusongboyy.chatdata.engine.semantic;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -11,83 +15,114 @@ import java.util.Locale;
  * 分子分母必须来自同一份口径定义。如果让模型自己在 DSL 里加 filter，
  * 整条查询都会被过滤掉——分母也会消失，得到的永远是 100%。
  *
- * <p>所以条件挂在**指标自己**身上，只影响这一列的聚合：
- * {@code COUNT(CASE WHEN 状态 = ? THEN 工单号 END)}。
+ * <h2>AND / OR 只做一层</h2>
  *
- * <h2>只支持字面量比较</h2>
+ * <p>条件是一组 {@link ConditionTerm} 用同一个 {@link Logic} 连起来：
+ * 「已解决 且 优先级 &gt; 2」「待处理 或 处理中」。
+ * <b>不支持嵌套</b>（(A 或 B) 且 C）——那需要表达式树，而真实口径里极少见；
+ * 嵌套结构还会让管理台的编辑器变得难用。需要时再扩展，不在这一层先猜。
  *
- * <p>不做列与列比较（「关闭时间晚于 SLA 截止时间」）——那是另一类语义原语，
- * 需要两边都解析成列引用并处理类型，留到后面单独做。这里是"这个指标只看某些行"，
- * 取值来自管理台配置，不是用户输入的表达式。
- *
- * @param field 条件字段的业务名。可以是**跨表**的列（JOIN 由规划器补齐）
- * @param op    运算符：= / != / &gt; / &lt; / &gt;= / &lt;= / in / like
- * @param value 比较值。{@code in} 用逗号分隔多个取值
+ * @param logic 条件之间的连接方式；只有一个条件时无意义
+ * @param terms 条件项，至少一个
  */
-public record MetricCondition(String field, String op, String value) {
+public record MetricCondition(Logic logic, List<ConditionTerm> terms) {
 
-    public MetricCondition {
-        if (field == null || field.isBlank()) {
-            throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
-                    "指标的统计条件缺少字段名");
+    /** 条件之间的连接方式。 */
+    public enum Logic {
+        AND, OR;
+
+        static Logic parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return AND;
+            }
+            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+                case "and", "且", "与" -> AND;
+                case "or", "或" -> OR;
+                default -> throw new SemanticException(
+                        SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                        "统计条件的 logic 只能是 and / or，实际：" + raw);
+            };
         }
-        if (value == null || value.isBlank()) {
-            throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
-                    "指标的统计条件「" + field.trim() + "」缺少比较值");
+
+        public String keyword() {
+            return name();
         }
-        field = field.trim();
-        op = normalizeOp(op);
-        value = value.trim();
     }
 
-    /**
-     * 规范化运算符。
-     *
-     * <p>不认识的取值**拒绝**：静默忽略等于把这个条件整条丢掉，
-     * 而结果是"指标看起来正常、只是数字偏大"——最危险的那种错。
-     */
-    private static String normalizeOp(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return "=";
+    public MetricCondition {
+        if (terms == null || terms.isEmpty()) {
+            throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                    "统计条件不能为空");
         }
-        String op = raw.trim();
-        return switch (op) {
-            case "=", "==" -> "=";
-            case "!=", "<>" -> "!=";
-            case ">", "<", ">=", "<=" -> op;
-            case "in", "IN", "In" -> "IN";
-            case "like", "LIKE", "Like" -> "LIKE";
-            default -> throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
-                    "指标的统计条件运算符不受支持：" + raw + "（可用：= / != / > / < / >= / <= / in / like）");
-        };
+        terms = List.copyOf(terms);
+        if (terms.size() > MAX_TERMS) {
+            // 无上限的话，一个手滑粘贴进去的条件列表能生成几百个占位符
+            throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                    "统计条件最多 " + MAX_TERMS + " 项，实际 " + terms.size());
+        }
+        logic = logic == null ? Logic.AND : logic;
+    }
+
+    private static final int MAX_TERMS = 10;
+
+    /** 单条件：与常量比较。 */
+    public MetricCondition(String field, String op, String value) {
+        this(Logic.AND, List.of(new ConditionTerm(field, op, value, null)));
+    }
+
+    /** 单条件：与另一个字段比较。 */
+    public MetricCondition(String field, String op, String value, String rightField) {
+        this(Logic.AND, List.of(new ConditionTerm(field, op, value, rightField)));
     }
 
     /** 从 {@code columns_json} 的 {@code condition} 块解析。 */
-    public static MetricCondition from(com.fasterxml.jackson.databind.JsonNode n) {
+    public static MetricCondition from(JsonNode n) {
         if (n == null || n.isMissingNode() || n.isNull()) {
             return null;
         }
         if (!n.isObject()) {
             throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
-                    "指标的 condition 必须是对象，如 {\"field\":\"状态\",\"op\":\"=\",\"value\":\"已解决\"}");
+                    "指标的 condition 必须是对象");
         }
-        String field = text(n, "field");
-        String value = text(n, "value");
-        if (field == null || value == null) {
+        JsonNode arr = n.path("conditions");
+        if (arr.isMissingNode() || arr.isNull()) {
+            // 单条件形态：{field, op, value|rightField}
+            return new MetricCondition(Logic.AND, List.of(term(n)));
+        }
+        if (!arr.isArray()) {
             throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
-                    "指标的 condition 必须同时给出 field 与 value");
+                    "指标的 condition.conditions 必须是数组");
         }
-        return new MetricCondition(field, text(n, "op"), value);
+        List<ConditionTerm> terms = new ArrayList<>(arr.size());
+        for (JsonNode item : arr) {
+            if (!item.isObject() || !item.path("conditions").isMissingNode()) {
+                throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                        "统计条件不支持嵌套分组——AND/OR 只做一层");
+            }
+            terms.add(term(item));
+        }
+        return new MetricCondition(Logic.parse(text(n, "logic")), terms);
     }
 
-    private static String text(com.fasterxml.jackson.databind.JsonNode n, String key) {
-        var v = n.path(key);
+    private static ConditionTerm term(JsonNode n) {
+        String field = text(n, "field");
+        String value = text(n, "value");
+        String right = text(n, "rightField");
+        if (field == null) {
+            throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                    "统计条件缺少 field");
+        }
+        return new ConditionTerm(field, text(n, "op"), value, right);
+    }
+
+    private static String text(JsonNode n, String key) {
+        JsonNode v = n.path(key);
         return v.isMissingNode() || v.isNull() ? null : v.asText();
     }
 
-    /** 展示用，如 {@code 状态 = 已解决}。 */
+    /** 展示用，如 {@code 状态 = 已解决 且 优先级 > 2}。 */
     public String display() {
-        return field + " " + (("IN".equals(op) || "LIKE".equals(op)) ? op.toLowerCase(Locale.ROOT) : op)
-                + " " + value;
+        String joiner = logic == Logic.AND ? " 且 " : " 或 ";
+        return String.join(joiner, terms.stream().map(ConditionTerm::display).toList());
     }
 }

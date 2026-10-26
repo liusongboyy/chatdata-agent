@@ -784,6 +784,32 @@
       "note": "夹具数据；gold 结果 1 行。"
     },
     {
+      "id": "ticket-m-066",
+      "difficulty": "MEDIUM",
+      "question": "已解决且优先级高于 2 的工单有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status = 'RESOLVED' AND priority > 2",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "condition",
+        "and"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-067",
+      "difficulty": "MEDIUM",
+      "question": "还没完成的工单（待处理或处理中）有多少张？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND status IN ('OPEN', 'IN_PROGRESS')",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "condition",
+        "or"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
       "id": "ticket-m-065",
       "difficulty": "SIMPLE",
       "question": "已解决的工单有多少张？",

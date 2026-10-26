@@ -249,14 +249,29 @@ public final class SemanticModel {
         if (mc == null) {
             return null;
         }
-        Candidate cond = requireCandidate(mc.field());
-        if (cond.column().derived() != null) {
+        List<MetricRef.Term> terms = new ArrayList<>(mc.terms().size());
+        for (ConditionTerm t : mc.terms()) {
+            FieldRef left = resolveConditionField(t.field(), mc);
+            FieldRef right = t.comparesWithField() ? resolveConditionField(t.rightField(), mc) : null;
+            terms.add(new MetricRef.Term(left, t.op(), t.value(), right));
+        }
+        return new MetricRef.Condition(mc.logic(), terms);
+    }
+
+    /**
+     * 解析条件里的一个字段。
+     *
+     * <p>派生指标没有物理列，不能出现在条件里——它本身就是聚合结果，
+     * 拿它逐行比较没有意义。
+     */
+    private FieldRef resolveConditionField(String name, MetricCondition mc) {
+        Candidate c = requireCandidate(name);
+        if (c.column().derived() != null) {
             throw new SemanticException(SemanticException.Reason.FIELD_KIND_MISMATCH,
-                    "统计条件「" + mc.display() + "」引用的是派生指标「" + mc.field()
+                    "统计条件「" + mc.display() + "」引用了派生指标「" + name
                             + "」，条件里只能引用物理列");
         }
-        FieldRef ref = resolveAny(mc.field());
-        return new MetricRef.Condition(ref, mc.op(), mc.value());
+        return resolveAny(name);
     }
 
     /** 解析指标。 */

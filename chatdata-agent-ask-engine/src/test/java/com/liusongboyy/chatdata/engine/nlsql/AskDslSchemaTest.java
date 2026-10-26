@@ -82,12 +82,17 @@ class AskDslSchemaTest {
     }
 
     @Test
-    @DisplayName("Filter 的三个字段也声明为 required")
+    @DisplayName("Filter 的 field / op / value 声明为 required，rightField 刻意不声明")
     void filterFieldsAreRequired() {
         JsonNode items = AskDslSchema.jsonSchema().path("properties").path("filters").path("items");
 
         assertThat(toSet(items.path("required")))
-                .isEqualTo(recordFieldsOf(AskDsl.Filter.class));
+                .as("""
+                        rightField 不进 required：绝大多数筛选是"列 运算符 常量"，
+                        强制必填会让模型给每个条件都编一个右侧字段。
+                        代价是它可能和 value 同时出现——解析时以 rightField 为准。""")
+                .containsExactlyInAnyOrder("field", "op", "value");
+        assertThat(propertyNames(items)).contains("rightField");
     }
 
     @Test

@@ -101,12 +101,33 @@ export interface DerivedDef {
  * 例如「已解决工单数」= COUNT(工单号)，条件是 `状态 = 已解决`。
  * 用 CASE 渲染，不影响同一条查询里的其它指标；字段可以跨表。
  */
-export interface MetricConditionDef {
+/** 一个条件项：与常量比，或与另一个字段比（二选一）。 */
+export interface ConditionTermDef {
   field: string
   /** = / != / > / < / >= / <= / in / like */
   op: string
-  /** in 用逗号分隔多个取值 */
-  value: string
+  /** 与常量比较的取值；in 用逗号分隔 */
+  value?: string | null
+  /** 与另一个字段比较时的右侧字段名 */
+  rightField?: string | null
+}
+
+/**
+ * 指标的统计条件。
+ *
+ * 单条件写成扁平形态（field/op/value），多条件写成 `{logic, conditions}`——
+ * 两种形态都由后端同一个解析器处理。
+ */
+export interface MetricConditionDef {
+  /** AND / OR；只有多条件时有意义 */
+  logic?: 'AND' | 'OR'
+  /** 多条件形态 */
+  conditions?: ConditionTermDef[]
+  /** 单条件形态（与 conditions 二选一） */
+  field?: string
+  op?: string
+  value?: string | null
+  rightField?: string | null
 }
 
 export interface ColumnDef {

@@ -259,7 +259,8 @@ public final class DslParser {
                     }
                     out.add(new AskDsl.Filter(field,
                             defaultOp(textOrNull(n.path("op"))),
-                            textOrNull(n.path("value"))));
+                            textOrNull(n.path("value")),
+                            textOrNull(n.path("rightField"))));
                 }
             }
             return out;

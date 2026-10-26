@@ -234,8 +234,34 @@ public record AskDsl(
     /**
      * 筛选条件。
      *
-     * @param op 比较运算符：= / != / &gt; / &lt; / in / like
+     * <p>比较对象可以是常量，也可以是**另一个字段**——「关闭时间晚于 SLA 截止时间」
+     * 这类条件两侧都是列。字段与字段比较时用 {@code rightField} 而不是 {@code value}，
+     * 两者互斥。
+     *
+     * @param op         比较运算符：= / != / &gt; / &lt; / &gt;= / &lt;= / in / like
+     * @param value      与常量比较时的取值；与字段比较时为 null
+     * @param rightField 与字段比较时的右侧字段业务名；与常量比较时为 null
      */
-    public record Filter(String field, String op, String value) {
+    public record Filter(String field, String op, String value, String rightField) {
+
+        /** 与常量比较。 */
+        public Filter(String field, String op, String value) {
+            this(field, op, value, null);
+        }
+
+        public Filter {
+            boolean hasRight = rightField != null && !rightField.isBlank();
+            if (hasRight) {
+                // 两者同时出现时以 rightField 为准。schema 里 value 仍是必填
+                // （spike 实测：不在 required 里的字段会被模型系统性省略，
+                // 去掉它会让所有筛选条件一起丢值），所以模型很可能会两个都填
+                rightField = rightField.trim();
+                value = null;
+            }
+        }
+
+        public boolean comparesWithField() {
+            return rightField != null;
+        }
     }
 }
