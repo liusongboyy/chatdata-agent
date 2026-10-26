@@ -3,6 +3,10 @@ package com.liusongboyy.chatdata.engine.admin;
 import com.liusongboyy.chatdata.engine.admin.mapper.SemanticAdminMapper;
 import com.liusongboyy.chatdata.engine.datasource.MetaReader;
 import com.liusongboyy.chatdata.engine.datasource.PasswordCipher;
+import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
+import com.liusongboyy.chatdata.engine.semantic.DomainLoader;
+import com.liusongboyy.chatdata.engine.semantic.MetricRef;
+import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
 import com.liusongboyy.chatdata.engine.semantic.mapper.SemanticConfigMapper;
 import com.mysql.cj.jdbc.MysqlDataSource;
 import org.apache.ibatis.mapping.Environment;
@@ -330,6 +334,33 @@ class AdminServiceRealDbTest {
             var row = domains.listTables(domainId).get(0);
             assertThat(row.columnsJson()).contains("\"col\":\"premium\"").contains("\"alias\":\"保费\"");
             assertThat(row.enabled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("★ 派生指标随列定义落库，解析回来的仍是同一个定义")
+        void derivedColumnRoundTrip() {
+            long domainId = newDomain();
+
+            domains.createTable(domainId, new DomainTableInput("ins_claim_t", "理赔表", "TABLE", null,
+                    List.of(new DomainTableInput.ColumnInput("settle_amount", "decimal", "SUM", "赔付金额", true),
+                            new DomainTableInput.ColumnInput("apply_amount", "decimal", "SUM", "申请金额", true),
+                            new DomainTableInput.ColumnInput(null, "decimal", "", "赔付率", true,
+                                    new DomainTableInput.DerivedInput(
+                                            "ratio", "赔付金额", "申请金额", null, null, null))),
+                    true, 0), "tester");
+
+            // 本文件的 @Nested 类也叫 Domain，这里必须写全名
+            com.liusongboyy.chatdata.engine.semantic.Domain domain =
+                    DomainLoader.load(domains.get(domainId), domains.listTables(domainId),
+                            List.of(), List.of(), "MYSQL5.7");
+            MetricRef ref = new SemanticModel(domain).resolveMetricRef("赔付率");
+
+            assertThat(ref).isInstanceOf(MetricRef.Derived.class);
+            MetricRef.Derived d = (MetricRef.Derived) ref;
+            assertThat(d.spec().kind()).isEqualTo(DerivedMetric.Kind.RATIO);
+            assertThat(d.inputs()).hasSize(2);
+            assertThat(d.inputs().get(0).column()).isEqualTo("settle_amount");
+            assertThat(d.inputs().get(1).column()).isEqualTo("apply_amount");
         }
 
         @Test

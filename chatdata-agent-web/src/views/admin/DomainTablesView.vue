@@ -21,6 +21,8 @@ import {
   updateTerm,
   updateTopic,
   updateTable,
+  type ColumnDef,
+  type DerivedKind,
   type DomainTable,
   type DomainTableForm,
   type TableJoin,
@@ -98,6 +100,28 @@ const formError = ref('')
 
 const isEditing = computed(() => editingId.value !== null)
 
+/** 列的「类型」：普通列，或三种派生指标之一。 */
+const DERIVED_KIND_OPTIONS: { value: '' | DerivedKind; label: string }[] = [
+  { value: '', label: '普通列' },
+  { value: 'ratio', label: '派生·比值' },
+  { value: 'diff', label: '派生·差值' },
+  { value: 'duration', label: '派生·时长' },
+]
+
+const DURATION_UNITS = [
+  { value: 'SECOND', label: '秒' },
+  { value: 'MINUTE', label: '分钟' },
+  { value: 'HOUR', label: '小时' },
+  { value: 'DAY', label: '天' },
+]
+
+/** 派生输入的下拉候选项。`metric` 决定它能当分子分母还是当起止时间。 */
+interface FieldOption {
+  name: string
+  table: string
+  metric: boolean
+}
+
 const AGG_OPTIONS = [
   { value: '', label: '不聚合（维度）' },
   { value: 'SUM', label: 'SUM 求和' },
@@ -114,7 +138,7 @@ function emptyForm(): DomainTableForm {
     label: '',
     mode: 'TABLE',
     sqlText: null,
-    columns: [{ col: '', type: '', agg: '', alias: '', enabled: true }],
+    columns: [{ col: '', type: '', agg: '', alias: '', enabled: true, derived: null }],
     enabled: true,
     sortNo: 0,
   }
@@ -163,7 +187,7 @@ function startEdit(t: DomainTable): void {
     sortNo: 0,
   }
   if (form.value.columns.length === 0) {
-    form.value.columns = [{ col: '', type: '', agg: '', alias: '', enabled: true }]
+    form.value.columns = [{ col: '', type: '', agg: '', alias: '', enabled: true, derived: null }]
   }
   formError.value = ''
   showForm.value = true
@@ -172,8 +196,83 @@ function startEdit(t: DomainTable): void {
 function addColumn(): void {
   form.value.columns = [
     ...form.value.columns,
-    { col: '', type: '', agg: '', alias: '', enabled: true },
+    { col: '', type: '', agg: '', alias: '', enabled: true, derived: null },
   ]
+}
+
+function addDerivedColumn(): void {
+  form.value.columns = [
+    ...form.value.columns,
+    { col: '', type: '', agg: '', alias: '', enabled: true, derived: { kind: 'ratio', left: '', right: '' } },
+  ]
+}
+
+/** 这一列当前是普通列还是哪种派生指标。 */
+function columnKind(c: ColumnDef): '' | DerivedKind {
+  return c.derived?.kind ?? ''
+}
+
+function onKindChange(c: ColumnDef, event: Event): void {
+  const raw = (event.target as HTMLSelectElement).value
+  if (!raw) {
+    c.derived = null
+    return
+  }
+  const kind = raw as DerivedKind
+  c.derived =
+    kind === 'duration'
+      ? { kind, start: '', end: '', unit: 'HOUR' }
+      : { kind, left: '', right: '' }
+  // 派生指标没有物理列，本身也已是聚合结果——这两项必须清空，
+  // 否则保存时会被后端拒绝（规则与运行时同一份）
+  c.col = ''
+  c.agg = ''
+}
+
+/**
+ * 可作派生输入的字段。
+ *
+ * 输入存的是**业务名**，所以下拉里给的是 `alias || col`——与问数时用的是同一个名字。
+ * 跨表也可以：渲染器会把输入列所在的表 JOIN 进来。
+ */
+const fieldOptions = computed<FieldOption[]>(() => {
+  const out: FieldOption[] = []
+  const seen = new Set<string>()
+  const push = (name: string, table: string, metric: boolean): void => {
+    const n = (name ?? '').trim()
+    if (!n || seen.has(n)) return
+    seen.add(n)
+    out.push({ name: n, table, metric })
+  }
+  for (const t of tables.value) {
+    // 正在编辑的表用表单里的最新值，不用库里的旧值
+    if (editingId.value !== null && t.id === editingId.value) continue
+    for (const c of parseColumns(t.columnsJson)) {
+      if (!c.enabled || c.derived) continue
+      push(c.alias || c.col, t.label || t.name, !!c.agg)
+    }
+  }
+  for (const c of form.value.columns) {
+    if (!c.enabled || c.derived) continue
+    push(c.alias || c.col, '本表', !!c.agg)
+  }
+  return out
+})
+
+/** 比值/差值的两侧必须是**指标**（带聚合方式）。 */
+const metricOptions = computed(() => fieldOptions.value.filter((o) => o.metric))
+/** 时长的起止必须是**维度**（原始时间列，不聚合）。 */
+const dimensionOptions = computed(() => fieldOptions.value.filter((o) => !o.metric))
+
+/** 派生指标的人话表达，用于编辑器预览与列表展示。 */
+function derivedFormula(c: ColumnDef): string {
+  const d = c.derived
+  if (!d) return ''
+  if (d.kind === 'duration') {
+    const unit = DURATION_UNITS.find((u) => u.value === (d.unit || 'HOUR'))?.label ?? d.unit ?? ''
+    return `${d.start || '?'} → ${d.end || '?'}，按${unit}取平均`
+  }
+  return `${d.left || '?'} ${d.kind === 'ratio' ? '÷' : '−'} ${d.right || '?'}`
 }
 
 function removeColumn(i: number): void {
@@ -184,10 +283,31 @@ async function save(): Promise<void> {
   saving.value = true
   formError.value = ''
   try {
-    // 丢掉空行：用户点了「添加一列」却没填，不该因此保存失败
+    const nameless = form.value.columns.find(
+      (c) => c.derived && (c.alias ?? '').trim() === '',
+    )
+    if (nameless) {
+      formError.value = '派生指标必须填业务名——没有名字就永远匹配不上'
+      return
+    }
+    const incomplete = form.value.columns.find((c) => {
+      if (!c.derived) return false
+      return c.derived.kind === 'duration'
+        ? !c.derived.start || !c.derived.end
+        : !c.derived.left || !c.derived.right
+    })
+    if (incomplete) {
+      formError.value = `派生指标「${incomplete.alias}」还没选全输入列`
+      return
+    }
+
+    // 丢掉空行：用户点了「添加一列」却没填，不该因此保存失败。
+    // **派生指标没有物理列**，判空要看业务名而不是列名
     const cleaned: DomainTableForm = {
       ...form.value,
-      columns: form.value.columns.filter((c) => c.col.trim() !== ''),
+      columns: form.value.columns.filter((c) =>
+        c.derived ? (c.alias ?? '').trim() !== '' : (c.col ?? '').trim() !== '',
+      ),
     }
     if (editingId.value !== null) {
       await updateTable(editingId.value, cleaned)
@@ -394,7 +514,7 @@ async function removeTopic(t: TopicRow): Promise<void> {
 /** 某张注册表的字段名，供连接列下拉用。 */
 function columnsOf(tableId: string): string[] {
   const t = tables.value.find((x) => String(x.id) === tableId)
-  return t ? parseColumns(t.columnsJson).map((c) => c.col) : []
+  return t ? parseColumns(t.columnsJson).map((c) => c.col).filter((c) => c !== '') : []
 }
 
 function startAddJoin(): void {
@@ -504,9 +624,10 @@ async function remove(t: DomainTable): Promise<void> {
         <p class="mono sub">{{ t.name }}</p>
 
         <ul class="cols">
-          <li v-for="c in parseColumns(t.columnsJson)" :key="c.col" class="col-item">
+          <li v-for="(c, idx) in parseColumns(t.columnsJson)" :key="idx" class="col-item">
             <span class="col-alias">{{ c.alias || c.col }}</span>
-            <span class="col-name mono">{{ c.col }}</span>
+            <span v-if="c.derived" class="col-derived mono">{{ derivedFormula(c) }}</span>
+            <span v-else class="col-name mono">{{ c.col }}</span>
             <span v-if="c.agg" class="col-agg">{{ c.agg }}</span>
             <span v-if="!c.enabled" class="col-off">已关闭</span>
           </li>
@@ -821,33 +942,106 @@ async function remove(t: DomainTable): Promise<void> {
               <strong>列名</strong>要与数据库里的列名一致（渲染时原样引用，差一个字符就查不到）。
               <strong>业务名</strong>是问数时用户与模型使用的名字。
               带聚合方式的只能当指标，不带的只能当维度。
+              <strong>派生指标</strong>由已有指标或时间列算出（比值/差值/时长），没有物理列，
+              模型只按名字引用——口径在这里定死，不交给模型拼算式。
             </p>
 
             <div class="col-head">
               <span>列名</span>
               <span>业务名</span>
+              <span>类型</span>
               <span>聚合方式</span>
               <span>启用</span>
               <span />
             </div>
 
-            <div v-for="(c, i) in form.columns" :key="i" class="col-row">
-              <input v-model="c.col" class="input mono" placeholder="premium" />
-              <input v-model="c.alias" class="input" placeholder="保费" />
-              <select v-model="c.agg" class="input">
-                <option v-for="a in AGG_OPTIONS" :key="a.value" :value="a.value">
-                  {{ a.label }}
-                </option>
-              </select>
-              <input v-model="c.enabled" type="checkbox" />
-              <button class="btn btn-quiet btn-sm" type="button" @click="removeColumn(i)">
-                移除
-              </button>
+            <div v-for="(c, i) in form.columns" :key="i" class="col-block">
+              <div class="col-row">
+                <input
+                  v-model="c.col"
+                  class="input mono"
+                  :disabled="!!c.derived"
+                  :placeholder="c.derived ? '（派生指标无物理列）' : 'premium'"
+                />
+                <input v-model="c.alias" class="input" placeholder="保费" />
+                <select class="input" :value="columnKind(c)" @change="onKindChange(c, $event)">
+                  <option v-for="k in DERIVED_KIND_OPTIONS" :key="k.value" :value="k.value">
+                    {{ k.label }}
+                  </option>
+                </select>
+                <select v-model="c.agg" class="input" :disabled="!!c.derived">
+                  <option v-for="a in AGG_OPTIONS" :key="a.value" :value="a.value">
+                    {{ a.label }}
+                  </option>
+                </select>
+                <input v-model="c.enabled" type="checkbox" />
+                <button class="btn btn-quiet btn-sm" type="button" @click="removeColumn(i)">
+                  移除
+                </button>
+              </div>
+
+              <!-- 派生指标的输入：只有选全了才保存得下去 -->
+              <div v-if="c.derived" class="derived-row">
+                <template v-if="c.derived.kind === 'duration'">
+                  <label class="derived-slot">
+                    <span>起始时间</span>
+                    <select v-model="c.derived.start" class="input mono">
+                      <option value="">选择列…</option>
+                      <option v-for="o in dimensionOptions" :key="o.name" :value="o.name">
+                        {{ o.name }} · {{ o.table }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="derived-slot">
+                    <span>结束时间</span>
+                    <select v-model="c.derived.end" class="input mono">
+                      <option value="">选择列…</option>
+                      <option v-for="o in dimensionOptions" :key="o.name" :value="o.name">
+                        {{ o.name }} · {{ o.table }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="derived-slot">
+                    <span>单位</span>
+                    <select v-model="c.derived.unit" class="input">
+                      <option v-for="u in DURATION_UNITS" :key="u.value" :value="u.value">
+                        {{ u.label }}
+                      </option>
+                    </select>
+                  </label>
+                </template>
+                <template v-else>
+                  <label class="derived-slot">
+                    <span>{{ c.derived.kind === 'ratio' ? '分子' : '被减数' }}</span>
+                    <select v-model="c.derived.left" class="input mono">
+                      <option value="">选择指标…</option>
+                      <option v-for="o in metricOptions" :key="o.name" :value="o.name">
+                        {{ o.name }} · {{ o.table }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="derived-slot">
+                    <span>{{ c.derived.kind === 'ratio' ? '分母' : '减数' }}</span>
+                    <select v-model="c.derived.right" class="input mono">
+                      <option value="">选择指标…</option>
+                      <option v-for="o in metricOptions" :key="o.name" :value="o.name">
+                        {{ o.name }} · {{ o.table }}
+                      </option>
+                    </select>
+                  </label>
+                </template>
+                <p class="derived-formula mono">＝ {{ derivedFormula(c) }}</p>
+              </div>
             </div>
 
-            <button class="btn btn-quiet btn-sm add-col" type="button" @click="addColumn">
-              + 添加一列
-            </button>
+            <div class="add-col">
+              <button class="btn btn-quiet btn-sm" type="button" @click="addColumn">
+                + 添加一列
+              </button>
+              <button class="btn btn-quiet btn-sm" type="button" @click="addDerivedColumn">
+                + 添加派生指标
+              </button>
+            </div>
           </fieldset>
         </div>
 
@@ -935,6 +1129,12 @@ async function remove(t: DomainTable): Promise<void> {
   color: var(--ink-faint);
 }
 
+/* 派生指标没有列名，显示成算式 */
+.col-derived {
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+}
+
 .col-agg {
   padding: 0 0.4em;
   border-radius: 3px;
@@ -973,9 +1173,52 @@ async function remove(t: DomainTable): Promise<void> {
 .col-head,
 .col-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1.4fr 3.5em 4.5em;
+  grid-template-columns: 1.1fr 0.9fr 7.5em 1.3fr 3.5em 4.5em;
   gap: var(--space-2);
   align-items: center;
+}
+
+/* 一列占两行：基本信息 + （可选）派生输入。
+   派生输入放在下一行而不是塞进同一行——它有 2–3 个下拉，挤进去会把
+   列名/业务名压到看不清，而这两个恰恰最容易填错 */
+.col-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.col-block + .col-block {
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--line);
+}
+
+.derived-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 6em;
+  gap: var(--space-2);
+  align-items: end;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--ink);
+}
+
+.derived-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.derived-slot .input {
+  padding: 0.35em 0.5em;
+  font-size: var(--text-sm);
+}
+
+.derived-formula {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
 }
 
 .col-head {
@@ -991,8 +1234,9 @@ async function remove(t: DomainTable): Promise<void> {
 }
 
 .add-col {
-  align-self: flex-start;
-  margin-top: var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .checkbox {
@@ -1283,6 +1527,10 @@ async function remove(t: DomainTable): Promise<void> {
     grid-template-columns: 1fr 1fr;
     padding-bottom: var(--space-3);
     border-bottom: 1px solid var(--line);
+  }
+
+  .derived-row {
+    grid-template-columns: 1fr;
   }
 
   .two-col {

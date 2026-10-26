@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.liusongboyy.chatdata.engine.semantic.Aggregation;
+import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
+import com.liusongboyy.chatdata.engine.semantic.SemanticException;
 
 import java.util.List;
 
@@ -43,14 +45,49 @@ public record DomainTableInput(
      * @param agg     聚合方式；维度列留空
      * @param alias   业务名。问数时用户与模型使用的名字
      * @param enabled 是否对 LLM 可见
+     * @param derived 派生指标定义；普通列为 null。派生指标**没有物理列**，
+     *                故此时 {@code col} 可以留空
      */
     public record ColumnInput(
             String col,
             String type,
             String agg,
             String alias,
-            boolean enabled
+            boolean enabled,
+            DerivedInput derived
     ) {
+        /** 兼容旧调用方与测试：普通列没有派生定义。 */
+        public ColumnInput(String col, String type, String agg, String alias, boolean enabled) {
+            this(col, type, agg, alias, enabled, null);
+        }
+    }
+
+    /**
+     * 派生指标入参。
+     *
+     * <p>字段名与 {@code columns_json} 里的 {@code derived} 块一致，
+     * 因此前端**原样**把它放在列定义里传进来即可，不必自己拼 JSON 字符串。
+     *
+     * <p>校验交给 {@link DerivedMetric} 的构造器——管理面与运行时的判据必须是同一份，
+     * 否则会出现"保存时通过、启动校验报错"。
+     */
+    public record DerivedInput(
+            String kind,
+            String left,
+            String right,
+            String start,
+            String end,
+            String unit
+    ) {
+        DerivedMetric validated(String columnName) {
+            try {
+                return new DerivedMetric(DerivedMetric.Kind.parse(kind),
+                        left, right, start, end, unit);
+            } catch (SemanticException e) {
+                throw new AdminException(
+                        "派生指标「" + columnName + "」配置有误：" + e.getMessage());
+            }
+        }
     }
 
     public DomainTableInput validated() {
@@ -66,6 +103,10 @@ public record DomainTableInput(
 
         List<ColumnInput> cols = columns == null ? List.of() : columns;
         for (ColumnInput c : cols) {
+            if (c.derived() != null) {
+                validateDerived(c);
+                continue;
+            }
             require(c.col(), "列名");
             // 聚合方式在保存时就校验。未知取值如果放行，要到渲染时才抛异常，
             // 而那时用户看到的是"这个问题涉及的数据还没配置好"，指不到真正的原因
@@ -87,13 +128,45 @@ public record DomainTableInput(
         ArrayNode arr = M.createArrayNode();
         for (ColumnInput c : (columns == null ? List.<ColumnInput>of() : columns)) {
             ObjectNode node = arr.addObject();
-            node.put("col", c.col().trim());
+            // 派生指标没有物理列，这里写空串而不是 null：columns_json 的读取方
+            // （DomainLoader / keysOf）按"col 为空即无物理列"判断
+            node.put("col", c.col() == null ? "" : c.col().trim());
             node.put("type", c.type() == null ? "" : c.type());
-            node.put("agg", c.agg() == null ? "" : c.agg().trim());
+            // 派生指标本身已是聚合结果，不能再叠聚合（ColumnDef 会拒绝）
+            node.put("agg", c.derived() != null || c.agg() == null ? "" : c.agg().trim());
             node.put("alias", c.alias() == null ? "" : c.alias().trim());
             node.put("enabled", c.enabled());
+            if (c.derived() != null) {
+                // 校验已通过，这里再解析一次是为了拿到**规范化后**的值：
+                // kind 统一成小写、unit 统一成大写，避免同一份配置写出两种形态
+                DerivedMetric d = c.derived().validated(c.alias());
+                ObjectNode dv = node.putObject("derived");
+                dv.put("kind", d.kind().name().toLowerCase(java.util.Locale.ROOT));
+                if (d.kind() == DerivedMetric.Kind.DURATION) {
+                    dv.put("start", d.start());
+                    dv.put("end", d.end());
+                    dv.put("unit", d.unit());
+                } else {
+                    dv.put("left", d.left());
+                    dv.put("right", d.right());
+                }
+            }
         }
         return arr.toString();
+    }
+
+    /** 派生指标的入参校验。判据复用 {@link DerivedMetric}，与运行时同一份。 */
+    private static void validateDerived(ColumnInput c) {
+        require(c.alias(), "派生指标的业务名");
+        if (c.col() != null && !c.col().isBlank()) {
+            throw new AdminException(
+                    "派生指标「" + c.alias() + "」没有物理列，列名请留空（当前写的是 " + c.col().trim() + "）");
+        }
+        if (c.agg() != null && !c.agg().isBlank()) {
+            throw new AdminException(
+                    "派生指标「" + c.alias() + "」本身就是聚合结果，不能再配置聚合方式");
+        }
+        c.derived().validated(c.alias());
     }
 
     private static void require(String value, String label) {

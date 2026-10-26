@@ -74,12 +74,36 @@ export interface DomainForm {
   sortNo: number
 }
 
+/** 派生指标的类型：比值 / 差值 / 时长。 */
+export type DerivedKind = 'ratio' | 'diff' | 'duration'
+
+/**
+ * 派生指标定义，对应 `columns_json` 里的 `derived` 块。
+ *
+ * - `ratio` / `diff` 用 `left` / `right`（域内已有**指标**的业务名，可跨表）
+ * - `duration` 用 `start` / `end`（两个时间列）+ `unit`
+ *
+ * 模型只按名字引用派生指标，不写算式——口径在语义层定死。
+ */
+export interface DerivedDef {
+  kind: DerivedKind
+  left?: string | null
+  right?: string | null
+  start?: string | null
+  end?: string | null
+  /** SECOND / MINUTE / HOUR / DAY；缺省 HOUR */
+  unit?: string | null
+}
+
 export interface ColumnDef {
+  /** 物理列名。**派生指标没有物理列**，此处为空串 */
   col: string
   type: string
   agg: string
   alias: string
   enabled: boolean
+  /** 派生指标定义；普通列为 null。见 [DerivedDef] */
+  derived?: DerivedDef | null
 }
 
 export interface DomainTable {

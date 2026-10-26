@@ -40,7 +40,7 @@ public record DerivedMetric(Kind kind, String left, String right,
         /** 两个时间列之差，按单位取平均。 */
         DURATION;
 
-        static Kind parse(String raw) {
+        public static Kind parse(String raw) {
             if (raw == null || raw.isBlank()) {
                 throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
                         "派生指标缺少 kind（ratio / diff / duration）");
