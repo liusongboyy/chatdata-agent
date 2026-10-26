@@ -293,14 +293,17 @@ class DslParserTest {
         }
 
         @Test
-        @DisplayName("自定义对比期缺日期 / 日期不合法 → 拒绝")
+        @DisplayName("★ 自定义对比期缺日期 → 当没填（不整条作废），日期写错 → 仍然拒绝")
         void invalidCustomCompare() {
-            assertThatThrownBy(() -> DslParser.parse("""
+            // 缺一端：模型常在没有明确对比期时随手填 custom。为它整条作废代价太大，
+            // 故当作"没有对比"，其余部分照常解析
+            AskDsl missing = DslParser.parse("""
                     {"metrics":["保费"],"dimensions":[],"filters":[],
-                     "compare":{"mode":"custom","start":"2023-01-01"}}"""))
-                    .isInstanceOf(DslGenerationException.class)
-                    .hasMessageContaining("start");
+                     "compare":{"mode":"custom","start":"2023-01-01"}}""");
+            assertThat(missing.compare()).isNull();
+            assertThat(missing.metrics()).containsExactly("保费");
 
+            // 写了日期但格式不合法：那是明确的错误，不能悄悄当成没填
             assertThatThrownBy(() -> DslParser.parse("""
                     {"metrics":["保费"],"dimensions":[],"filters":[],
                      "compare":{"mode":"custom","start":"2023-13-01","end":"2023-12-31"}}"""))

@@ -162,6 +162,37 @@ class InsightCalculatorTest {
     }
 
     @Nested
+    @DisplayName("标量")
+    class Scalar {
+
+        @Test
+        @DisplayName("★ 无维度单行 → 产出一条 SCALAR 事实，否则「总额是多少」会没有结论")
+        void scalarValue() {
+            AskDsl dsl = dsl(List.of("订单金额"), List.of(), AskDsl.Granularity.DAY, null);
+            StepResult s = step("s1", dsl, List.of("订单金额"),
+                    List.of(List.of(bd("1234.5"))), Set.of());
+
+            assertThat(InsightCalculator.compute(List.of(s), model()))
+                    .singleElement()
+                    .satisfies(f -> {
+                        assertThat(f.kind()).isEqualTo(Finding.Kind.SCALAR);
+                        assertThat(f.text()).contains("订单金额").contains("1234.5");
+                        assertThat(f.evidence()).containsEntry("value", bd("1234.5"));
+                    });
+        }
+
+        @Test
+        @DisplayName("多行无维度不猜（那是没聚合的结果，不该被当成「这次的答案」）")
+        void multiRowWithoutDimensionSkipped() {
+            AskDsl dsl = dsl(List.of("订单金额"), List.of(), AskDsl.Granularity.DAY, null);
+            StepResult s = step("s1", dsl, List.of("订单金额"),
+                    List.of(List.of(bd("1")), List.of(bd("2"))), Set.of());
+
+            assertThat(InsightCalculator.compute(List.of(s), model())).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("分类构成")
     class Contribution {
 

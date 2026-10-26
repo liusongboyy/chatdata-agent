@@ -30,7 +30,15 @@ public record Finding(Kind kind, String stepId, String text, Map<String, Object>
         /** 同环比 / 自定义对比的结果。 */
         COMPARE,
         /** 偏离均值的点。 */
-        OUTLIER
+        OUTLIER,
+        /**
+         * 单值事实：没有维度、只有一行。
+         *
+         * <p>它是"这次查询的答案本身"。没有它的话，「保费总额是多少」这类问题
+         * 会**一条事实都算不出来**，结论区随之空白——用户只看到一张表，
+         * 却没有任何一句话说明这次算的是什么。
+         */
+        SCALAR
     }
 
     public Finding {

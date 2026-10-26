@@ -211,6 +211,21 @@ public record AskDsl(
         }
     }
 
+    /**
+     * 去掉对比期，保留其余一切。
+     *
+     * <p>用在**分析编排**里：模型有时会给一个不成形的 compare（自定义对比却没给日期、
+     * 同比却按天分组）。这类 compare 是它自己加的增强，不是用户说过的约束——
+     * 丢掉它，这一步仍然查得出正确数据；而让整条计划因此作废，用户拿到的只会更少。
+     *
+     * <p>单查询链路**不做**这个降级：那里 compare 是用户明确要求的，
+     * 悄悄丢掉等于答应了一次没做的对比。
+     */
+    public AskDsl withoutCompare() {
+        return new AskDsl(metrics, dimensions, timeRange, filters, granularity,
+                sort, limit, shareOf, null);
+    }
+
     /** 是否什么都没解析出来——用于触发重问。 */
     public boolean isEmpty() {
         return metrics.isEmpty() && dimensions.isEmpty() && filters.isEmpty() && timeRange == null;

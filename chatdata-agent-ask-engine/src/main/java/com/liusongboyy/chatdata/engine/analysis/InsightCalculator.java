@@ -66,6 +66,12 @@ public final class InsightCalculator {
             if (dsl.compare() != null) {
                 out.addAll(compare(step, metric, metricIdx));
             }
+            // 没有维度且只有一行：这次查询的答案就是一个数。
+            // 它必须变成一条事实，否则结论区会空着——用户看到表格，
+            // 却没有任何一句话说明这次算的是什么
+            if (dsl.dimensions().isEmpty() && dsl.compare() == null && rows.rowCount() == 1) {
+                out.addAll(scalar(step, metric, rows, metricIdx));
+            }
             if (dsl.dimensions().size() == 1) {
                 String dim = dsl.dimensions().get(0);
                 int dimIdx = rows.columns().indexOf(dim);
@@ -82,6 +88,20 @@ public final class InsightCalculator {
             }
         }
         return out;
+    }
+
+    // ── 标量 ──
+
+    private static List<Finding> scalar(StepResult step, String metric, QueryResult rows,
+                                        int metricIdx) {
+        BigDecimal value = decimal(cellRaw(rows.rows().get(0), metricIdx));
+        if (value == null) {
+            return List.of();
+        }
+        Map<String, Object> ev = new LinkedHashMap<>();
+        ev.put("value", value);
+        return List.of(new Finding(Finding.Kind.SCALAR, step.id(),
+                "%s为 %s".formatted(metric, num(value)), ev));
     }
 
     // ── 时间序列 ──

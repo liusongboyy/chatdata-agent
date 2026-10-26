@@ -98,13 +98,17 @@ public final class EvalRunner {
             AskResult result;
             try {
                 AskFacade service = factory.forDomain(set.domainId());
-                result = service.askStreaming(
+                AskRequest askRequest = new AskRequest(
                         // userId 决定权限（必须是能通过域授权的身份）；
                         // username 进审计，加上 eval: 前缀，便于把评测流量与真实流量分开
-                        new AskRequest(c.question(), set.userId(), "eval:" + set.name(), set.roles(),
-                                "eval-" + set.domainId() + "-" + c.id(), set.assistantId()),
-                        event -> {
-                        });
+                        c.question(), set.userId(), "eval:" + set.name(), set.roles(),
+                        "eval-" + set.domainId() + "-" + c.id(), set.assistantId());
+
+                // 分析用例走编排入口；其余走单查询。
+                // 两者最终都落在同一个 AskResult 上，故下面的记录逻辑只有一份
+                result = c.analyze()
+                        ? service.analyzeStreaming(askRequest, event -> { })
+                        : service.askStreaming(askRequest, event -> { });
             } catch (Exception e) {
                 errors++;
                 durations[durationCount++] = System.currentTimeMillis() - t0;
@@ -119,7 +123,31 @@ public final class EvalRunner {
             long duration = System.currentTimeMillis() - t0;
             durations[durationCount++] = duration;
 
-            // ③ 比对。两种口径都算：
+            // ③a 分析用例：不看结果集，看"事实是否命中 + 结论是否可信"
+            if (c.analyze()) {
+                AnalysisCaseChecker.Verdict verdict =
+                        AnalysisCaseChecker.check(c.analysis(), result.analysis());
+                boolean ok = verdict.ok();
+                if (ok) {
+                    passed++;
+                    containsPassed++;
+                } else if (result.analysis() == null) {
+                    empty++;
+                }
+                results.add(new EvalReport.CaseResult(
+                        c.id(), c.difficulty().name(), c.question(),
+                        ok ? EvalReport.Status.PASS : EvalReport.Status.FAIL, ok, verdict.reason(),
+                        c.goldSql(),
+                        truncate(AnalysisCaseChecker.digest(result.analysis())), "ANALYSIS",
+                        gold.rowCount(),
+                        result.analysis() == null ? 0 : result.analysis().queryCount(),
+                        duration, c.tags()));
+                progress.accept("    → " + (ok ? "PASS" : "FAIL") + " " + verdict.reason()
+                        + " (" + duration + "ms)");
+                continue;
+            }
+
+            // ③b 比对。两种口径都算：
             //    严格 EX（列数必须一致，与公开基准一致）是主指标；
             //    包含式 EX 允许"多返回了列"，用来区分"答案错"与"话多"
             QueryResult actual = result.result();

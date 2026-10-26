@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPlan;
 import com.liusongboyy.chatdata.engine.analysis.PlanStep;
 import com.liusongboyy.chatdata.engine.nlsql.AskDsl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -30,6 +32,7 @@ import java.util.Set;
  */
 public final class AnalysisPlanParser {
 
+    private static final Logger log = LoggerFactory.getLogger(AnalysisPlanParser.class);
     private static final ObjectMapper M = new ObjectMapper();
 
     private AnalysisPlanParser() {
@@ -90,6 +93,7 @@ public final class AnalysisPlanParser {
                         "步骤「" + id + "」与前面的步骤是同一个查询，请合并或换成不同角度");
             }
 
+            dsl = sanitize(id, dsl);
             steps.add(new PlanStep(id, textOrNull(n.path("label")),
                     textOrNull(n.path("purpose")), dsl));
         }
@@ -99,6 +103,40 @@ public final class AnalysisPlanParser {
         } catch (IllegalArgumentException e) {
             throw new DslGenerationException(e.getMessage());
         }
+    }
+
+    /**
+     * 计划期的可执行性处理：**能修就修，修不了才拒绝**。
+     *
+     * <p>模型给 compare 时经常加点"顺手"的增强——自定义对比却没给日期、
+     * 同比却按天分组。这些是它自己加的，不是用户说过的约束：
+     * 丢掉 compare，这一步仍查得出正确数据；而让整条计划作废、退化成单查询，
+     * 用户拿到的只会更少。
+     *
+     * <p>只处理**可安全丢弃的增强**。像"字段不存在"这种，丢弃等于改问题，
+     * 仍然整条拒绝。
+     *
+     * @return 修好的 DSL（可能去掉了 compare）
+     */
+    private static AskDsl sanitize(String id, AskDsl dsl) {
+        if (dsl.compare() == null) {
+            return dsl;
+        }
+        boolean bad = false;
+        if (dsl.timeRange() == null) {
+            // 没有时间范围就没有"上期"
+            bad = true;
+        } else if (dsl.compare().mode() == AskDsl.Compare.Mode.YOY
+                && !dsl.dimensions().isEmpty()
+                && dsl.granularity() == AskDsl.Granularity.DAY) {
+            // 按天做同比会踩到 2 月 29 日并组
+            bad = true;
+        }
+        if (!bad) {
+            return dsl;
+        }
+        log.info("分析步骤「{}」的对比期不成立，已丢弃该增强并继续", id);
+        return dsl.withoutCompare();
     }
 
     private static String textOrNull(JsonNode n) {

@@ -137,8 +137,16 @@ public final class DslParser {
         if (node.isObject()) {
             String mode = textOrNull(node.path("mode"));
             if (mode == null || "custom".equalsIgnoreCase(mode.trim())) {
-                // 只有 start/end 没写 mode 时按自定义处理：这是最自然的写法
-                return AskDsl.Compare.custom(textOrNull(node.path("start")), textOrNull(node.path("end")));
+                // 只有 start/end 没写 mode 时按自定义处理：这是最自然的写法。
+                // **缺日期时不抛**：模型常在没明确对比期的情况下随手填 custom，
+                // 为它整条作废代价太大。返回 null 交给调用方——
+                // 编排会丢弃这个增强，单查询仍会因为"没有对比期"而表现正常
+                String start = textOrNull(node.path("start"));
+                String end = textOrNull(node.path("end"));
+                if (start == null || end == null) {
+                    return null;
+                }
+                return AskDsl.Compare.custom(start, end);
             }
             return AskDsl.Compare.parse(mode);
         }

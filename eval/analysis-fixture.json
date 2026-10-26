@@ -1,0 +1,112 @@
+{
+  "name": "保险分析域 · 分析编排基线",
+  "domainId": "2001",
+  "userId": "eval",
+  "roles": ["super_admin"],
+  "assistantId": null,
+  "primaryMetric": "strict",
+  "cases": [
+    {
+      "id": "analysis-001",
+      "difficulty": "MEDIUM",
+      "question": "2025 年保费比 2024 年下降了吗？主要是什么原因？",
+      "goldSql": "SELECT YEAR(effect_date) AS y, SUM(premium) AS p FROM ins_policy WHERE effect_date >= '2024-01-01' AND effect_date < '2026-01-01' GROUP BY y ORDER BY y",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["analysis", "trend"],
+      "note": "2024 = 870550.28，2025 = 722117.97，降约 17%。gold 只用于确认库里有这两年数据；判定看事实与结论。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": ["COMPARE:"],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "analysis-002",
+      "difficulty": "MEDIUM",
+      "question": "各险种的保费构成是怎样的？哪个险种占比最高？",
+      "goldSql": "SELECT product_type, SUM(premium) AS p FROM ins_policy GROUP BY product_type ORDER BY p DESC",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["analysis", "contribution"],
+      "note": "财产险 624703.92 最高，约 23.6%。判定看是否产出 CONTRIBUTION 且提到险种。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": ["CONTRIBUTION:"],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "analysis-003",
+      "difficulty": "MEDIUM",
+      "question": "各区域的保费分布如何？哪些区域贡献最大？",
+      "goldSql": "SELECT region, SUM(premium) AS p FROM ins_policy GROUP BY region ORDER BY p DESC",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["analysis", "contribution"],
+      "note": "华东 627604.31 第一，前 3（华东、华北、西南）合计约 64.5%。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": ["CONTRIBUTION:华东"],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "analysis-004",
+      "difficulty": "HARD",
+      "question": "2025 年各月份的保费走势怎么样？有没有异常的月份？",
+      "goldSql": "SELECT DATE_FORMAT(effect_date, '%Y-%m') AS m, SUM(premium) AS p FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' GROUP BY m ORDER BY m",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["analysis", "trend", "outlier"],
+      "note": "2025-01 102579.35 最高，2025-05 14688.18 与 2025-11 16556.91 明显偏低。判趋势即可，离群点不强制（2σ 未必触发）。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": ["TREND:"],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "analysis-005",
+      "difficulty": "HARD",
+      "question": "2025 年保费同比变化怎么样？哪个险种拖累最大？",
+      "goldSql": "SELECT p.product_type, SUM(p.premium) AS p2025, (SELECT SUM(p2.premium) FROM ins_policy p2 WHERE p2.product_type = p.product_type AND p2.effect_date >= '2024-01-01' AND p2.effect_date < '2025-01-01') AS p2024 FROM ins_policy p WHERE p.effect_date >= '2025-01-01' AND p.effect_date < '2026-01-01' GROUP BY p.product_type",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["analysis", "compare"],
+      "note": "同比需要 compare=yoy + month/year 粒度，是编排里最容易拆错的一类；判定看是否产出 COMPARE 事实。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": ["COMPARE:"],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "analysis-006",
+      "difficulty": "SIMPLE",
+      "question": "保费总额是多少？",
+      "goldSql": "SELECT SUM(premium) AS total FROM ins_policy",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["analysis", "scalar"],
+      "note": "标量问题不该被拆成多步。断言：步骤不超过 2 步，且不编造结论里的数字。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    }
+  ]
+}

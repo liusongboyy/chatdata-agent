@@ -371,6 +371,8 @@ function kindLabel(kind: string): string {
       return '对比'
     case 'OUTLIER':
       return '异常'
+    case 'SCALAR':
+      return '数值'
     default:
       return kind
   }
