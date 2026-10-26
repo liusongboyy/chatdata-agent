@@ -6,6 +6,7 @@ import com.liusongboyy.chatdata.engine.analysis.AnalysisExecutor;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPlan;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPlanSource;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPrompts;
+import com.liusongboyy.chatdata.engine.analysis.AnalysisMemory;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisResult;
 import com.liusongboyy.chatdata.engine.analysis.Finding;
 import com.liusongboyy.chatdata.engine.analysis.NarrativeGuard;
@@ -50,16 +51,26 @@ public final class AnalysisService {
     private final AskAuditRecorder auditRecorder;
     private final AnalysisPlanSource planSource;
     private final NarrativeSource narrativeSource;
+    /** 上一轮分析记忆的存取；null 表示不做多轮记忆。 */
+    private final io.agentscope.core.state.AgentStateStore memoryStore;
 
     public AnalysisService(SemanticModel model, SqlDialect dialect, SqlExecutor sqlExecutor,
                            AskAuditRecorder auditRecorder,
                            AnalysisPlanSource planSource, NarrativeSource narrativeSource) {
+        this(model, dialect, sqlExecutor, auditRecorder, planSource, narrativeSource, null);
+    }
+
+    public AnalysisService(SemanticModel model, SqlDialect dialect, SqlExecutor sqlExecutor,
+                           AskAuditRecorder auditRecorder,
+                           AnalysisPlanSource planSource, NarrativeSource narrativeSource,
+                           io.agentscope.core.state.AgentStateStore memoryStore) {
         this.model = model;
         this.dialect = dialect;
         this.sqlExecutor = sqlExecutor;
         this.auditRecorder = auditRecorder == null ? AskAuditRecorder.NOOP : auditRecorder;
         this.planSource = planSource;
         this.narrativeSource = narrativeSource;
+        this.memoryStore = memoryStore;
     }
 
     /** 能否做分析。没有计划来源时（例如模型未配置）就退回单查询。 */
@@ -84,6 +95,16 @@ public final class AnalysisService {
         progress.accept(new AskEvent.Progress(AskEvent.Stage.PLANNING,
                 AskEvent.Stage.PLANNING.label()));
         String sysPrompt = AnalysisPrompts.withPlanRules(PromptAssembler.assemble(model));
+
+        // 上一轮做过分析时，把它的**摘要**带进 prompt：追问「那华南呢」需要知道
+        // 上轮查的是什么，否则模型只能把它当成一个缺主语的新问题。
+        // 摘要而非原始行——行可能有上千条，塞进来只会把上下文撑爆
+        AnalysisMemory memory = AnalysisMemory.load(memoryStore,
+                request.userId(), request.sessionId());
+        if (memory != null) {
+            sysPrompt = sysPrompt + memory.toPromptBlock();
+        }
+
         AnalysisPlan plan = planSource.generatePlan(
                 request.question(), sysPrompt, request.userId(), request.sessionId());
 
@@ -97,6 +118,10 @@ public final class AnalysisService {
         String narrative = narrate(plan, executed, request);
         AnalysisResult analysis = new AnalysisResult(executed.intent(), executed.steps(),
                 executed.findings(), narrative, executed.queryCount(), executed.truncated());
+
+        // 存下这一轮的分析摘要，供下一轮追问使用。
+        // **失败不影响本次问数**——见 AnalysisMemory.save
+        AnalysisMemory.of(analysis).save(memoryStore, request.userId(), request.sessionId());
 
         long duration = System.currentTimeMillis() - t0;
         AskResult result = toAskResult(analysis, decision, today, duration);

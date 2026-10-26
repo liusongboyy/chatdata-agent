@@ -56,6 +56,14 @@ public class AskServiceFactory {
     private final io.agentscope.core.model.Model askEngineModel;
     private final com.liusongboyy.chatdata.engine.datasource.DatasourceResolver datasources;
     private final com.liusongboyy.chatdata.engine.raw.RawSchemaBuilder rawSchemas;
+    /**
+     * 会话状态存储，用于分析记忆（多轮追问）。
+     *
+     * <p>用 {@code ObjectProvider} 而不是直接注入：没启用会话持久化时这个 bean 不存在，
+     * 直接注入会让整个应用起不来——而问数本身不依赖它。
+     */
+    private final org.springframework.beans.factory.ObjectProvider<io.agentscope.core.state.AgentStateStore>
+            sessionStore;
 
     /**
      * @param dslSource <strong>必须 {@code @Lazy}</strong>：它背后是 LLM 模型，
@@ -71,7 +79,9 @@ public class AskServiceFactory {
                              AskAuditRecorder auditRecorder,
                              @Lazy io.agentscope.core.model.Model askEngineModel,
                              com.liusongboyy.chatdata.engine.datasource.DatasourceResolver datasources,
-                             com.liusongboyy.chatdata.engine.raw.RawSchemaBuilder rawSchemas) {
+                             com.liusongboyy.chatdata.engine.raw.RawSchemaBuilder rawSchemas,
+                             org.springframework.beans.factory.ObjectProvider<io.agentscope.core.state.AgentStateStore>
+                                     sessionStore) {
         this.mapper = mapper;
         this.dslSource = dslSource;
         this.sqlExecutor = sqlExecutor;
@@ -79,6 +89,7 @@ public class AskServiceFactory {
         this.askEngineModel = askEngineModel;
         this.datasources = datasources;
         this.rawSchemas = rawSchemas;
+        this.sessionStore = sessionStore;
     }
 
     /**
@@ -116,9 +127,12 @@ public class AskServiceFactory {
         // 编排的两个模型调用（拆解、写结论）与 DSL 生成共用同一个引擎模型。
         // 模型 bean 是 @Lazy 代理：没配 api-key 时，异常在**真正调用时**才抛，
         // 由 AskService 翻译成"引擎未配置"，不会让整个应用起不来。
+        io.agentscope.core.state.AgentStateStore store = sessionStore.getIfAvailable();
         AnalysisService analysis = new AnalysisService(model, dialect, sqlExecutor, auditRecorder,
-                new com.liusongboyy.chatdata.engine.agent.AnalysisPlanGenerator(askEngineModel),
-                new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(askEngineModel));
+                new com.liusongboyy.chatdata.engine.agent.AnalysisPlanGenerator(
+                        askEngineModel, store, null),
+                new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(askEngineModel),
+                store);
         return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder, analysis);
     }
 
