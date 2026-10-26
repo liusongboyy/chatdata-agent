@@ -1066,7 +1066,11 @@ async function logout(): Promise<void> {
     <footer class="composer">
       <form class="composer-form" @submit.prevent="submit">
         <label class="sr-only" for="q">提问</label>
+        <!-- 布局照对话产品的通行做法：输入区在上、操作排在底部一行——
+             功能 chip 在左、发送在右。把 chip 塞进提示行会让它既看不见、
+             又挤在正文流里；放进底部操作行，才和"发送"处在同一个动作层级 -->
         <div class="composer-box">
+          <label class="sr-only" for="q">提问</label>
           <textarea
             id="q"
             v-model="draft"
@@ -1076,21 +1080,53 @@ async function logout(): Promise<void> {
             :disabled="busy"
             @keydown.enter.exact.prevent="submit"
           />
-          <button
-            class="send"
-            type="submit"
-            :disabled="!canSubmit"
-            :aria-label="busy ? '查询中' : '发送'"
-          >
-            <span v-if="busy" class="send-spinner" aria-hidden="true" />
-            <span v-else aria-hidden="true">↑</span>
-          </button>
+
+          <div class="composer-actions">
+            <div class="composer-tools">
+              <button
+                type="button"
+                class="tool-chip"
+                :class="{ on: analyzeMode }"
+                :aria-pressed="analyzeMode"
+                :disabled="busy"
+                title="拆成多次查询，给出对比、构成与结论"
+                @click="analyzeMode = !analyzeMode"
+              >
+                <svg class="tool-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M1.8 13.4V2.6M1.8 13.4h12.4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.4"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M4.2 10.2l3-3.4 2.4 2.1 3.4-4.2"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="tool-text">深入分析</span>
+              </button>
+
+              <span v-if="analyzeMode" class="tool-hint">拆成多次查询并给出结论</span>
+            </div>
+
+            <button
+              class="send"
+              type="submit"
+              :disabled="!canSubmit"
+              :aria-label="busy ? '查询中' : '发送'"
+            >
+              <span v-if="busy" class="send-spinner" aria-hidden="true" />
+              <span v-else aria-hidden="true">↑</span>
+            </button>
+          </div>
         </div>
         <p class="composer-hint">
-          <label class="analyze-toggle">
-            <input v-model="analyzeMode" type="checkbox" />
-            <span>深入分析</span>
-          </label>
           <span>Enter 发送 · Shift + Enter 换行</span>
           <span v-if="domainName"> · 当前域 {{ domainName }}</span>
         </p>
@@ -1894,28 +1930,34 @@ async function logout(): Promise<void> {
   gap: 7px;
 }
 
+/* 两行结构：输入在上、操作行在下。
+   **不要把它做成横向 flex**——那样 chip 会和输入抢宽度，
+   长问题一多行就会被挤成一条窄缝 */
 .composer-box {
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 10px 10px 10px 16px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 12px 10px 16px;
   background: var(--surface);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
   box-shadow: var(--shadow);
-  transition: box-shadow var(--duration-fast) var(--ease-out);
+  transition: box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .composer-box:focus-within {
+  border-color: var(--line-strong);
   box-shadow: var(--shadow), var(--focus-ring);
 }
 
 .composer-input {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   resize: none;
-  min-height: 30px;
+  min-height: 44px;
   max-height: 180px;
-  padding: 6px 0;
+  padding: 2px 0 0;
   background: transparent;
   border: none;
   border-radius: 0;
@@ -1923,6 +1965,88 @@ async function logout(): Promise<void> {
   font-size: 13px;
   line-height: 1.65;
   field-sizing: content;
+}
+
+/* 操作行：chip 在左，发送在右 */
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* 功能 chip：描边胶囊。关闭时是中性描边，开启时实心反白——
+   状态差别不能只靠一个勾，那样一眼扫过去分不出开没开 */
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.tool-chip:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.tool-chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+.tool-chip.on:hover:not(:disabled) {
+  color: var(--surface);
+  opacity: 0.92;
+}
+
+.tool-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tool-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.tool-icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* 开启后的代价说明：跟在 chip 右边，一行放得下就显示 */
+.tool-hint {
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .composer-input:focus,
@@ -1990,15 +2114,11 @@ async function logout(): Promise<void> {
   color: var(--ink-faint);
 }
 
-/* 深入分析开关：放在输入区而不是设置里——它改变的是这一次提问的代价与形态，
-   而不是账号级偏好 */
-.analyze-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  color: var(--ink);
-  font-size: 10px;
+@media (max-width: 520px) {
+  /* 窄屏先收掉代价说明——它可推断，而 chip 本身必须完整可读 */
+  .tool-hint {
+    display: none;
+  }
 }
 
 /* ── 分析编排 ── */
