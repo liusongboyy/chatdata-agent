@@ -540,6 +540,8 @@ public class AskEngineStreamController {
             m.put("sql", s.sql() == null ? null : s.sql().sql());
             m.put("sqlDisplay", s.sql() == null ? null : s.sql().displaySql());
             m.put("dsl", s.dsl());
+            // 每步各自的图表推荐：趋势、构成、对比用同一种图会看不清
+            m.put("chart", s.chart());
             m.put("durationMs", s.durationMs());
             return m;
         }).toList();

@@ -84,9 +84,11 @@ public final class AnalysisExecutor {
                 QueryResult rows = sqlExecutor.execute(model.domain().datasourceId(), rendered);
                 rowsSoFar += rows.rowCount();
 
-                steps.add(StepResult.ok(step.id(), step.label(), step.purpose(), step.dsl(),
-                        rendered, rows, maskedOf(decision),
-                        System.currentTimeMillis() - stepStart));
+                steps.add(new StepResult(step.id(), step.label(), step.purpose(), step.dsl(),
+                        rendered, rows, maskedOf(decision), StepStatus.OK, null,
+                        System.currentTimeMillis() - stepStart,
+                        com.liusongboyy.chatdata.engine.chat.ChartRecommender.recommend(
+                                step.dsl(), model, rows)));
 
                 if (rowsSoFar > maxTotalRows) {
                     truncated = true;

@@ -182,6 +182,8 @@ export interface AnalysisStep {
   sqlDisplay: string | null
   dsl: AskDsl | null
   durationMs: number
+  /** 这一步的图表推荐（后端按该步的 DSL 与数据形状给） */
+  chart: ChartSpec | null
 }
 
 /** 由 Java 算出来的事实。前端只展示，不重新计算。 */

@@ -910,19 +910,30 @@ async function logout(): Promise<void> {
 
               <p v-if="s.purpose" class="sub step-purpose">{{ s.purpose }}</p>
 
-              <div v-if="s.status === 'OK' && s.rowCount > 0" class="step-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th v-for="c in s.columns" :key="c">{{ c }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(row, ri) in s.rows" :key="ri">
-                      <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+              <!-- 每步用 ResultView 而不是裸表格：趋势画折线、构成画柱/饼。
+                   图表推荐由后端按该步的 DSL 给，每步可能不同 -->
+              <div v-if="s.status === 'OK' && s.rowCount > 0" class="step-result">
+                <ResultView
+                  v-if="s.chart"
+                  :columns="s.columns"
+                  :rows="s.rows"
+                  :masked-columns="s.maskedColumns"
+                  :chart="s.chart"
+                />
+                <div v-else class="step-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th v-for="c in s.columns" :key="c">{{ c }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, ri) in s.rows" :key="ri">
+                        <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <p v-else-if="s.status === 'OK'" class="note">这一步没有查到数据。</p>
 
@@ -2208,9 +2219,12 @@ async function logout(): Promise<void> {
   padding: 0 var(--space-3) var(--space-2);
 }
 
+.step-result {
+  padding: 0 var(--space-3) var(--space-2);
+}
+
 .step-table {
   overflow-x: auto;
-  padding: 0 var(--space-3) var(--space-2);
 }
 
 .step-table table {

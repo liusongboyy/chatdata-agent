@@ -18,6 +18,9 @@ import java.util.Set;
  * @param maskedColumns 本步被脱敏的列
  * @param error         失败原因（给用户看的措辞，不含表结构细节）
  * @param durationMs    这一步的耗时。审计要能回答"时间花在哪一步"
+ * @param chart         这一步的图表推荐。**每步各自推荐**——
+ *                      分析里的步骤分别是"趋势""构成""对比"，用同一种图会看不清；
+ *                      推荐逻辑与单查询共用 {@code ChartRecommender}
  */
 public record StepResult(
         String id,
@@ -29,7 +32,8 @@ public record StepResult(
         Set<String> maskedColumns,
         StepStatus status,
         String error,
-        long durationMs
+        long durationMs,
+        com.liusongboyy.chatdata.engine.chat.ChartSpec chart
 ) {
 
     public StepResult {
@@ -51,7 +55,7 @@ public record StepResult(
                                 RenderedSql sql, QueryResult rows, Set<String> maskedColumns,
                                 long durationMs) {
         return new StepResult(id, label, purpose, dsl, sql, rows, maskedColumns,
-                StepStatus.OK, null, durationMs);
+                StepStatus.OK, null, durationMs, null);
     }
 
     public static StepResult failed(String id, String label, String purpose, AskDsl dsl,
@@ -62,7 +66,7 @@ public record StepResult(
     public static StepResult failed(String id, String label, String purpose, AskDsl dsl,
                                     RenderedSql sql, String error, long durationMs) {
         return new StepResult(id, label, purpose, dsl, sql, QueryResult.empty(),
-                Set.of(), StepStatus.FAILED, error, durationMs);
+                Set.of(), StepStatus.FAILED, error, durationMs, null);
     }
 
     public boolean isOk() {
