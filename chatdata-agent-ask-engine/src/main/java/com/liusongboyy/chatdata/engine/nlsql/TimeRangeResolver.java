@@ -34,6 +34,12 @@ public final class TimeRangeResolver {
     /** 「近 N 天」的写法。 */
     private static final Pattern RECENT_DAYS = Pattern.compile("^(?:近|最近|过去)\\s*(\\d+)\\s*天$");
 
+    /** 「2025年」「2025年度」「2025年全年」。模型很爱这么写，而它比任何口径词都精确。 */
+    private static final Pattern YEAR_WORD = Pattern.compile("^(\\d{4})年(?:度|全年)?$");
+
+    /** 「2025年3月」。 */
+    private static final Pattern YEAR_MONTH_WORD = Pattern.compile("^(\\d{4})年(\\d{1,2})月$");
+
     /** 「近 N 个月」的写法，数字可以是阿拉伯数字或中文数字。 */
     private static final Pattern RECENT_MONTHS =
             Pattern.compile("^(?:近|最近|过去)\\s*(\\d+|[一二两三四五六七八九十]+)\\s*个?月$");
@@ -164,6 +170,28 @@ public final class TimeRangeResolver {
     }
 
     private static ResolvedRange resolveRecent(String k, LocalDate today, String original) {
+        // 具体年月优先于「近 N 天/月」。模型把「2025 年」翻译成 kind 时，
+        // 这是最常见的一种写法；解析不了会走重问，而重问多半还是这么写
+        Matcher ym = YEAR_MONTH_WORD.matcher(k);
+        if (ym.matches()) {
+            int year = Integer.parseInt(ym.group(1));
+            int month = Integer.parseInt(ym.group(2));
+            if (month < 1 || month > 12) {
+                throw new TimeRangeException("「" + original + "」里的月份不合法：" + month);
+            }
+            LocalDate start = LocalDate.of(year, month, 1);
+            return new ResolvedRange(start, start.plusMonths(1));
+        }
+        Matcher y = YEAR_WORD.matcher(k);
+        if (y.matches()) {
+            int year = Integer.parseInt(y.group(1));
+            if (year < 1900 || year > 2999) {
+                throw new TimeRangeException("「" + original + "」里的年份不合法：" + year);
+            }
+            LocalDate start = LocalDate.of(year, 1, 1);
+            return new ResolvedRange(start, start.plusYears(1));
+        }
+
         Matcher days = RECENT_DAYS.matcher(k);
         if (days.matches()) {
             int n = Integer.parseInt(days.group(1));

@@ -53,12 +53,90 @@ public final class DslParser {
         // 也被丢掉，AskDsl 构造器兜底成 DAY，渲染器按天分组——
         // 用户问「每年的保费」拿到几百行逐日数据，数字都对但没有一个是他要的。
         // 那条链路上每一环单独看都没问题，只有串起来才暴露。
-        return new AskDsl(
-                stringList(root.path("metrics")),
-                stringList(root.path("dimensions")),
-                timeRange(root.path("timeRange")),
-                filters(root.path("filters")),
-                AskDsl.Granularity.parse(root.path("granularity").asText(null)));
+        try {
+            return new AskDsl(
+                    stringList(root.path("metrics")),
+                    stringList(root.path("dimensions")),
+                    timeRange(root.path("timeRange")),
+                    filters(root.path("filters")),
+                    AskDsl.Granularity.parse(root.path("granularity").asText(null)),
+                    sort(root.path("sort")),
+                    limit(root.path("limit")),
+                    stringList(root.path("shareOf")),
+                    AskDsl.Compare.parse(root.path("compare").asText(null)));
+        } catch (IllegalArgumentException e) {
+            // AskDsl 的构造期校验（排序方向、limit、compare 取值）抛的是
+            // IllegalArgumentException；对上层统一成"模型给的 DSL 不合法"，
+            // 才能走重问那条路径，而不是当成系统故障报 500
+            throw new DslGenerationException("模型返回的 DSL 不合法：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 排序。
+     *
+     * <p>容忍三种写法：对象数组（约定形态）、字符串数组（{@code "保费 desc"}）、
+     * 单个字符串。方向缺省由 {@link AskDsl.Sort} 兜底成 desc。
+     */
+    private static List<AskDsl.Sort> sort(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return List.of();
+        }
+        List<AskDsl.Sort> out = new ArrayList<>();
+        if (node.isArray()) {
+            for (JsonNode n : node) {
+                if (n.isObject()) {
+                    String field = textOrNull(n.path("field"));
+                    if (field == null) {
+                        field = textOrNull(n.path("by"));
+                    }
+                    if (field != null) {
+                        out.add(new AskDsl.Sort(field, textOrNull(n.path("direction"))));
+                    }
+                } else if (n.isTextual()) {
+                    AskDsl.Sort s = parseInlineSort(n.asText());
+                    if (s != null) {
+                        out.add(s);
+                    }
+                }
+            }
+            return out;
+        }
+        if (node.isTextual()) {
+            AskDsl.Sort s = parseInlineSort(node.asText());
+            return s == null ? List.of() : List.of(s);
+        }
+        return List.of();
+    }
+
+    /** 解析「保费 desc」/「保费」这种内联写法。 */
+    private static AskDsl.Sort parseInlineSort(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String[] parts = raw.trim().split("\\s+");
+        if (parts.length == 1) {
+            return new AskDsl.Sort(parts[0], null);
+        }
+        return new AskDsl.Sort(parts[0], parts[1]);
+    }
+
+    /**
+     * 取前 N 行。
+     *
+     * <p>模型中把数字写成字符串很常见（{@code "limit": "5"}），故按文本解析。
+     * 解析不出来就当作没填——限制缺失只是行数多，方向缺省才是语义错误。
+     */
+    private static Integer limit(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        try {
+            int n = Integer.parseInt(node.asText().trim());
+            return n > 0 ? n : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

@@ -56,8 +56,21 @@ public record AskUnderstanding(
         /** 筛选条件。空列表表示**没有任何筛选**。 */
         List<FilterFact> filters,
         /** 数据范围（行级权限）。用户靠它理解"为什么我看到的数字和别人不一样"。 */
-        DataScope dataScope
+        DataScope dataScope,
+        /**
+         * 同环比：「同比」/「环比」；{@code null} 表示这次没有做对比。
+         *
+         * <p>必须回显：同环比会**多读一个时间窗**，用户看到"保费 120 万"时
+         * 如果不知道系统同时查了上一年，就无法判断增长率是怎么来的。
+         */
+        String compare
 ) {
+
+    /** 兼容构造器：不做同环比的调用点与测试不必改。 */
+    public AskUnderstanding(List<String> metrics, List<String> dimensions, TimeWindow time,
+                            List<FilterFact> filters, DataScope dataScope) {
+        this(metrics, dimensions, time, filters, dataScope, null);
+    }
 
     private static final Logger log = LoggerFactory.getLogger(AskUnderstanding.class);
 
@@ -116,7 +129,7 @@ public record AskUnderstanding(
                                       LocalDate today) {
         if (dsl == null) {
             return new AskUnderstanding(List.of(), List.of(), null, List.of(),
-                    new DataScope(false, null));
+                    new DataScope(false, null), null);
         }
 
         List<String> metrics = displayNames(dsl.metrics(), model);
@@ -129,7 +142,8 @@ public record AskUnderstanding(
         }
 
         return new AskUnderstanding(metrics, dimensions, timeWindow(dsl, today), filters,
-                dataScope(decision, model));
+                dataScope(decision, model),
+                dsl.compare() == null ? null : dsl.compare().label());
     }
 
     /**

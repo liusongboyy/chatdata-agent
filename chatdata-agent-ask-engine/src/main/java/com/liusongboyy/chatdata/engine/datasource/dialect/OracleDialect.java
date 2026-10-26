@@ -46,6 +46,20 @@ public class OracleDialect implements SqlDialect {
     }
 
     @Override
+    public String addInterval(String unit, String expression, int amount) {
+        return switch (unit) {
+            // ADD_MONTHS 会处理月末（1 月 31 日 + 1 个月 = 2 月 28/29 日），
+            // 用日期直接加天数做不到这一点
+            case "MONTH" -> "ADD_MONTHS(" + expression + ", " + amount + ")";
+            case "YEAR" -> "ADD_MONTHS(" + expression + ", " + (amount * 12) + ")";
+            // Oracle 的 DATE 加数字就是加天
+            case "DAY" -> "(" + expression + " + " + amount + ")";
+            default -> throw new IllegalArgumentException(
+                    "时间平移只支持 YEAR / MONTH / DAY，实际：" + unit);
+        };
+    }
+
+    @Override
     public String timeDiffToNumber(String unit, String startExpr, String endExpr) {
         // Oracle 的 DATE 相减直接得到**天**（带小数）
         String factor = switch (unit) {

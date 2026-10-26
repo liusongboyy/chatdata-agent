@@ -32,6 +32,15 @@ public class PostgreSqlDialect implements SqlDialect {
     }
 
     @Override
+    public String addInterval(String unit, String expression, int amount) {
+        if (!"YEAR".equals(unit) && !"MONTH".equals(unit) && !"DAY".equals(unit)) {
+            throw new IllegalArgumentException("时间平移只支持 YEAR / MONTH / DAY，实际：" + unit);
+        }
+        return "(" + expression + " + INTERVAL '" + amount + " "
+                + unit.toLowerCase(java.util.Locale.ROOT) + "')";
+    }
+
+    @Override
     public String timeDiffToNumber(String unit, String startExpr, String endExpr) {
         // EXTRACT(EPOCH FROM ...) 得到秒；按单位折算
         String perUnit = switch (unit) {

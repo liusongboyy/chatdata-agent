@@ -127,6 +127,23 @@ public interface SqlDialect {
     String timeDiffToNumber(String unit, String startExpr, String endExpr);
 
     /**
+     * 给时间表达式加上若干个单位。
+     *
+     * <p>同环比要用的：把**上一期**的行平移到本期的时间轴上，才能按同一个分组键对齐
+     * （2024-03 与 2025-03 属于同一个"三月"）。不平移就只能在分组键上做字符串处理，
+     * 那等于把"月份"当成两套不同的标签。
+     *
+     * <p>四种写法差异很大：MySQL {@code DATE_ADD(x, INTERVAL 1 MONTH)}、
+     * PostgreSQL {@code x + INTERVAL '1 month'}、Oracle {@code ADD_MONTHS(x, 1)}
+     * （按天则是直接加数）、SQL Server {@code DATEADD(month, 1, x)}。
+     *
+     * @param unit       YEAR / MONTH / DAY
+     * @param expression 已按方言引用过的时间表达式
+     * @param amount     正数向后、负数向前
+     */
+    String addInterval(String unit, String expression, int amount);
+
+    /**
      * 按粒度渲染日期列。
      *
      * <p>这是渲染器该调用的入口——它把"粒度"这个语义映射到具体函数，

@@ -23,7 +23,11 @@ public record AskDsl(
         List<String> dimensions,
         TimeRange timeRange,
         List<Filter> filters,
-        Granularity granularity
+        Granularity granularity,
+        List<Sort> sort,
+        Integer limit,
+        List<String> shareOf,
+        Compare compare
 ) {
 
     /**
@@ -63,7 +67,84 @@ public record AskDsl(
     /** 兼容构造器：不指定粒度。既有的调用点与测试不必改。 */
     public AskDsl(List<String> metrics, List<String> dimensions,
                   TimeRange timeRange, List<Filter> filters) {
-        this(metrics, dimensions, timeRange, filters, Granularity.DAY);
+        this(metrics, dimensions, timeRange, filters, Granularity.DAY,
+                List.of(), null, List.of(), null);
+    }
+
+    /** 兼容构造器：只指定粒度。 */
+    public AskDsl(List<String> metrics, List<String> dimensions,
+                  TimeRange timeRange, List<Filter> filters, Granularity granularity) {
+        this(metrics, dimensions, timeRange, filters, granularity,
+                List.of(), null, List.of(), null);
+    }
+
+    /**
+     * 排序项。
+     *
+     * @param field     输出列名：指标名、维度名，或系统生成的「保费占比」「保费同比」
+     * @param direction asc / desc。**缺省按 desc**——排序问题绝大多数是"最高/最多/前 N"，
+     *                  而 SQL 的缺省是 asc，直接用会给出"最低的 5 个"，错得静默。
+     *                  prompt 要求模型永远显式写出方向，这里是它漏写时的兜底
+     */
+    public record Sort(String field, String direction) {
+
+        public Sort {
+            if (field == null || field.isBlank()) {
+                throw new IllegalArgumentException("排序字段不能为空");
+            }
+            field = field.trim();
+            direction = (direction == null || direction.isBlank())
+                    ? "desc"
+                    : direction.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!"asc".equals(direction) && !"desc".equals(direction)) {
+                throw new IllegalArgumentException(
+                        "排序方向只能是 asc 或 desc，实际：" + direction);
+            }
+        }
+    }
+
+    /**
+     * 同环比。
+     *
+     * <h2>只做两种，且与粒度绑定</h2>
+     *
+     * <p>同比按**年**平移、环比按**月**平移。粒度决定平移后能否对齐：
+     * <ul>
+     *   <li>同比：按月或按年分组。按天分组会踩到 2 月 29 日——平移到上一年会落到
+     *       2 月 28 日，与当年的 2 月 28 日撞进同一组，比例静默算错</li>
+     *   <li>环比：按天或按月分组</li>
+     * </ul>
+     * 其余组合在渲染前直接拒绝，不做近似。
+     */
+    public enum Compare {
+        /** 同比：与上个年度的同一时段比。 */
+        YOY("同比"),
+        /** 环比：与上个周期（月）比。 */
+        MOM("环比");
+
+        private final String label;
+
+        Compare(String label) {
+            this.label = label;
+        }
+
+        /** 中文标签，用于生成输出列名（如「保费同比」）。 */
+        public String label() {
+            return label;
+        }
+
+        /** 解析。null / 空返回 null（不对比）；不认识的取值抛异常，不静默忽略。 */
+        public static Compare parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
+                case "yoy", "同比" -> YOY;
+                case "mom", "环比" -> MOM;
+                default -> throw new IllegalArgumentException(
+                        "compare 只能是 yoy / mom（或「同比」「环比」），实际：" + raw);
+            };
+        }
     }
 
     /**
@@ -77,6 +158,11 @@ public record AskDsl(
         dimensions = dimensions == null ? List.of() : List.copyOf(dimensions);
         filters = filters == null ? List.of() : List.copyOf(filters);
         granularity = granularity == null ? Granularity.DAY : granularity;
+        sort = sort == null ? List.of() : List.copyOf(sort);
+        shareOf = shareOf == null ? List.of() : List.copyOf(shareOf);
+        if (limit != null && limit <= 0) {
+            throw new IllegalArgumentException("limit 必须为正数，实际：" + limit);
+        }
     }
 
     /** 是否什么都没解析出来——用于触发重问。 */

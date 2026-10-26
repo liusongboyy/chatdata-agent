@@ -7,6 +7,7 @@ import com.liusongboyy.chatdata.engine.permission.SqlPredicate;
 import com.liusongboyy.chatdata.engine.semantic.FieldRef;
 import com.liusongboyy.chatdata.engine.semantic.JoinPlanner;
 import com.liusongboyy.chatdata.engine.semantic.RegisteredTable;
+import com.liusongboyy.chatdata.engine.semantic.DerivedMetric;
 import com.liusongboyy.chatdata.engine.semantic.MetricRef;
 import com.liusongboyy.chatdata.engine.semantic.SemanticException;
 import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
@@ -130,7 +131,45 @@ public final class AskSqlRenderer {
         JoinPlanner.JoinPlan plan = JoinPlanner.plan(model.domain(), involvedTableIds, preferredRoot);
         String alias = model.aliasOfTable(plan.rootTableId());
 
-        // ④ SELECT 子句。脱敏列渲染成常量，数据不出库
+        // ④ 时间范围与时间列。同环比要在 SELECT 里用它们，故比 WHERE 提前解析。
+        //    resolveTime 可能返回 null（口径词解析不出来），此时没有任何时间条件
+        ResolvedTime rt = dsl.timeRange() == null ? null : resolveTime(dsl.timeRange(), today);
+        String timeCol = rt == null
+                ? null
+                : resolveTimeColumn(model, dialect, involvedTableIds, dsl.timeRange());
+
+        AskDsl.Compare compare = dsl.compare();
+        ResolvedTime prevRt = null;
+        if (compare != null) {
+            if (rt == null || timeCol == null) {
+                // 没有时间范围就无从"与上期比"。猜一个（如减去一年）会给出一个
+                // 用户没问过的对比，而它看起来完全正常
+                throw new IllegalArgumentException(
+                        "同环比需要明确的时间范围（如「今年」「上季度」「2025 年」），当前问题没有给出");
+            }
+            boolean hasTemporalDim = dimRefs.stream().anyMatch(model::isTemporal);
+            if (hasTemporalDim) {
+                // 粒度决定平移后能否对齐。按天做同比会踩到 2 月 29 日：
+                // 平移到上一年会落到 2 月 28 日，与当年的 2 月 28 日撞进同一组
+                boolean ok = switch (compare) {
+                    case YOY -> dsl.granularity() == AskDsl.Granularity.MONTH
+                            || dsl.granularity() == AskDsl.Granularity.YEAR;
+                    case MOM -> dsl.granularity() == AskDsl.Granularity.DAY
+                            || dsl.granularity() == AskDsl.Granularity.MONTH;
+                };
+                if (!ok) {
+                    throw new IllegalArgumentException(compare == AskDsl.Compare.YOY
+                            ? "同比需要按月或按年分组（granularity=month/year）。按天分组会踩到 2 月 29 日，"
+                              + "平移后无法对齐，增长率会静默算错"
+                            : "环比需要按天或按月分组（granularity=day/month）");
+                }
+            }
+            prevRt = compare == AskDsl.Compare.YOY
+                    ? new ResolvedTime(rt.startInclusive().minusYears(1), rt.endExclusive().minusYears(1))
+                    : new ResolvedTime(rt.startInclusive().minusMonths(1), rt.endExclusive().minusMonths(1));
+        }
+
+        // ⑤ SELECT 子句。脱敏列渲染成常量，数据不出库
         Set<String> masked = allowed.maskedColumns();
         List<RenderedSql.OutputColumn> outColumns = new ArrayList<>();
         List<String> selectParts = new ArrayList<>();
@@ -141,63 +180,147 @@ public final class AskSqlRenderer {
         // GROUP BY 里却是原始列——MySQL 容忍这种写法，于是它不会报错，
         // 只是分组口径与显示口径不再一致
         List<String> dimExprs = new ArrayList<>();
+        // 每个维度表达式里如果有占位符，记下对应的参数值。
+        // 同一个表达式会出现在 SELECT 与 GROUP BY **两处**，参数必须跟着各追加一次
+        List<LocalDate> dimShiftParams = new ArrayList<>();
         for (int i = 0; i < dimRefs.size(); i++) {
             FieldRef r = dimRefs.get(i);
             String name = dsl.dimensions().get(i);
             // 必须用 r.tableAlias()——该列自己所属的表，**不是**根表的别名。
             // 单表时两者恒等，多表时用根别名会指向一张没有这个列的表
             String expr = dialect.quoteQualified(r.tableAlias() + "." + r.column());
-            expr = bucketIfTemporal(expr, r, model, dialect, dsl.granularity());
+            LocalDate shiftParam = null;
+            if (compare != null && model.isTemporal(r)) {
+                // 把上一期的行平移到本期：2024-03 → 2025-03，两者才落在同一组。
+                // 判据用 timeCol 而不是这一列本身——窗口是由 timeCol 划定的，
+                // 维度列可能是另一个日期字段
+                String shifted = dialect.addInterval(
+                        compare == AskDsl.Compare.YOY ? "YEAR" : "MONTH", expr, 1);
+                expr = "CASE WHEN " + timeCol + " < ? THEN " + shifted + " ELSE " + expr + " END";
+                shiftParam = rt.startInclusive();
+                params.add(shiftParam);
+                expr = dialect.bucket(expr, dsl.granularity().name().toLowerCase(Locale.ROOT));
+            } else {
+                expr = bucketIfTemporal(expr, r, model, dialect, dsl.granularity());
+            }
             dimExprs.add(expr);
-            selectParts.add(expr + " AS " + dialect.quoteIdentifier(name));
-            outColumns.add(new RenderedSql.OutputColumn(name, expr, false));
+            dimShiftParams.add(shiftParam);
+            addColumn(selectParts, outColumns, dialect, name, expr, false);
+        }
+
+        // 占比：必须是本次查询的指标，否则模型会凭空要一个没算的占比
+        List<String> shareOf = dsl.shareOf();
+        for (String shareName : shareOf) {
+            if (!dsl.metrics().contains(shareName)) {
+                throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND,
+                        "shareOf 里的「" + shareName + "」不是本次查询的指标。"
+                                + "可用的指标：" + dsl.metrics());
+            }
+        }
+        if (!shareOf.isEmpty() && metricRefs.isEmpty()) {
+            throw new IllegalArgumentException("shareOf 需要至少一个指标");
         }
 
         for (int i = 0; i < metricRefs.size(); i++) {
             MetricRef m = metricRefs.get(i);
             String name = dsl.metrics().get(i);
+            boolean maskedOut = isMetricMasked(m, masked);
 
-            String expr;
-            boolean maskedOut;
-            if (m instanceof MetricRef.Column cm) {
-                FieldRef r = cm.ref();
-                maskedOut = isMasked(masked, r.column());
-                expr = maskedOut ? "'***'"
-                        : r.agg().wrap(dialect.quoteQualified(r.tableAlias() + "." + r.column()));
-            } else {
-                MetricRef.Derived dm = (MetricRef.Derived) m;
-                // **脱敏必须传导。** 派生指标由输入列算出，若任一输入被脱敏，
-                // 直接计算再输出等于让受限用户通过比值反推出被脱敏的金额。
-                maskedOut = dm.inputs().stream().anyMatch(r -> isMasked(masked, r.column()));
-                expr = maskedOut ? "'***'" : renderDerived(dm, dialect);
+            // 同环比时每个指标都要按窗口过滤，故把"窗口条件"做成包装器：
+            // 每包一次就把两个参数追加一次，保证占位符与参数一一对应
+            ColumnWrapper curWrap = IDENTITY;
+            ColumnWrapper prevWrap = IDENTITY;
+            // prevRt 在上面的 if 里赋值，捕获进 lambda 前先固定下来
+            final ResolvedTime prevRange = prevRt;
+            if (compare != null) {
+                String curCond = timeCol + " >= ? AND " + timeCol + " < ?";
+                String prevCond = timeCol + " >= ? AND " + timeCol + " < ?";
+                curWrap = col -> {
+                    params.add(rt.startInclusive());
+                    params.add(rt.endExclusive());
+                    return "CASE WHEN " + curCond + " THEN " + col + " END";
+                };
+                prevWrap = col -> {
+                    params.add(prevRange.startInclusive());
+                    params.add(prevRange.endExclusive());
+                    return "CASE WHEN " + prevCond + " THEN " + col + " END";
+                };
             }
 
-            selectParts.add(expr + " AS " + dialect.quoteIdentifier(name));
-            outColumns.add(new RenderedSql.OutputColumn(name, expr, maskedOut));
+            if (compare == null) {
+                addColumn(selectParts, outColumns, dialect, name,
+                        maskedOut ? "'***'" : renderMetric(m, dialect, IDENTITY), maskedOut);
+            } else {
+                // 本期 / 上期 / 增长率。只给增长率看不出量级，只给两期又要用户自己算
+                String curExpr = maskedOut ? "'***'" : renderMetric(m, dialect, curWrap);
+                String prevExpr = maskedOut ? "'***'" : renderMetric(m, dialect, prevWrap);
+                String growthExpr = maskedOut ? "'***'"
+                        : "(" + renderMetric(m, dialect, curWrap)
+                        + " - " + renderMetric(m, dialect, prevWrap) + ") / NULLIF("
+                        + renderMetric(m, dialect, prevWrap) + ", 0)";
+                addColumn(selectParts, outColumns, dialect, name, curExpr, maskedOut);
+                addColumn(selectParts, outColumns, dialect, name + "上期", prevExpr, maskedOut);
+                addColumn(selectParts, outColumns, dialect, name + compare.label(), growthExpr, maskedOut);
+            }
+
+            if (shareOf.contains(name)) {
+                // 占比相对**本次结果的总和**：SUM(expr) OVER () 是在聚合结果上再开窗，
+                // 五种库都支持；换成自连接求总和会把权限谓词再复制一遍，更容易出错
+                String shareName = name + "占比";
+                String shareExpr;
+                if (maskedOut) {
+                    // 与派生指标同理：占比能反推出被脱敏指标的相对分布，必须一起脱敏
+                    shareExpr = "'***'";
+                } else {
+                    ColumnWrapper w = compare == null ? IDENTITY : curWrap;
+                    shareExpr = "(" + renderMetric(m, dialect, w) + ") / NULLIF(SUM("
+                            + renderMetric(m, dialect, w) + ") OVER (), 0)";
+                }
+                addColumn(selectParts, outColumns, dialect, shareName, shareExpr, maskedOut);
+            }
+        }
+
+        // 输出列名必须唯一：指标名、占比、上期、同比都是用户要看的列，
+        // 撞名时 MySQL 只保留一个，另一个静默消失
+        Set<String> columnNames = new java.util.HashSet<>();
+        for (RenderedSql.OutputColumn c : outColumns) {
+            if (!columnNames.add(c.name())) {
+                throw new IllegalArgumentException(
+                        "输出列名重复：「" + c.name() + "」。请检查指标名是否与「占比」「上期」「同比」等后缀冲突");
+            }
         }
 
         if (selectParts.isEmpty()) {
             throw new IllegalArgumentException("DSL 没有可渲染的输出列");
         }
 
-        // ⑤ FROM + JOIN
+        // 行数上限：DSL 的 limit 只能**收紧**，不能突破系统上限
+        int rowLimit = dsl.limit() == null ? DEFAULT_LIMIT : Math.min(dsl.limit(), DEFAULT_LIMIT);
+
+        // ⑥ FROM + JOIN
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT ").append(dialect.limitPrefix(DEFAULT_LIMIT));
+        sql.append("SELECT ").append(dialect.limitPrefix(rowLimit));
         sql.append(String.join(", ", selectParts));
         appendFromAndJoins(sql, plan, model, dialect);
 
         // ⑥ WHERE
         List<String> whereParts = new ArrayList<>();
 
-        // 6a. 时间条件 —— 左闭右开，见 TimeRangeResolver 的说明
-        if (dsl.timeRange() != null) {
-            ResolvedTime rt = resolveTime(dsl.timeRange(), today);
-            if (rt != null) {
-                String col = resolveTimeColumn(model, dialect, involvedTableIds, dsl.timeRange());
-                whereParts.add(col + " >= ?");
+        // 6a. 时间条件 —— 左闭右开，见 TimeRangeResolver 的说明。
+        //     同环比要**同时**取本期与上期，故两个区间用 OR 连起来
+        if (rt != null) {
+            if (compare == null) {
+                whereParts.add(timeCol + " >= ?");
                 params.add(rt.startInclusive());
-                whereParts.add(col + " < ?");
+                whereParts.add(timeCol + " < ?");
                 params.add(rt.endExclusive());
+            } else {
+                whereParts.add("((" + timeCol + " >= ? AND " + timeCol + " < ?) OR ("
+                        + timeCol + " >= ? AND " + timeCol + " < ?))");
+                params.add(rt.startInclusive());
+                params.add(rt.endExclusive());
+                params.add(prevRt.startInclusive());
+                params.add(prevRt.endExclusive());
             }
         }
 
@@ -233,10 +356,35 @@ public final class AskSqlRenderer {
         // ⑦ GROUP BY（有指标时才需要）。用与 SELECT 完全相同的表达式
         if (!dimExprs.isEmpty() && !metricRefs.isEmpty()) {
             sql.append(" GROUP BY ").append(String.join(", ", dimExprs));
+            // SELECT 里那个占位符的参数已经加过，GROUP BY 是同一表达式第二次出现，
+            // 故这里再按顺序补一遍。漏掉这一步的表现是「占位符比参数多一个」——
+            // RenderedSql 的构造器会直接拒绝，不会带着错位的参数去执行
+            for (LocalDate p : dimShiftParams) {
+                if (p != null) {
+                    params.add(p);
+                }
+            }
         }
 
-        // ⑧ 行数限制后缀（SQL Server 为空，它用前缀 TOP）
-        String suffix = dialect.limitSuffix(DEFAULT_LIMIT);
+        // ⑧ ORDER BY。**按输出列名排序**（别名在五种库里都能用），
+        // 不能按 DSL 里的原始字段名——占比、同比这些列在 DSL 里没有对应字段
+        if (!dsl.sort().isEmpty()) {
+            List<String> orderParts = new ArrayList<>();
+            for (AskDsl.Sort sort : dsl.sort()) {
+                boolean known = outColumns.stream().anyMatch(c -> c.name().equals(sort.field()));
+                if (!known) {
+                    throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND,
+                            "排序字段「" + sort.field() + "」不在本次查询的输出里。可用的输出列："
+                                    + outColumns.stream().map(RenderedSql.OutputColumn::name).toList());
+                }
+                orderParts.add(dialect.quoteIdentifier(sort.field())
+                        + ("desc".equals(sort.direction()) ? " DESC" : " ASC"));
+            }
+            sql.append(" ORDER BY ").append(String.join(", ", orderParts));
+        }
+
+        // ⑨ 行数限制后缀（SQL Server 为空，它用前缀 TOP）
+        String suffix = dialect.limitSuffix(rowLimit);
         if (!suffix.isEmpty()) {
             sql.append(' ').append(suffix);
         }
@@ -467,6 +615,39 @@ public final class AskSqlRenderer {
         return out;
     }
 
+    /** 把一个已引用的列表达式再包一层。同环比用它加窗口过滤。 */
+    @FunctionalInterface
+    private interface ColumnWrapper {
+        String wrap(String quotedColumn);
+    }
+
+    /** 不包装。绝大多数查询走这一条。 */
+    private static final ColumnWrapper IDENTITY = c -> c;
+
+    /** 按指标类型渲染表达式。包装器对普通列与派生指标的每个输入都生效。 */
+    private static String renderMetric(MetricRef m, SqlDialect dialect, ColumnWrapper w) {
+        if (m instanceof MetricRef.Column cm) {
+            return aggregated(cm.ref(), dialect, w);
+        }
+        return renderDerived((MetricRef.Derived) m, dialect, w);
+    }
+
+    /** 该指标是否必须脱敏。派生指标看它的**全部**输入。 */
+    private static boolean isMetricMasked(MetricRef m, Set<String> masked) {
+        if (m instanceof MetricRef.Column cm) {
+            return isMasked(masked, cm.ref().column());
+        }
+        return ((MetricRef.Derived) m).inputs().stream()
+                .anyMatch(r -> isMasked(masked, r.column()));
+    }
+
+    private static void addColumn(List<String> selectParts,
+                                  List<RenderedSql.OutputColumn> outColumns,
+                                  SqlDialect dialect, String name, String expr, boolean masked) {
+        selectParts.add(expr + " AS " + dialect.quoteIdentifier(name));
+        outColumns.add(new RenderedSql.OutputColumn(name, expr, masked));
+    }
+
     /**
      * 展开派生指标。
      *
@@ -476,20 +657,31 @@ public final class AskSqlRenderer {
      * <p>差值与比值都先各自聚合再运算（{@code SUM(a)/SUM(b)}），
      * 不是逐行相除再求和——后者在多数场景下是错的，且错得不明显。
      */
-    private static String renderDerived(MetricRef.Derived m, SqlDialect dialect) {
+    private static String renderDerived(MetricRef.Derived m, SqlDialect dialect, ColumnWrapper w) {
         List<FieldRef> in = m.inputs();
-        String left = aggregated(in.get(0), dialect);
-        String right = aggregated(in.get(1), dialect);
+        if (m.spec().kind() == DerivedMetric.Kind.DURATION) {
+            // 起止各自包一层：窗口外的行两端都成 NULL，TIMESTAMPDIFF 得 NULL，
+            // AVG 自动忽略——比在整条差值外面包 CASE 更直白
+            return "AVG(" + dialect.timeDiffToNumber(m.spec().unit(),
+                    w.wrap(columnRef(in.get(0), dialect)),
+                    w.wrap(columnRef(in.get(1), dialect))) + ")";
+        }
+        String left = aggregated(in.get(0), dialect, w);
+        String right = aggregated(in.get(1), dialect, w);
         return switch (m.spec().kind()) {
             case RATIO -> "(" + left + ") / NULLIF(" + right + ", 0)";
             case DIFF -> "(" + left + ") - (" + right + ")";
-            case DURATION -> "AVG(" + dialect.timeDiffToNumber(m.spec().unit(), left, right) + ")";
+            case DURATION -> throw new IllegalStateException("已在上面处理");
         };
     }
 
     /** 一列的「引用 + 聚合」表达式。时长的输入是维度列，agg 为 NONE，原样返回。 */
-    private static String aggregated(FieldRef r, SqlDialect dialect) {
-        return r.agg().wrap(dialect.quoteQualified(r.tableAlias() + "." + r.column()));
+    private static String aggregated(FieldRef r, SqlDialect dialect, ColumnWrapper w) {
+        return r.agg().wrap(w.wrap(columnRef(r, dialect)));
+    }
+
+    private static String columnRef(FieldRef r, SqlDialect dialect) {
+        return dialect.quoteQualified(r.tableAlias() + "." + r.column());
     }
 
     private static boolean isMasked(Set<String> masked, String column) {

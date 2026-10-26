@@ -769,6 +769,31 @@
         "business"
       ],
       "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "ticket-m-062",
+      "difficulty": "MEDIUM",
+      "question": "工单数最多的 5 个分类分别是哪几个？",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 GROUP BY c.name ORDER BY cnt DESC LIMIT 5",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "sort",
+        "topn"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
+    },
+    {
+      "id": "ticket-m-063",
+      "difficulty": "MEDIUM",
+      "question": "各分类的工单数占全部工单数的比例分别是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT c.name, COUNT(*) AS cnt, COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS ratio FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 GROUP BY c.name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "share"
+      ],
+      "note": "夹具数据；gold 结果 5 行。"
     }
   ]
 }

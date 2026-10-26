@@ -789,6 +789,44 @@
         "agg"
       ],
       "note": "夹具数据；gold 结果 1 行。"
+    },
+    {
+      "id": "insurance-063",
+      "difficulty": "MEDIUM",
+      "question": "保费最高的 3 个区域分别是哪些？",
+      "goldSql": "SELECT region, SUM(premium) AS total_premium FROM ins_policy GROUP BY region ORDER BY total_premium DESC LIMIT 3",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "sort",
+        "topn"
+      ],
+      "note": "夹具数据；gold 结果 3 行。"
+    },
+    {
+      "id": "insurance-064",
+      "difficulty": "MEDIUM",
+      "question": "各区域的保费分别占全部保费的比例是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT region, SUM(premium) AS total_premium, SUM(premium) / (SELECT SUM(premium) FROM ins_policy) AS ratio FROM ins_policy GROUP BY region",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "share"
+      ],
+      "note": "夹具数据；gold 结果 6 行。"
+    },
+    {
+      "id": "insurance-065",
+      "difficulty": "HARD",
+      "question": "2025 年全年保费比 2024 年全年增长了多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT cur, prev, (cur - prev) / prev AS growth FROM (SELECT (SELECT SUM(premium) FROM ins_policy         WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01') AS cur,        (SELECT SUM(premium) FROM ins_policy         WHERE effect_date >= '2024-01-01' AND effect_date < '2025-01-01') AS prev) t",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "compare",
+        "yoy"
+      ],
+      "note": "夹具数据；gold 结果 1 行。"
     }
   ]
 }

@@ -36,6 +36,11 @@ function opLabel(op: string): string {
   return OP_LABEL[op] ?? OP_LABEL[op.toLowerCase()] ?? op
 }
 
+/** 同环比：说清对照期是什么，否则用户不知道"增长率"是在和谁比。 */
+function compareText(label: string): string {
+  return label === '同比' ? '同比（对比上一年同期）' : '环比（对比上一个月）'
+}
+
 /** 时间：口径名 + 具体日期。具体日期比口径名重要——口径歧义正是答错的常见来源。 */
 function timeText(t: NonNullable<AskUnderstanding['time']>): string {
   const dates = t.from && t.to ? `${t.from} ~ ${t.to}` : ''
@@ -80,6 +85,12 @@ function timeText(t: NonNullable<AskUnderstanding['time']>): string {
           {{ f.field }} {{ opLabel(f.op) }} {{ f.value ?? '' }}
         </span>
       </dd>
+      <dd v-else class="empty">无</dd>
+    </div>
+
+    <div class="item">
+      <dt>对比</dt>
+      <dd v-if="props.understanding.compare">{{ compareText(props.understanding.compare) }}</dd>
       <dd v-else class="empty">无</dd>
     </div>
 

@@ -56,6 +56,15 @@ public class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String addInterval(String unit, String expression, int amount) {
+        if (!"YEAR".equals(unit) && !"MONTH".equals(unit) && !"DAY".equals(unit)) {
+            throw new IllegalArgumentException("时间平移只支持 YEAR / MONTH / DAY，实际：" + unit);
+        }
+        return "DATEADD(" + unit.toLowerCase(java.util.Locale.ROOT) + ", "
+                + amount + ", " + expression + ")";
+    }
+
+    @Override
     public String timeDiffToNumber(String unit, String startExpr, String endExpr) {
         return "DATEDIFF(" + unit + ", " + startExpr + ", " + endExpr + ")";
     }

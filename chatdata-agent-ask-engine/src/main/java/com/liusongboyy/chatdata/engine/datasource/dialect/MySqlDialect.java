@@ -3,6 +3,13 @@ package com.liusongboyy.chatdata.engine.datasource.dialect;
 /** MySQL 5.7+。 */
 public class MySqlDialect implements SqlDialect {
 
+    /** 同环比只用到年/月/日三种单位，其余取值一律拒绝，不猜。 */
+    static void requireIntervalUnit(String unit) {
+        if (!"YEAR".equals(unit) && !"MONTH".equals(unit) && !"DAY".equals(unit)) {
+            throw new IllegalArgumentException("时间平移只支持 YEAR / MONTH / DAY，实际：" + unit);
+        }
+    }
+
     @Override
     public String id() {
         return "MYSQL5.7";
@@ -27,6 +34,12 @@ public class MySqlDialect implements SqlDialect {
     @Override
     public String yearBucket(String columnExpression) {
         return "YEAR(" + columnExpression + ")";
+    }
+
+    @Override
+    public String addInterval(String unit, String expression, int amount) {
+        requireIntervalUnit(unit);
+        return "DATE_ADD(" + expression + ", INTERVAL " + amount + " " + unit + ")";
     }
 
     @Override

@@ -94,6 +94,44 @@ public final class AskDslSchema {
                         + "没提就不要填，或填 day。只在维度里含日期字段时有意义。");
         gran.putArray("enum").add("day").add("month").add("year");
 
+        // 排序 + 取前 N：**只在用户要求排名时填**。
+        // 不放进 required——大多数问题没有排序，强制它会让模型给什么答案都排个序
+        ObjectNode sort = props.putObject("sort");
+        sort.put("type", "array");
+        sort.put("description",
+                "排序。用户说「最高/最多/最少/前 N/排名/Top」时填，其余情况返回空数组。"
+                        + "field 必须是本次输出里的指标名或维度名；direction 必须明确写出 asc 或 desc，"
+                        + "不要省略——省略时系统按 desc 处理。");
+        ObjectNode sortItem = sort.putObject("items");
+        sortItem.put("type", "object");
+        ObjectNode sortProps = sortItem.putObject("properties");
+        sortProps.set("field", string("排序依据：指标名或维度名"));
+        ObjectNode dir = sortProps.putObject("direction");
+        dir.put("type", "string");
+        dir.put("description", "asc（最小在前）或 desc（最大在前）");
+        dir.putArray("enum").add("asc").add("desc");
+        ArrayNode sortRequired = sortItem.putArray("required");
+        sortRequired.add("field").add("direction");
+
+        ObjectNode limit = props.putObject("limit");
+        limit.put("type", "integer");
+        limit.put("description",
+                "只要前 N 行，和 sort 一起表示「前 N 名」。用户说「前 5 个」时填 5。"
+                        + "没有排序要求时不要填。");
+
+        props.set("shareOf", stringArray(
+                "要按**占比**展示的指标名，必须是 metrics 里已有的名字。"
+                        + "用户说「占比」「比重」「构成」「各占多少」时把对应指标填进来；"
+                        + "其余情况返回空数组。占比是相对本次查询结果总和而言的。"));
+
+        ObjectNode compare = props.putObject("compare");
+        compare.put("type", "string");
+        compare.put("description",
+                "同环比：同比填 yoy（与上一年同期比），环比填 mom（与上一个月比）。"
+                        + "只在用户明确说「同比」「环比」「比去年同期」「比上月」时填，"
+                        + "并且必须同时给出 timeRange 与 month/year 粒度；其余情况省略。");
+        compare.putArray("enum").add("yoy").add("mom");
+
         // 显式声明 required：spike 实测模型会直接省略未声明为必需的字段
         ArrayNode required = root.putArray("required");
         required.add("metrics").add("dimensions").add("filters");

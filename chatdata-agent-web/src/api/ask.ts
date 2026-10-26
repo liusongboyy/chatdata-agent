@@ -120,6 +120,8 @@ export interface AskUnderstanding {
   filters: { field: string; op: string; value: string | null }[]
   /** 行级权限决定的数据范围。restricted=false 表示能看到全部数据 */
   dataScope: { restricted: boolean; text: string | null }
+  /** 「同比」/「环比」；null 表示这次没做对比 */
+  compare: string | null
 }
 
 export interface ChartSpec {

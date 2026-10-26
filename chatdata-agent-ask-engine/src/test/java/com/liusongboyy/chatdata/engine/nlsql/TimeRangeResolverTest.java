@@ -45,4 +45,30 @@ class TimeRangeResolverTest {
         assertThatThrownBy(() -> TimeRangeResolver.resolve("近三个月半", null, null, TODAY))
                 .isInstanceOf(TimeRangeResolver.TimeRangeException.class);
     }
+
+    @Test
+    @DisplayName("「2025年」「2025年度」「2025年全年」都解析成自然年")
+    void yearLiterals() {
+        for (String kind : java.util.List.of("2025年", "2025年度", "2025年全年", "2025 年")) {
+            TimeRangeResolver.ResolvedRange range = TimeRangeResolver.resolve(kind, null, null, TODAY);
+            assertThat(range.startInclusive()).as(kind).isEqualTo(LocalDate.of(2025, 1, 1));
+            assertThat(range.endExclusive()).as(kind).isEqualTo(LocalDate.of(2026, 1, 1));
+        }
+    }
+
+    @Test
+    @DisplayName("「2025年3月」解析成该自然月")
+    void yearMonthLiteral() {
+        TimeRangeResolver.ResolvedRange range = TimeRangeResolver.resolve("2025年3月", null, null, TODAY);
+
+        assertThat(range.startInclusive()).isEqualTo(LocalDate.of(2025, 3, 1));
+        assertThat(range.endExclusive()).isEqualTo(LocalDate.of(2025, 4, 1));
+    }
+
+    @Test
+    @DisplayName("不合法的月份拒绝，不静默挪到别的月")
+    void invalidMonthRejected() {
+        assertThatThrownBy(() -> TimeRangeResolver.resolve("2025年13月", null, null, TODAY))
+                .isInstanceOf(TimeRangeResolver.TimeRangeException.class);
+    }
 }

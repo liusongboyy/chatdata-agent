@@ -376,6 +376,22 @@ INSURANCE_2 = [
      "SELECT SUM(premium) AS total_premium FROM ins_policy "
      "WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' AND product_type = '健康险'",
      False, ["time", "filter", "agg"]),
+    ("insurance-063", "MEDIUM", "保费最高的 3 个区域分别是哪些？",
+     "SELECT region, SUM(premium) AS total_premium FROM ins_policy "
+     "GROUP BY region ORDER BY total_premium DESC LIMIT 3",
+     False, ["sort", "topn"]),
+    ("insurance-064", "MEDIUM", "各区域的保费分别占全部保费的比例是多少？用 0 到 1 之间的小数表示",
+     "SELECT region, SUM(premium) AS total_premium, "
+     "SUM(premium) / (SELECT SUM(premium) FROM ins_policy) AS ratio "
+     "FROM ins_policy GROUP BY region",
+     False, ["share"]),
+    ("insurance-065", "HARD", "2025 年全年保费比 2024 年全年增长了多少？用 0 到 1 之间的小数表示",
+     "SELECT cur, prev, (cur - prev) / prev AS growth FROM ("
+     "SELECT (SELECT SUM(premium) FROM ins_policy "
+     "        WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01') AS cur, "
+     "       (SELECT SUM(premium) FROM ins_policy "
+     "        WHERE effect_date >= '2024-01-01' AND effect_date < '2025-01-01') AS prev) t",
+     False, ["compare", "yoy"]),
 ]
 
 TICKET_MODELED_2 = [
@@ -479,6 +495,17 @@ TICKET_MODELED_2 = [
     ("ticket-m-060", "HARD", "处理人 7 的工单里，平均解决时长（小时）是多少？",
      "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket "
      "WHERE deleted = 0 AND assignee_id = 7 AND resolved_at IS NOT NULL", False, ["business"]),
+    ("ticket-m-062", "MEDIUM", "工单数最多的 5 个分类分别是哪几个？",
+     "SELECT c.name, COUNT(*) AS cnt FROM ticket t "
+     "JOIN ticket_category c ON t.category_id = c.id "
+     "WHERE t.deleted = 0 GROUP BY c.name ORDER BY cnt DESC LIMIT 5",
+     False, ["sort", "topn"]),
+    ("ticket-m-063", "MEDIUM", "各分类的工单数占全部工单数的比例分别是多少？用 0 到 1 之间的小数表示",
+     "SELECT c.name, COUNT(*) AS cnt, "
+     "COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS ratio "
+     "FROM ticket t JOIN ticket_category c ON t.category_id = c.id "
+     "WHERE t.deleted = 0 GROUP BY c.name",
+     False, ["share"]),
 ]
 
 TICKET_RAW_2 = [

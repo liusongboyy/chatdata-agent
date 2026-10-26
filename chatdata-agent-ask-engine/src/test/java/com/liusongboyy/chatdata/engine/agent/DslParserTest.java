@@ -199,4 +199,78 @@ class DslParserTest {
                 .as("猜成按月会让「按季度」静默变成「按月」，比不截断更糟")
                 .isEqualTo(AskDsl.Granularity.DAY);
     }
+
+    @Nested
+    @DisplayName("排序 / 占比 / 同环比")
+    class Analytics {
+
+        @Test
+        @DisplayName("对象数组形态：字段 + 方向")
+        void sortObjects() {
+            AskDsl dsl = DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":["区域"],"filters":[],
+                     "sort":[{"field":"保费","direction":"desc"}],"limit":5}""");
+
+            assertThat(dsl.sort()).hasSize(1);
+            assertThat(dsl.sort().get(0).field()).isEqualTo("保费");
+            assertThat(dsl.sort().get(0).direction()).isEqualTo("desc");
+            assertThat(dsl.limit()).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("★ 漏写方向时按 desc —— SQL 的缺省是 asc，会给'最差的 5 个'")
+        void directionDefaultsToDesc() {
+            assertThat(DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":["区域"],"filters":[],
+                     "sort":[{"field":"保费"}]}""").sort().get(0).direction())
+                    .isEqualTo("desc");
+        }
+
+        @Test
+        @DisplayName("内联写法「保费 desc」也认")
+        void inlineSort() {
+            AskDsl dsl = DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":["区域"],"filters":[],"sort":["保费 asc"]}""");
+
+            assertThat(dsl.sort().get(0).field()).isEqualTo("保费");
+            assertThat(dsl.sort().get(0).direction()).isEqualTo("asc");
+        }
+
+        @Test
+        @DisplayName("limit 写成字符串也认；写不出数字就当没填")
+        void limitTolerance() {
+            assertThat(DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],"limit":"10"}""").limit())
+                    .isEqualTo(10);
+            assertThat(DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],"limit":"十个"}""").limit())
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("shareOf 与 compare")
+        void shareAndCompare() {
+            AskDsl dsl = DslParser.parse("""
+                    {"metrics":["保费","保单数"],"dimensions":["区域"],"filters":[],
+                     "shareOf":["保费"],"compare":"yoy"}""");
+
+            assertThat(dsl.shareOf()).containsExactly("保费");
+            assertThat(dsl.compare()).isEqualTo(AskDsl.Compare.YOY);
+        }
+
+        @Test
+        @DisplayName("不是排名字段/方向时拒绝，走重问而不是静默算错")
+        void invalidValuesRejected() {
+            assertThatThrownBy(() -> DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],
+                     "sort":[{"field":"保费","direction":"ascending"}]}"""))
+                    .isInstanceOf(DslGenerationException.class)
+                    .hasMessageContaining("asc");
+
+            assertThatThrownBy(() -> DslParser.parse("""
+                    {"metrics":["保费"],"dimensions":[],"filters":[],"compare":"quarter"}"""))
+                    .isInstanceOf(DslGenerationException.class)
+                    .hasMessageContaining("compare");
+        }
+    }
 }
