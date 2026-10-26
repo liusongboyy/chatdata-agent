@@ -81,6 +81,8 @@ public final class AdminApiPermissions {
             new Rule("PUT", "/domains/*", DM_WRITE),
             new Rule("DELETE", "/domains/*", DM_DELETE),
             new Rule("PUT", "/domains/*/joins", DM_TABLES),
+            // 覆盖度检查只读配置，与 tables 同一档权限
+            new Rule("GET", "/domains/*/modeling-check", DM_TABLES),
             // 列画像会写回 columns_json，属于注册表维护，与 tables 同一档权限
             new Rule("POST", "/domains/*/profile", DM_TABLES),
 

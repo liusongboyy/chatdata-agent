@@ -433,6 +433,25 @@ public class AdminEngineController {
     }
 
     /**
+     * 检查一个域的**建模覆盖度**。
+     *
+     * <p>回答"这个域配得够不够用"——不是"能不能用"（那是启动校验的 ERROR 管的）。
+     * 缺 AVG 或去重计数不会报错，模型会拿 SUM/COUNT 凑一个形态不对的答案。
+     *
+     * <p>单独做成端点而不是只在启动时记日志：管理员建完域**当场**就能看到还缺什么，
+     * 那时他脑子里还有业务场景；等启动日志里翻出来，通常已经过了几天。
+     */
+    @GetMapping("/domains/{id}/modeling-check")
+    public ResponseEntity<Result<List<com.liusongboyy.chatdata.engine.startup
+            .EngineConfigViolation>>> modelingCheck(@PathVariable long id,
+                                                   HttpServletRequest request) {
+        ResponseEntity<Result<List<com.liusongboyy.chatdata.engine.startup
+                .EngineConfigViolation>>> denied = requireAdmin(request);
+        if (denied != null) return denied;
+        return ok(domainService.modelingCheck(id));
+    }
+
+    /**
      * 给整个域做列画像，并把描述写回注册表。
      *
      * <p>跑一次、长期受益：画像结果进 prompt，模型从此知道「状态」的取值是

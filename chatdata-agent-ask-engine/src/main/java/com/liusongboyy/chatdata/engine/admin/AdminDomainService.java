@@ -2,8 +2,11 @@ package com.liusongboyy.chatdata.engine.admin;
 
 import com.liusongboyy.chatdata.engine.admin.mapper.SemanticAdminMapper;
 import com.liusongboyy.chatdata.engine.datasource.MetaReader;
+import com.liusongboyy.chatdata.engine.semantic.Domain;
+import com.liusongboyy.chatdata.engine.semantic.DomainLoader;
 import com.liusongboyy.chatdata.engine.semantic.DomainRow;
 import com.liusongboyy.chatdata.engine.semantic.DomainTableRow;
+import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
 import com.liusongboyy.chatdata.engine.semantic.TableJoin;
 import com.liusongboyy.chatdata.engine.semantic.TermRow;
 import com.liusongboyy.chatdata.engine.semantic.TopicRow;
@@ -139,6 +142,27 @@ public class AdminDomainService {
      * 走 {@link #updateTable} 会把整份表单传一遍，而调用方并没有那些字段——
      * 一旦某处漏传，就会把管理员的配置冲掉，且不报错。
      */
+    /**
+     * 建模覆盖度检查：这个域配得够不够用。
+     *
+     * <p>与启动校验同一个实现（{@link ModelingCoverageCheck}）——
+     * 两处各写一套的话，管理台说"没问题"而启动日志说"缺 AVG"，那种不一致比不检查更糟。
+     */
+    public List<com.liusongboyy.chatdata.engine.startup.EngineConfigViolation>
+            modelingCheck(long domainId) {
+        DomainRow row = get(domainId);
+        String dbType = row.datasourceId() == null ? null
+                : readMapper.selectEnabledDatasources().stream()
+                        .filter(d -> d.id() == row.datasourceId())
+                        .map(com.liusongboyy.chatdata.engine.datasource.DatasourceDef::dbType)
+                        .findFirst()
+                        .orElse(null);
+        Domain domain = DomainLoader.load(row, listTables(domainId),
+                List.of(), List.of(), dbType);
+        return com.liusongboyy.chatdata.engine.startup.ModelingCoverageCheck.check(
+                domain, new SemanticModel(domain));
+    }
+
     public void updateTableColumns(long tableId, String columnsJson, String operator) {
         // 先确认这张表存在，否则 UPDATE 命中 0 行会被当成成功
         boolean exists = readMapper.selectTablesByDomain(findDomainIdOf(tableId)).stream()

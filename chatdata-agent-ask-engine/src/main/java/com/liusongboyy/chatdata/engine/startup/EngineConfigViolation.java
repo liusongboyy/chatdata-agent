@@ -105,7 +105,28 @@ public record EngineConfigViolation(
          * <p>与派生指标同一个道理：条件字段写错时指标仍然"能问"，
          * 只是算出来是空集或报 Unknown column，而错因离配置现场很远。
          */
-        BROKEN_METRIC_CONDITION("指标统计条件无效", Severity.ERROR);
+        BROKEN_METRIC_CONDITION("指标统计条件无效", Severity.ERROR),
+
+        /**
+         * 建模覆盖度不足：域能用，但缺了某类高频形态，导致某类问题只能被"硬凑"。
+         *
+         * <p><strong>为什么是 WARNING 而不是 ERROR。</strong>域本身是好的——
+         * 只是给模型的工具箱里少了平均、去重计数这类常用件。缺了不会报错，
+         * 模型会拿 SUM/COUNT 凑一个形态不对的答案，而用户看不出差别。
+         *
+         * <p>它拦住启动的代价与收益不成比例：一个只用来查总额的域，
+         * 配不配 AVG 都无所谓。故只提示，不阻断。
+         */
+        THIN_MODELING("建模覆盖度不足", Severity.WARNING),
+
+        /**
+         * 建模自相矛盾：同一字段被配成互斥的角色，或口径互相覆盖。
+         *
+         * <p>与 {@link #THIN_MODELING} 不同，这类**会**算错：例如同一列既配了
+         * 「仅看已解决」的统计条件、又出现在权限脱敏列表里，两者叠加的结果
+         * 不是任何一方想要的。
+         */
+        CONTRADICTORY_MODELING("建模自相矛盾", Severity.WARNING);
 
         /** 严重度。 */
         public enum Severity {

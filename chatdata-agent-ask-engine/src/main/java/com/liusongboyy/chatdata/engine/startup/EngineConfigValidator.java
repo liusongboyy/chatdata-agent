@@ -150,6 +150,11 @@ public final class EngineConfigValidator {
         // ⑥ 派生指标的输入引用
         violations.addAll(validateDerived(domain));
 
+        // 注意：建模覆盖度检查**不在这里**。
+        // 它回答的是"配得够不够好"，而本方法回答的是"能不能用"——
+        // 混在一起会让"这个域缺 AVG"看起来像启动问题，而它并不该拦住启动。
+        // 单独由 {@code ModelingCoverageCheck} 提供，管理台按需调用。
+
         return violations;
     }
 
