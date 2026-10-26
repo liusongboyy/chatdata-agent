@@ -26,6 +26,10 @@ import com.liusongboyy.chatdata.engine.semantic.Domain;
  *                   **直连模式为 null**——那一模式没有 DSL，也就没有可回显的结构化事实。
  *                  界面把它摊开给用户看——这是**唯一能挡住静默语义错误的位置**，
  *                  理由见 {@link AskUnderstanding}
+ * @param analysis   分析编排的完整结果；单查询为 null。
+ *                   为 null 时其余字段就是全部内容，前端走原有渲染
+ * @param notice     降级说明（如"分析计划未能生成，已回退为单次查询"）。
+ *                   **任何降级都必须说清楚**，否则用户以为自己看到的是分析结论
  */
 public record AskResult(
         AskDsl dsl,
@@ -37,12 +41,29 @@ public record AskResult(
         ChartSpec chart,
         AskUnderstanding understanding,
         String answer,
-        Domain.Mode mode
+        Domain.Mode mode,
+        com.liusongboyy.chatdata.engine.analysis.AnalysisResult analysis,
+        String notice
 ) {
+
+    /** 兼容构造器：单查询与直连模式不涉及编排。 */
+    public AskResult(AskDsl dsl, RenderedSql sql, String modelSql, QueryResult result,
+                     java.util.Set<String> maskedColumns, long durationMs, ChartSpec chart,
+                     AskUnderstanding understanding, String answer, Domain.Mode mode) {
+        this(dsl, sql, modelSql, result, maskedColumns, durationMs, chart, understanding,
+                answer, mode, null, null);
+    }
 
     public AskResult {
         maskedColumns = maskedColumns == null ? java.util.Set.of() : java.util.Set.copyOf(maskedColumns);
         mode = mode == null ? Domain.Mode.MODELED : mode;
+        notice = (notice == null || notice.isBlank()) ? null : notice.trim();
+    }
+
+    /** 带回一条降级说明的副本。用于"分析计划失败、已回退单查询"这类情形。 */
+    public AskResult withNotice(String text) {
+        return new AskResult(dsl, sql, modelSql, result, maskedColumns, durationMs, chart,
+                understanding, answer, mode, analysis, text);
     }
 
     /**

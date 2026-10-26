@@ -18,10 +18,12 @@ public interface EngineAuditMapper {
     @Insert("""
             INSERT INTO ask_audit_log
               (username, roles, question, assistant_id, domain_id, dsl_json, sql_text,
-               row_count, duration_ms, outcome, error_message, created_at)
+               row_count, duration_ms, outcome, error_message, created_at,
+               batch_id, step_no, plan_json, narrative)
             VALUES
               (#{username}, #{roles}, #{question}, #{assistantId}, #{domainId}, #{dslJson}, #{sqlText},
-               #{rowCount}, #{durationMs}, #{outcome}, #{errorMessage}, #{createdAt})
+               #{rowCount}, #{durationMs}, #{outcome}, #{errorMessage}, #{createdAt},
+               #{batchId}, #{stepNo}, #{planJson}, #{narrative})
             """)
     int insert(AskAuditRecord record);
 }

@@ -19,7 +19,11 @@ export type AskStage =
   | 'CHECKING_PERMISSION'
   | 'GENERATING_DSL'
   | 'RENDERING_SQL'
+  /** 分析编排：把问题拆成若干次取数 */
+  | 'PLANNING'
   | 'EXECUTING'
+  /** 分析编排：根据算好的事实写结论 */
+  | 'SYNTHESIZING'
 
 /** 失败码。与后端 `AskEvent.FailureCode` 对齐。 */
 export type FailureCode =
@@ -94,6 +98,10 @@ export interface AskResultEvent {
    * 它不是权限凭据——重算时判定主体仍从令牌解析，见后端 `AskService.recompute`。
    */
   dsl: AskDsl | null
+  /** 分析编排结果；单查询为 null */
+  analysis?: AnalysisPayload | null
+  /** 降级说明（如"分析计划未能生成，已回退为单次查询"）。有值时必须展示 */
+  notice?: string | null
 }
 
 /** 问数 DSL。与后端 `AskDsl` 对齐。 */
@@ -149,6 +157,50 @@ export interface AskParams {
   sessionId?: string
   /** 助理 id。带上它会先过助理层的权限闸门。 */
   assistantId?: string
+  /**
+   * 是否走分析编排（拆成多次查询 + 结论）。
+   *
+   * 缺省 false：编排会多花几次查询与两次模型调用，不该由系统替用户决定。
+   */
+  analyze?: boolean
+}
+
+/** 一个分析步骤的展示形态。 */
+export interface AnalysisStep {
+  id: string
+  label: string
+  purpose: string
+  status: 'OK' | 'FAILED'
+  error: string | null
+  columns: string[]
+  rows: unknown[][]
+  rowCount: number
+  maskedColumns: string[]
+  /** 参数化 SQL，排查用 */
+  sql: string | null
+  /** 参数已内联的 SQL，展示用 */
+  sqlDisplay: string | null
+  dsl: AskDsl | null
+  durationMs: number
+}
+
+/** 由 Java 算出来的事实。前端只展示，不重新计算。 */
+export interface AnalysisFinding {
+  kind: 'TREND' | 'CONTRIBUTION' | 'COMPARE' | 'OUTLIER'
+  stepId: string
+  text: string
+  evidence: Record<string, unknown>
+}
+
+export interface AnalysisPayload {
+  intent: string
+  /** 结论。为空时前端只展示 facts 与步骤 */
+  narrative: string | null
+  queryCount: number
+  /** 因行数/耗时上限被截断——必须在界面上说明 */
+  truncated: boolean
+  findings: AnalysisFinding[]
+  steps: AnalysisStep[]
 }
 
 /**

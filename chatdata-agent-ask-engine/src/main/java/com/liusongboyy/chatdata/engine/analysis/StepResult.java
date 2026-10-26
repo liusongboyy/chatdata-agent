@@ -17,6 +17,7 @@ import java.util.Set;
  * @param rows          结果数据；失败时为空
  * @param maskedColumns 本步被脱敏的列
  * @param error         失败原因（给用户看的措辞，不含表结构细节）
+ * @param durationMs    这一步的耗时。审计要能回答"时间花在哪一步"
  */
 public record StepResult(
         String id,
@@ -27,7 +28,8 @@ public record StepResult(
         QueryResult rows,
         Set<String> maskedColumns,
         StepStatus status,
-        String error
+        String error,
+        long durationMs
 ) {
 
     public StepResult {
@@ -42,13 +44,25 @@ public record StepResult(
 
     public static StepResult ok(String id, String label, String purpose, AskDsl dsl,
                                 RenderedSql sql, QueryResult rows, Set<String> maskedColumns) {
-        return new StepResult(id, label, purpose, dsl, sql, rows, maskedColumns, StepStatus.OK, null);
+        return ok(id, label, purpose, dsl, sql, rows, maskedColumns, 0);
+    }
+
+    public static StepResult ok(String id, String label, String purpose, AskDsl dsl,
+                                RenderedSql sql, QueryResult rows, Set<String> maskedColumns,
+                                long durationMs) {
+        return new StepResult(id, label, purpose, dsl, sql, rows, maskedColumns,
+                StepStatus.OK, null, durationMs);
     }
 
     public static StepResult failed(String id, String label, String purpose, AskDsl dsl,
                                     RenderedSql sql, String error) {
+        return failed(id, label, purpose, dsl, sql, error, 0);
+    }
+
+    public static StepResult failed(String id, String label, String purpose, AskDsl dsl,
+                                    RenderedSql sql, String error, long durationMs) {
         return new StepResult(id, label, purpose, dsl, sql, QueryResult.empty(),
-                Set.of(), StepStatus.FAILED, error);
+                Set.of(), StepStatus.FAILED, error, durationMs);
     }
 
     public boolean isOk() {

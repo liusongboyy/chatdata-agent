@@ -72,8 +72,14 @@ public sealed interface AskEvent {
         /** 正在渲染 SQL 并注入权限谓词。纯计算，通常很快。 */
         RENDERING_SQL("正在生成查询"),
 
-        /** 正在执行查询。 */
-        EXECUTING("正在查询数据");
+        /** 正在把问题拆成若干次取数（仅分析编排）。 */
+        PLANNING("正在拆解问题"),
+
+        /** 正在执行查询。编排时会带步骤进度（「正在查询数据（2/4）」）。 */
+        EXECUTING("正在查询数据"),
+
+        /** 正在根据算好的事实写结论（仅分析编排）。 */
+        SYNTHESIZING("正在总结");
 
         private final String label;
 

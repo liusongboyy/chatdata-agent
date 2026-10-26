@@ -78,8 +78,22 @@ public class AskEngineStreamController {
         this.workerExecutor = workerExecutor;
     }
 
-    /** 请求体。 */
-    public record EngineAskBody(String question, String domainId, String sessionId, String assistantId) {
+    /**
+     * 请求体。
+     *
+     * @param analyze 是否走分析编排（拆成多次查询 + 结论）。
+     *                缺省 false——**默认仍是单查询**，避免一次误点就多花几次查询与模型调用
+     */
+    public record EngineAskBody(String question, String domainId, String sessionId,
+                                String assistantId, Boolean analyze) {
+
+        public EngineAskBody(String question, String domainId, String sessionId, String assistantId) {
+            this(question, domainId, sessionId, assistantId, null);
+        }
+
+        boolean wantsAnalysis() {
+            return Boolean.TRUE.equals(analyze);
+        }
     }
 
     /**
@@ -328,7 +342,11 @@ public class AskEngineStreamController {
                     body.question(), username, username, currentUser.roles(),
                     conversation.id(), conversation.assistantId(), currentUser.attributes());
 
-            AskResult result = service.askStreaming(askRequest, event -> send(emitter, event));
+            // 显式开关 + 域支持才走编排。默认单查询——编排会多花几次查询与模型调用，
+            // 不该由系统替用户决定（自动路由留到有分析评测集之后）
+            AskResult result = body.wantsAnalysis() && service.supportsAnalysis()
+                    ? service.analyzeStreaming(askRequest, event -> send(emitter, event))
+                    : service.askStreaming(askRequest, event -> send(emitter, event));
 
             // 结果事件手工发送而不是走 AskEvent.Completed：反馈需要知道**产生答案的域 id**，
             // 而域是在服务层解析出来的，事件对象里没有它
@@ -474,7 +492,59 @@ public class AskEngineStreamController {
         // 这不是把权限交出去：重算时判定主体仍从令牌解析，字段解析、行规则、
         // 列脱敏、只读与行数上限一个都不少（见 AskService.recompute）。
         payload.put("dsl", r.dsl());
+        // 分析编排结果；单查询为 null，前端据此走原有渲染
+        payload.put("analysis", analysisPayload(r.analysis()));
+        // 降级说明：分析计划失败回退单查询时，必须让用户知道
+        payload.put("notice", r.notice());
         return payload;
+    }
+
+    /**
+     * 分析结果的 JSON 形状。
+     *
+     * <p>逐字段挑，不直接序列化内部 record：{@code RenderedSql} 里带着参数数组，
+     * 那是执行用的，不该出现在前端契约里。这里只给展示与排查需要的部分。
+     */
+    private Map<String, Object> analysisPayload(
+            com.liusongboyy.chatdata.engine.analysis.AnalysisResult a) {
+        if (a == null) {
+            return null;
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("intent", a.intent());
+        out.put("narrative", a.narrative());
+        out.put("queryCount", a.queryCount());
+        out.put("truncated", a.truncated());
+
+        List<Map<String, Object>> findings = a.findings().stream().map(f -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("kind", f.kind().name());
+            m.put("stepId", f.stepId());
+            m.put("text", f.text());
+            m.put("evidence", f.evidence());
+            return m;
+        }).toList();
+        out.put("findings", findings);
+
+        List<Map<String, Object>> steps = a.steps().stream().map(s -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("id", s.id());
+            m.put("label", s.label());
+            m.put("purpose", s.purpose());
+            m.put("status", s.status().name());
+            m.put("error", s.error());
+            m.put("columns", s.rows().columns());
+            m.put("rows", s.rows().rows());
+            m.put("rowCount", s.rows().rowCount());
+            m.put("maskedColumns", s.maskedColumns());
+            m.put("sql", s.sql() == null ? null : s.sql().sql());
+            m.put("sqlDisplay", s.sql() == null ? null : s.sql().displaySql());
+            m.put("dsl", s.dsl());
+            m.put("durationMs", s.durationMs());
+            return m;
+        }).toList();
+        out.put("steps", steps);
+        return out;
     }
 
 

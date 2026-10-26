@@ -59,17 +59,59 @@ public class AskService implements AskFacade {
     private final DslSource dslSource;
     private final SqlExecutor sqlExecutor;
     private final AskAuditRecorder auditRecorder;
+    /** 分析编排；为 null 表示这个域/环境不支持（例如模型未配置）。 */
+    private final AnalysisService analysisService;
 
     public AskService(SemanticModel model,
                       SqlDialect dialect,
                       DslSource dslSource,
                       SqlExecutor sqlExecutor,
                       AskAuditRecorder auditRecorder) {
+        this(model, dialect, dslSource, sqlExecutor, auditRecorder, null);
+    }
+
+    public AskService(SemanticModel model,
+                      SqlDialect dialect,
+                      DslSource dslSource,
+                      SqlExecutor sqlExecutor,
+                      AskAuditRecorder auditRecorder,
+                      AnalysisService analysisService) {
         this.model = model;
         this.dialect = dialect;
         this.dslSource = dslSource;
         this.sqlExecutor = sqlExecutor;
         this.auditRecorder = auditRecorder == null ? AskAuditRecorder.NOOP : auditRecorder;
+        this.analysisService = analysisService;
+    }
+
+    @Override
+    public boolean supportsAnalysis() {
+        return analysisService != null && analysisService.available();
+    }
+
+    /**
+     * 分析编排入口。
+     *
+     * <h2>计划失败时回退单查询，并**说明**回退了</h2>
+     *
+     * <p>不说明的降级比没有降级更糟：用户以为自己看的是"+结论"，其实是一次普通查询。
+     */
+    @Override
+    public AskResult analyzeStreaming(AskRequest request, Consumer<AskEvent> sink) {
+        if (!supportsAnalysis()) {
+            return askStreaming(request, sink);
+        }
+        sink.accept(new AskEvent.Started(request.question()));
+        try {
+            return analysisService.analyze(request, sink::accept);
+        } catch (AskDeniedException e) {
+            throw e;   // 权限拒绝没有"回退"一说
+        } catch (DslGenerationException | SemanticException | IllegalArgumentException e) {
+            log.info("分析计划不可用，回退单查询：user={} 原因={}",
+                    request.username(), e.getMessage());
+            return askStreaming(request, sink)
+                    .withNotice("分析计划未能生成（" + e.getMessage() + "），已回退为单次查询");
+        }
     }
 
     @Override

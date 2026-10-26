@@ -90,6 +90,8 @@ interface Turn {
    */
   question: string
   kind: 'question' | 'recompute'
+  /** 这一轮是否是分析编排。决定进度条用哪条阶段序列 */
+  analyze?: boolean
   status: 'streaming' | 'done' | 'error'
   stage: AskStage | null
   stageMessage: string
@@ -314,9 +316,12 @@ const STAGE_LABEL: Record<AskStage, string> = {
   CHECKING_PERMISSION: '校验权限',
   GENERATING_DSL: '理解问题',
   RENDERING_SQL: '生成查询',
+  PLANNING: '拆解问题',
   EXECUTING: '查询数据',
+  SYNTHESIZING: '写结论',
 }
 
+/** 单查询的阶段序列。 */
 const STAGE_ORDER: AskStage[] = [
   'CHECKING_PERMISSION',
   'GENERATING_DSL',
@@ -324,8 +329,23 @@ const STAGE_ORDER: AskStage[] = [
   'EXECUTING',
 ]
 
-function stageIndex(stage: AskStage | null): number {
-  return stage ? STAGE_ORDER.indexOf(stage) : -1
+/** 分析编排的阶段序列。与单查询不同，故各用一条——混在一条里会出现
+ *  "理解问题"被跳过这类假进度。 */
+const ANALYSIS_STAGE_ORDER: AskStage[] = [
+  'CHECKING_PERMISSION',
+  'PLANNING',
+  'EXECUTING',
+  'SYNTHESIZING',
+]
+
+function stageOrderFor(turn: Turn): AskStage[] {
+  return turn.analyze ? ANALYSIS_STAGE_ORDER : STAGE_ORDER
+}
+
+/** 当前阶段在这一轮所选序列里的位置；不在序列里返回 -1（什么都没高亮）。 */
+function stageIndex(turn: Turn, stage: AskStage | null): number {
+  if (!stage) return -1
+  return stageOrderFor(turn).indexOf(stage)
 }
 
 async function scrollToEnd(): Promise<void> {
@@ -338,6 +358,24 @@ async function scrollToEnd(): Promise<void> {
 // 漏掉一处就会出现"新答案在屏幕外"。
 watch(() => turns.value.length, scrollToEnd)
 
+/** 「深入分析」：显式开关。默认关——编排会多花几次查询与两次模型调用。 */
+const analyzeMode = ref(false)
+
+function kindLabel(kind: string): string {
+  switch (kind) {
+    case 'TREND':
+      return '趋势'
+    case 'CONTRIBUTION':
+      return '构成'
+    case 'COMPARE':
+      return '对比'
+    case 'OUTLIER':
+      return '异常'
+    default:
+      return kind
+  }
+}
+
 async function submit(): Promise<void> {
   if (!canSubmit.value) return
 
@@ -348,6 +386,7 @@ async function submit(): Promise<void> {
     id: `${Date.now()}`,
     question,
     kind: 'question',
+    analyze: analyzeMode.value,
     status: 'streaming',
     stage: null,
     stageMessage: '',
@@ -364,6 +403,7 @@ async function submit(): Promise<void> {
         question,
         sessionId: sessionId.value,
         ...(assistantId.value ? { assistantId: assistantId.value } : {}),
+        ...(analyzeMode.value ? { analyze: true } : {}),
       },
       (event) => applyEvent(turn.id, event),
       controller.signal,
@@ -798,12 +838,12 @@ async function logout(): Promise<void> {
         <div v-else-if="turn.status === 'streaming'" class="stages">
           <ol class="stage-list">
             <li
-              v-for="(s, i) in STAGE_ORDER"
+              v-for="(s, i) in stageOrderFor(turn)"
               :key="s"
               class="stage"
               :class="{
-                'stage-done': i < stageIndex(turn.stage),
-                'stage-active': i === stageIndex(turn.stage),
+                'stage-done': i < stageIndex(turn, turn.stage),
+                'stage-active': i === stageIndex(turn, turn.stage),
               }"
             >
               <span class="stage-dot" />
@@ -831,10 +871,72 @@ async function logout(): Promise<void> {
             可访问的表由数据集配置决定。
           </p>
 
+          <!-- 分析编排：结论 → 事实 → 每步明细。
+               结论里的数字都由后端算好并校验过，这里只展示，不重新计算 -->
+          <section v-if="turn.result.analysis" class="analysis">
+            <p v-if="turn.result.notice" class="note note-warn">{{ turn.result.notice }}</p>
+
+            <p v-if="turn.result.analysis.narrative" class="analysis-narrative">
+              {{ turn.result.analysis.narrative }}
+            </p>
+
+            <ul v-if="turn.result.analysis.findings.length" class="findings">
+              <li v-for="(f, fi) in turn.result.analysis.findings" :key="fi" class="finding">
+                <span class="finding-kind">{{ kindLabel(f.kind) }}</span>
+                <span class="finding-text">{{ f.text }}</span>
+                <span class="finding-step">{{ f.stepId }}</span>
+              </li>
+            </ul>
+
+            <p v-if="turn.result.analysis.truncated" class="note note-warn">
+              结果因行数或耗时上限被截断，只展示了已完成的步骤。
+            </p>
+
+            <details
+              v-for="s in turn.result.analysis.steps"
+              :key="s.id"
+              class="analysis-step"
+            >
+              <summary class="step-summary">
+                <span class="step-id">{{ s.id }}</span>
+                <span class="step-label">{{ s.label }}</span>
+                <span v-if="s.status === 'FAILED'" class="step-failed">
+                  失败：{{ s.error }}
+                </span>
+                <span v-else class="sub">{{ s.rowCount }} 行 · {{ s.durationMs }}ms</span>
+              </summary>
+
+              <p v-if="s.purpose" class="sub step-purpose">{{ s.purpose }}</p>
+
+              <div v-if="s.status === 'OK' && s.rowCount > 0" class="step-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th v-for="c in s.columns" :key="c">{{ c }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, ri) in s.rows" :key="ri">
+                      <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else-if="s.status === 'OK'" class="note">这一步没有查到数据。</p>
+
+              <pre v-if="s.sqlDisplay" class="step-sql">{{ s.sqlDisplay }}</pre>
+            </details>
+
+            <p class="sub analysis-cost">
+              共查询 {{ turn.result.analysis.queryCount }} 次
+              <span v-if="turn.result.durationMs"> · 耗时 {{ Math.round(turn.result.durationMs / 1000) }} 秒</span>
+            </p>
+          </section>
+
           <!-- 能力答复：不是一次查数，所以既没有表格也不该说"无数据" -->
           <p v-if="turn.result.answer" class="answer">{{ turn.result.answer }}</p>
 
-          <template v-else-if="turn.result.rowCount === 0">
+          <template v-else-if="turn.result.rowCount === 0 && !turn.result.analysis">
             <p class="note">
               查询成功，但这个条件下没有数据。
             </p>
@@ -863,7 +965,7 @@ async function logout(): Promise<void> {
           </template>
 
           <ResultView
-            v-else-if="!turn.result.answer"
+            v-else-if="!turn.result.answer && !turn.result.analysis"
             :columns="turn.result.columns"
             :rows="turn.result.rows"
             :masked-columns="turn.result.maskedColumns"
@@ -985,7 +1087,11 @@ async function logout(): Promise<void> {
           </button>
         </div>
         <p class="composer-hint">
-          Enter 发送 · Shift + Enter 换行
+          <label class="analyze-toggle">
+            <input v-model="analyzeMode" type="checkbox" />
+            <span>深入分析</span>
+          </label>
+          <span>Enter 发送 · Shift + Enter 换行</span>
           <span v-if="domainName"> · 当前域 {{ domainName }}</span>
         </p>
       </form>
@@ -1874,10 +1980,150 @@ async function logout(): Promise<void> {
 }
 
 .composer-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
   padding: 0 4px;
-  text-align: center;
   font-size: 10px;
   color: var(--ink-faint);
+}
+
+/* 深入分析开关：放在输入区而不是设置里——它改变的是这一次提问的代价与形态，
+   而不是账号级偏好 */
+.analyze-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 10px;
+}
+
+/* ── 分析编排 ── */
+.analysis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.analysis-narrative {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.7;
+  font-weight: 550;
+}
+
+.findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.finding {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.finding-kind {
+  flex: none;
+  padding: 0 0.4em;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.finding-text {
+  flex: 1;
+}
+
+.finding-step {
+  flex: none;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+}
+
+.analysis-step {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.step-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.step-id {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.step-label {
+  font-weight: 550;
+}
+
+.step-failed {
+  color: var(--warn);
+  font-size: var(--text-sm);
+}
+
+.step-purpose {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.step-table {
+  overflow-x: auto;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.step-table table {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  width: 100%;
+}
+
+.step-table th,
+.step-table td {
+  padding: 0.35em 0.6em;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.step-table th {
+  color: var(--ink-faint);
+  font-weight: 500;
+  font-size: var(--text-xs);
+}
+
+.step-sql {
+  margin: 0 var(--space-3) var(--space-3);
+  padding: var(--space-2);
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.analysis-cost {
+  margin: 0;
 }
 
 /* ── 反馈 ── */

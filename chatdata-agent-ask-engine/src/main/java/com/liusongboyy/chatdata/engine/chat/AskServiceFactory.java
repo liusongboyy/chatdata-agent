@@ -112,7 +112,14 @@ public class AskServiceFactory {
 
         SemanticModel model = new SemanticModel(domain);
         SqlDialect dialect = SqlDialects.of(domain.dbType());
-        return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder);
+
+        // 编排的两个模型调用（拆解、写结论）与 DSL 生成共用同一个引擎模型。
+        // 模型 bean 是 @Lazy 代理：没配 api-key 时，异常在**真正调用时**才抛，
+        // 由 AskService 翻译成"引擎未配置"，不会让整个应用起不来。
+        AnalysisService analysis = new AnalysisService(model, dialect, sqlExecutor, auditRecorder,
+                new com.liusongboyy.chatdata.engine.agent.AnalysisPlanGenerator(askEngineModel),
+                new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(askEngineModel));
+        return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder, analysis);
     }
 
     /**
