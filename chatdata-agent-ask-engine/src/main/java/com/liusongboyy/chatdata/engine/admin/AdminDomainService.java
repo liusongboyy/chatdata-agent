@@ -132,6 +132,26 @@ public class AdminDomainService {
         log.info("注册表已更新：id={} name={} by={}", tableId, v.name(), operator);
     }
 
+    /**
+     * 只更新某张表的 {@code columns_json}。
+     *
+     * <p>给列画像用：它只回填描述与样例，别名、聚合方式、派生定义都不能碰。
+     * 走 {@link #updateTable} 会把整份表单传一遍，而调用方并没有那些字段——
+     * 一旦某处漏传，就会把管理员的配置冲掉，且不报错。
+     */
+    public void updateTableColumns(long tableId, String columnsJson, String operator) {
+        // 先确认这张表存在，否则 UPDATE 命中 0 行会被当成成功
+        boolean exists = readMapper.selectTablesByDomain(findDomainIdOf(tableId)).stream()
+                .anyMatch(t -> t.id() == tableId);
+        if (!exists) {
+            throw new AdminException("注册表不存在：id=" + tableId);
+        }
+        // **用专用语句**：通用的 updateDomainTable 会把排序号等字段一并覆盖成传入值，
+        // 而这里手里只有 columns_json
+        writeMapper.updateColumnsJson(tableId, columnsJson, operator);
+        log.info("注册表列定义已更新（画像回填）：id={} by={}", tableId, operator);
+    }
+
     public void deleteTable(long tableId, String operator) {
         long domainId = findDomainIdOf(tableId);
         boolean exists = readMapper.selectTablesByDomain(domainId).stream()

@@ -81,6 +81,8 @@ public final class AdminApiPermissions {
             new Rule("PUT", "/domains/*", DM_WRITE),
             new Rule("DELETE", "/domains/*", DM_DELETE),
             new Rule("PUT", "/domains/*/joins", DM_TABLES),
+            // 列画像会写回 columns_json，属于注册表维护，与 tables 同一档权限
+            new Rule("POST", "/domains/*/profile", DM_TABLES),
 
             // ── 注册表 / 术语 / 主题 / SQL 范例：都归"注册表"这一个内容码 ──
             new Rule("GET", "/domains/*/tables", DM_TABLES),

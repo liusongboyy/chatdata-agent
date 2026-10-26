@@ -18,19 +18,32 @@ import java.util.Locale;
  * @param derived 派生指标定义；普通列为 null。见 {@link DerivedMetric}
  * @param condition 统计条件：只把满足条件的行计入这一列；无条件的列为 null。
  *                  见 {@link MetricCondition}。与 {@code derived} 互斥
+ * @param description 列的业务含义说明，由 {@code ColumnProfiler} 根据真实取值生成。
+ *                  <b>会进 prompt</b>——BIRD 的实测是"有列注释 73.8% vs 无 66.5%"，
+ *                  而自动生成的注释比人工写的还好（72.2% vs 71.0%）。
+ *                  为空时 prompt 里不出现该列的描述，行为与未加此字段时一致
+ * @param sampleValues 取值样例（最多几个），同样进 prompt。
+ *                  对"状态"这类字段，让模型看到 {@code OPEN/CLOSED} 比看到"状态"两个字有用得多
  */
 public record ColumnDef(String col, String type, Aggregation agg, String alias,
-                        boolean enabled, DerivedMetric derived, MetricCondition condition) {
+                        boolean enabled, DerivedMetric derived, MetricCondition condition,
+                        String description, java.util.List<String> sampleValues) {
 
-    /** 普通列：没有派生定义、没有统计条件。绝大多数调用点用这个。 */
+    /** 普通列：没有派生定义、没有统计条件、没有描述。 */
     public ColumnDef(String col, String type, Aggregation agg, String alias, boolean enabled) {
-        this(col, type, agg, alias, enabled, null, null);
+        this(col, type, agg, alias, enabled, null, null, null, null);
     }
 
     /** 普通列或派生指标，不带统计条件。 */
     public ColumnDef(String col, String type, Aggregation agg, String alias,
                      boolean enabled, DerivedMetric derived) {
-        this(col, type, agg, alias, enabled, derived, null);
+        this(col, type, agg, alias, enabled, derived, null, null, null);
+    }
+
+    /** 带统计条件的列（不带描述）。 */
+    public ColumnDef(String col, String type, Aggregation agg, String alias,
+                     boolean enabled, DerivedMetric derived, MetricCondition condition) {
+        this(col, type, agg, alias, enabled, derived, condition, null, null);
     }
 
     public ColumnDef {
@@ -52,6 +65,8 @@ public record ColumnDef(String col, String type, Aggregation agg, String alias,
             }
         }
         agg = agg == null ? Aggregation.NONE : agg;
+        description = (description == null || description.isBlank()) ? null : description.trim();
+        sampleValues = sampleValues == null ? java.util.List.of() : java.util.List.copyOf(sampleValues);
 
         if (condition != null) {
             if (isDerived) {

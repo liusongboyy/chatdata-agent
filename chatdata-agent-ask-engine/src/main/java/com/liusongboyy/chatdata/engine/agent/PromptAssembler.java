@@ -6,6 +6,7 @@ import com.liusongboyy.chatdata.engine.semantic.SemanticModel;
 import com.liusongboyy.chatdata.engine.semantic.Term;
 import com.liusongboyy.chatdata.engine.semantic.Topic;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -108,6 +109,51 @@ public final class PromptAssembler {
         }
         if (!dimensions.isEmpty()) {
             sb.append("  只能作为维度的字段：").append(dimensions).append('\n');
+        }
+        appendFieldNotes(sb, table);
+    }
+
+    /**
+     * 有描述或取值样例的字段，逐个补充说明。
+     *
+     * <h2>为什么这块单独列出来</h2>
+     *
+     * <p>上面那两行只给字段名。「状态」两个字对模型没有信息量——它不知道
+     * 该写 {@code RESOLVED} 还是 {@code '已解决'}，只能猜；猜错的结果是查回 0 行，
+     * 而用户会以为"库里没有数据"。
+     *
+     * <p>BIRD 企业级实测：无列注释 66.5% → 有注释 73.8%。所以有描述就带上，
+     * 没有就什么都不加——**不为没画像的字段编造说明**。
+     */
+    private static void appendFieldNotes(StringBuilder sb, RegisteredTable table) {
+        List<String> notes = new ArrayList<>();
+        for (ColumnDef c : table.columns()) {
+            if (!c.enabled()) {
+                continue;
+            }
+            boolean hasDesc = c.description() != null;
+            boolean hasSamples = !c.sampleValues().isEmpty();
+            if (!hasDesc && !hasSamples) {
+                continue;
+            }
+            // 画像生成的描述里已经带了取值（"取值 已过期、生效、退保，共 3 种"），
+            // 这里再拼一遍会让同一串字面量在 prompt 里出现两次。
+            // 只有"有描述但描述里没体现取值"时才补
+            boolean descAlreadyHasSamples = hasDesc && !c.sampleValues().isEmpty()
+                    && c.sampleValues().stream().allMatch(v -> c.description().contains(v));
+            StringBuilder line = new StringBuilder("    - ").append(c.displayName());
+            if (hasDesc) {
+                line.append("：").append(c.description());
+            }
+            if (hasSamples && !descAlreadyHasSamples) {
+                line.append(hasDesc ? "；" : "：")
+                        .append("取值 ").append(String.join("、", c.sampleValues()));
+            }
+            notes.add(line.toString());
+        }
+        if (!notes.isEmpty()) {
+            sb.append("  字段说明：\n");
+            notes.forEach(n -> sb.append(n).append('\n'));
         }
     }
 

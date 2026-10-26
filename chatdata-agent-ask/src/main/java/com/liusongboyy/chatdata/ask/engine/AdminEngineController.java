@@ -92,6 +92,8 @@ public class AdminEngineController {
     /** 策略创建/更新审计；写失败只记日志，不回滚保存。 */
     private final com.liusongboyy.chatdata.ask.policy.PolicyAuditRecorder policyAudit;
     private final com.liusongboyy.chatdata.engine.admin.AdminSqlExampleService sqlExampleService;
+    /** 列画像：给已注册列生成描述与取值样例，结果进 prompt。 */
+    private final com.liusongboyy.chatdata.engine.admin.AdminColumnProfileService columnProfiles;
     private final FeedbackService feedbackService;
     /** 功能权限开关。关闭时退回旧的粗粒度角色判据（回滚闸）。 */
     private final boolean fineGrainedPermissions;
@@ -106,6 +108,7 @@ public class AdminEngineController {
                                  PolicyReferenceValidator policyReferences,
                                  com.liusongboyy.chatdata.ask.policy.PolicyAuditRecorder policyAudit,
                                  com.liusongboyy.chatdata.engine.admin.AdminSqlExampleService sqlExampleService,
+                                 com.liusongboyy.chatdata.engine.admin.AdminColumnProfileService columnProfiles,
                                  FeedbackService feedbackService,
                                  @org.springframework.beans.factory.annotation.Value(
                                          "${chatdata.iam.functional-permissions.enabled:true}")
@@ -120,6 +123,7 @@ public class AdminEngineController {
         this.policyReferences = policyReferences;
         this.policyAudit = policyAudit;
         this.sqlExampleService = sqlExampleService;
+        this.columnProfiles = columnProfiles;
         this.feedbackService = feedbackService;
         this.fineGrainedPermissions = fineGrainedPermissions;
     }
@@ -426,6 +430,25 @@ public class AdminEngineController {
 
     /** 表关联请求体。 */
     public record JoinsBody(String joinsJson) {
+    }
+
+    /**
+     * 给整个域做列画像，并把描述写回注册表。
+     *
+     * <p>跑一次、长期受益：画像结果进 prompt，模型从此知道「状态」的取值是
+     * {@code OPEN/CLOSED} 而不只是"状态"两个字。BIRD 企业级实测这是提升准确率
+     * 最高性价比的一环。
+     *
+     * <p>按域一次跑完而不是逐列触发——收益来自**覆盖面**，只有一半列有描述就只剩一半效果。
+     */
+    @PostMapping("/domains/{id}/profile")
+    public ResponseEntity<Result<com.liusongboyy.chatdata.engine.admin
+            .AdminColumnProfileService.ProfileResult>> profileDomain(@PathVariable long id,
+                                                                     HttpServletRequest request) {
+        ResponseEntity<Result<com.liusongboyy.chatdata.engine.admin
+                .AdminColumnProfileService.ProfileResult>> denied = requireAdmin(request);
+        if (denied != null) return denied;
+        return ok(columnProfiles.profileDomain(id, operator(request)));
     }
 
     @DeleteMapping("/domains/{id}")

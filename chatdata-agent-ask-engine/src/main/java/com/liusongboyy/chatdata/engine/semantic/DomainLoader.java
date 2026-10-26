@@ -142,7 +142,9 @@ public final class DomainLoader {
                     // 而权限那层是"默认不放行"，两者的方向本就不同。
                     !n.has("enabled") || n.path("enabled").asBoolean(true),
                     derived,
-                    condition));
+                    condition,
+                    text(n, "description"),
+                    stringListOf(n.path("samples"))));
         }
         return cols;
     }
@@ -181,6 +183,21 @@ public final class DomainLoader {
             throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
                     "域「%s」(id=%s) 的 perm_json 解析失败：%s".formatted(domainName, domainId, e.getMessage()));
         }
+    }
+
+    /** 取值样例数组。缺失或不是数组都当作没有——它只是 prompt 的辅助信息。 */
+    private static List<String> stringListOf(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(node.size());
+        for (JsonNode item : node) {
+            String v = item.asText();
+            if (v != null && !v.isBlank()) {
+                out.add(v.trim());
+            }
+        }
+        return out;
     }
 
     private static String text(JsonNode n, String key) {

@@ -50,6 +50,8 @@ public record DomainTableInput(
      * @param enabled 是否对 LLM 可见
      * @param derived   派生指标定义；普通列为 null。派生指标**没有物理列**，
      *                  故此时 {@code col} 可以留空
+     * @param description 列的业务含义，可由画像批次生成；可为空
+     * @param samples     取值样例；可为空
      * @param condition 统计条件：只统计满足条件的行；无则为 null。
      *                  **原样接收 {@code columns_json} 里的 condition 对象**，
      *                  由 {@link MetricCondition#from} 解析——管理面与运行时同一份判据，
@@ -62,17 +64,25 @@ public record DomainTableInput(
             String alias,
             boolean enabled,
             DerivedInput derived,
-            JsonNode condition
+            JsonNode condition,
+            String description,
+            List<String> samples
     ) {
         /** 兼容旧调用方与测试：普通列没有派生定义、没有统计条件。 */
         public ColumnInput(String col, String type, String agg, String alias, boolean enabled) {
-            this(col, type, agg, alias, enabled, null, null);
+            this(col, type, agg, alias, enabled, null, null, null, null);
         }
 
         /** 兼容：派生指标，不带统计条件。 */
         public ColumnInput(String col, String type, String agg, String alias, boolean enabled,
                            DerivedInput derived) {
-            this(col, type, agg, alias, enabled, derived, null);
+            this(col, type, agg, alias, enabled, derived, null, null, null);
+        }
+
+        /** 兼容：带统计条件，不带描述。 */
+        public ColumnInput(String col, String type, String agg, String alias, boolean enabled,
+                           DerivedInput derived, JsonNode condition) {
+            this(col, type, agg, alias, enabled, derived, condition, null, null);
         }
     }
 
@@ -160,6 +170,15 @@ public record DomainTableInput(
             node.put("agg", c.derived() != null || c.agg() == null ? "" : c.agg().trim());
             node.put("alias", c.alias() == null ? "" : c.alias().trim());
             node.put("enabled", c.enabled());
+            // 描述与样例来自画像批次，不是手填的。为空就不写，
+            // 保持 columns_json 里"没有这个键 = 没画像"的语义
+            if (c.description() != null && !c.description().isBlank()) {
+                node.put("description", c.description().trim());
+            }
+            if (c.samples() != null && !c.samples().isEmpty()) {
+                ArrayNode sa = node.putArray("samples");
+                c.samples().forEach(sa::add);
+            }
             if (hasCondition(c)) {
                 writeCondition(node.putObject("condition"), parseCondition(c));
             }

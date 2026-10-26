@@ -166,6 +166,22 @@ public interface SemanticAdminMapper {
                           @Param("sortNo") int sortNo,
                           @Param("operator") String operator);
 
+    /**
+     * 只更新列定义。
+     *
+     * <p><b>不要用 updateDomainTable 代替</b>：那条语句会把
+     * name/label/mode/sql_text/sort_no 一起覆盖成传入值，
+     * 而画像回填的调用方手里只有 columns_json——用它会静默冲掉排序号等配置。
+     */
+    @Update("""
+            UPDATE ask_domain_table
+            SET columns_json = #{columnsJson}, updated_by = #{operator}
+            WHERE id = #{id}
+            """)
+    int updateColumnsJson(@Param("id") long id,
+                          @Param("columnsJson") String columnsJson,
+                          @Param("operator") String operator);
+
     @Delete("DELETE FROM ask_domain_table WHERE id = #{id}")
     int deleteDomainTable(@Param("id") long id);
 
