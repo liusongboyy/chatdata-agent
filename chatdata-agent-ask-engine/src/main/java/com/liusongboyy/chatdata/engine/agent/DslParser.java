@@ -170,7 +170,7 @@ public final class DslParser {
      * <p>即便要求"只输出 JSON"，模型仍可能套一层 markdown 代码块——
      * 这是很常见的输出习惯，为它失败不值得。
      */
-    private static String extractJson(String raw) {
+    static String extractJson(String raw) {
         if (raw == null) {
             throw new DslGenerationException("模型返回为空");
         }
