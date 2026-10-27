@@ -272,6 +272,8 @@ python3 eval/build-cases.py
 ### 建模覆盖度检查
 
 上面那次测量的真正启示不是"要更多描述"，而是**建模覆盖度是单查询基线最大的杠杆**。
+完整经验（为什么静默、新建域检查清单、反面清单）见
+[docs/modeling-coverage.md](../docs/modeling-coverage.md)；这里只留结论与本目录的实测数据。
 `ModelingCoverageCheck` 把这件事做成可执行的检查，管理员建完域当场能跑：
 
 ```

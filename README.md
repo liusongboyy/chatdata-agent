@@ -10,6 +10,7 @@
 | [GLOSSARY.md](GLOSSARY.md) | 术语表（问数、语义建模、行级权限、直连模式…） |
 | [docs/local-dev.md](docs/local-dev.md) | **本地启动**：依赖、建库、环境变量、运行、常见问题 |
 | [sql/README.md](sql/README.md) | 库的划分、建表顺序、已退役脚本 |
+| [docs/modeling-coverage.md](docs/modeling-coverage.md) | **建模覆盖度**：准确率最大的杠杆、新建域检查清单、实测对照 |
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [AGENTS.md](AGENTS.md) | 给 agent 的工作约定（issue、triage、领域文档） |
