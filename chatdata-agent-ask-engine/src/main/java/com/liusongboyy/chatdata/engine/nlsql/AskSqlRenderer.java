@@ -388,6 +388,13 @@ public final class AskSqlRenderer {
                 continue;
             }
 
+            // 空值判断：**没有取值**，也不该产生参数。
+            // `col = NULL` 永远为假，所以必须走 IS NULL 而不是通用的 `col op ?`
+            if ("IS NULL".equals(op) || "IS NOT NULL".equals(op)) {
+                whereParts.add(col + " " + op);
+                continue;
+            }
+
             boolean temporal = model.isTemporal(f.ref());
 
             if ("IN".equals(op)) {
@@ -1080,9 +1087,16 @@ public final class AskSqlRenderer {
             case "<=", "小于等于", "不大于" -> "<=";
             case "in", "在", "属于", "包含于", "是其中之一" -> "IN";
             case "like", "包含", "含有", "像", "匹配" -> "LIKE";
+            // 空值判断。**它不是比较运算**：`col = NULL` 永远为假，
+            // 必须渲染成 IS NULL / IS NOT NULL 才行。
+            // 实测：问「只算有解决时间的」，模型想表达"解决时间不为空"，
+            // 但没有这个运算符，只能编一个 null 当日期值，于是校验失败
+            case "is null", "isnull", "为空", "是空", "空值" -> "IS NULL";
+            case "is not null", "isnotnull", "不为空", "非空", "不是空" -> "IS NOT NULL";
             default -> throw new SemanticException(SemanticException.Reason.UNSUPPORTED_OPERATOR,
                     "不支持的筛选运算符「" + op + "」。可用的只有："
-                            + "= != > < >= <= in like（请用这些符号或英文单词，不要用中文）");
+                            + "= != > < >= <= in like is null is not null"
+                            + "（请用这些符号或英文单词，不要用中文）");
         };
     }
 }

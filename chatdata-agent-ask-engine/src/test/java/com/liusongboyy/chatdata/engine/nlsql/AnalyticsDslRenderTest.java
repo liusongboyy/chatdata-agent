@@ -162,6 +162,36 @@ class AnalyticsDslRenderTest {
     }
 
     @Nested
+    @DisplayName("空值筛选")
+    class NullFilters {
+
+        @Test
+        @DisplayName("★ is not null 渲染成 IS NOT NULL，且不产生参数")
+        void isNotNull() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of(), null,
+                    List.of(new AskDsl.Filter("关闭日期", "is not null", null)),
+                    AskDsl.Granularity.DAY, List.of(), null, List.of(), null);
+
+            RenderedSql r = render(dsl, "MYSQL5.7");
+
+            assertThat(r.sql()).contains("`t1`.`closed_date` IS NOT NULL");
+            assertThat(r.params())
+                    .as("空值判断没有取值——写成 col = ? 会永远为假")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("中文写法「不为空」也认")
+        void chineseForm() {
+            AskDsl dsl = new AskDsl(List.of("订单金额"), List.of(), null,
+                    List.of(new AskDsl.Filter("关闭日期", "不为空", null)),
+                    AskDsl.Granularity.DAY, List.of(), null, List.of(), null);
+
+            assertThat(render(dsl, "MYSQL5.7").sql()).contains("IS NOT NULL");
+        }
+    }
+
+    @Nested
     @DisplayName("占比")
     class Share {
 

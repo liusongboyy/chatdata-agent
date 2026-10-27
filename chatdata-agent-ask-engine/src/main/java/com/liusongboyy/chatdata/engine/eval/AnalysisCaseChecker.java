@@ -3,6 +3,7 @@ package com.liusongboyy.chatdata.engine.eval;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisResult;
 import com.liusongboyy.chatdata.engine.analysis.Finding;
 import com.liusongboyy.chatdata.engine.analysis.StepResult;
+import com.liusongboyy.chatdata.engine.nlsql.AskDsl;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +57,22 @@ public final class AnalysisCaseChecker {
                     .formatted(failures, spec.maxStepFailures(), String.join("、", failed)));
         }
 
+        // 「这条问题该有的分析形状」有没有出现。
+        // 实测：问「2025 年各月份走势」，模型可能拆成"5 月分险种""4-6 月分省份"——
+        // 步骤都成功、数字都对，但**根本没按月分组**，产不出趋势。
+        // 只查"有没有事实"放过了这种跑偏
+        if (spec.expectsTimeSeries()) {
+            boolean hasSeries = result.steps().stream().anyMatch(s ->
+                    s.isOk() && s.dsl() != null
+                            && s.dsl().granularity() != AskDsl.Granularity.DAY
+                            && !s.dsl().dimensions().isEmpty());
+            if (!hasSeries) {
+                return new Verdict(false,
+                        "问题要的是时间序列，但没有任何一步按月/年分组（步骤："
+                                + describeSteps(result) + "）");
+            }
+        }
+
         List<String> missing = new ArrayList<>();
         for (String want : spec.expectedFindings()) {
             if (!hasFinding(result.findings(), want)) {
@@ -83,6 +100,13 @@ public final class AnalysisCaseChecker {
         return new Verdict(true, "步骤 %d/%d 成功，事实 %d 条，结论%s".formatted(
                 result.steps().size() - failures, result.steps().size(),
                 result.findings().size(), narrative == null ? "（无）" : "已生成"));
+    }
+
+    private static String describeSteps(AnalysisResult result) {
+        return result.steps().stream()
+                .map(s -> s.id() + " " + s.label())
+                .reduce((a, b) -> a + "；" + b)
+                .orElse("（无）");
     }
 
     /** 规格串形如 {@code "CONTRIBUTION:险种"}；没写类型时只按子串匹配。 */

@@ -67,12 +67,16 @@ public record EvalCase(
      *                                缺一步的结论比单查询更容易误导
      * @param expectNarrative         是否要求有结论文本
      * @param forbiddenNarrativeNumbers 结论里禁止出现的数字（如编造的百分比）
+     * @param expectsTimeSeries 问题要的是时间序列（「各月走势」）。
+     *                          开启后必须有一步按月/年分组——只查"有没有事实"
+     *                          会放过"步骤都对但根本没按月分组"这种跑偏
      */
     public record AnalysisCase(
             List<String> expectedFindings,
             int maxStepFailures,
             boolean expectNarrative,
-            List<String> forbiddenNarrativeNumbers
+            List<String> forbiddenNarrativeNumbers,
+            boolean expectsTimeSeries
     ) {
 
         public AnalysisCase {
@@ -86,7 +90,14 @@ public record EvalCase(
 
         /** 只要求有结论、步骤全部成功。最常用的一种。 */
         public static AnalysisCase of(String... expectedFindings) {
-            return new AnalysisCase(List.of(expectedFindings), 0, true, List.of());
+            return new AnalysisCase(List.of(expectedFindings), 0, true, List.of(), false);
+        }
+
+        /** 兼容构造器：不要求时间序列。 */
+        public AnalysisCase(List<String> expectedFindings, int maxStepFailures,
+                            boolean expectNarrative, List<String> forbiddenNarrativeNumbers) {
+            this(expectedFindings, maxStepFailures, expectNarrative,
+                    forbiddenNarrativeNumbers, false);
         }
     }
 

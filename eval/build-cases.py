@@ -177,14 +177,14 @@ TICKET_MODELED = [
      "SELECT source, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 "
      "AND created_at >= '2025-01-01' AND created_at < '2025-04-01' GROUP BY source", False, ["time", "group"]),
     # HARD
-    ("ticket-m-024", "HARD", "2025 年创建的工单里，已解决的工单占比是多少？用 0 到 1 之间的小数表示",
+    ("ticket-m-024", "HARD", "2025 年创建的工单里，有解决时间的工单占比是多少？用 0 到 1 之间的小数表示",
      "SELECT SUM(CASE WHEN status IN ('RESOLVED','CLOSED') THEN 1 ELSE 0 END) / COUNT(*) AS ratio "
      "FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01'",
      False, ["business", "time"]),
     ("ticket-m-025", "HARD", "已关闭的工单从创建到关闭平均用了多少小时？",
      "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, closed_at)) AS avg_hours FROM ticket "
      "WHERE deleted = 0 AND status = 'CLOSED' AND closed_at IS NOT NULL", False, ["business"]),
-    ("ticket-m-026", "HARD", "已解决的工单从创建到解决平均用了多少分钟？",
+    ("ticket-m-026", "HARD", "有解决时间的工单从创建到解决平均用了多少分钟？",
      "SELECT AVG(TIMESTAMPDIFF(MINUTE, created_at, resolved_at)) AS avg_minutes FROM ticket "
      "WHERE deleted = 0 AND status IN ('RESOLVED','CLOSED') AND resolved_at IS NOT NULL",
      False, ["business"]),
@@ -196,7 +196,7 @@ TICKET_MODELED = [
     ("ticket-m-028", "HARD", "处理人 5 负责的工单里，各优先级的工单数量分别是多少？",
      "SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND assignee_id = 5 GROUP BY priority",
      False, ["filter", "group"]),
-    ("ticket-m-029", "HARD", "每个分类的工单平均解决时长（小时）是多少？只算已解决的",
+    ("ticket-m-029", "HARD", "每个分类的工单平均解决时长（小时）是多少？只算有解决时间的",
      "SELECT c.name, AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.resolved_at)) AS avg_hours "
      "FROM ticket t JOIN ticket_category c ON t.category_id = c.id "
      "WHERE t.deleted = 0 AND t.resolved_at IS NOT NULL GROUP BY c.name", False, ["join", "business"]),
@@ -468,7 +468,7 @@ TICKET_MODELED_2 = [
     ("ticket-m-050", "MEDIUM", "按流转前后状态组合统计流转次数",
      "SELECT from_status, to_status, COUNT(*) AS cnt FROM ticket_flow WHERE deleted = 0 "
      "GROUP BY from_status, to_status", False, ["group"]),
-    ("ticket-m-051", "HARD", "各优先级的工单平均解决时长（小时）是多少？只算已解决的",
+    ("ticket-m-051", "HARD", "各优先级的工单平均解决时长（小时）是多少？只算有解决时间的",
      "SELECT priority, AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours "
      "FROM ticket WHERE deleted = 0 AND resolved_at IS NOT NULL GROUP BY priority",
      False, ["business"]),

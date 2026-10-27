@@ -297,7 +297,7 @@
     {
       "id": "ticket-m-024",
       "difficulty": "HARD",
-      "question": "2025 年创建的工单里，已解决的工单占比是多少？用 0 到 1 之间的小数表示",
+      "question": "2025 年创建的工单里，有解决时间的工单占比是多少？用 0 到 1 之间的小数表示",
       "goldSql": "SELECT SUM(CASE WHEN status IN ('RESOLVED','CLOSED') THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01'",
       "ordered": false,
       "columnOrder": "ANY",
@@ -322,7 +322,7 @@
     {
       "id": "ticket-m-026",
       "difficulty": "HARD",
-      "question": "已解决的工单从创建到解决平均用了多少分钟？",
+      "question": "有解决时间的工单从创建到解决平均用了多少分钟？",
       "goldSql": "SELECT AVG(TIMESTAMPDIFF(MINUTE, created_at, resolved_at)) AS avg_minutes FROM ticket WHERE deleted = 0 AND status IN ('RESOLVED','CLOSED') AND resolved_at IS NOT NULL",
       "ordered": false,
       "columnOrder": "ANY",
@@ -360,7 +360,7 @@
     {
       "id": "ticket-m-029",
       "difficulty": "HARD",
-      "question": "每个分类的工单平均解决时长（小时）是多少？只算已解决的",
+      "question": "每个分类的工单平均解决时长（小时）是多少？只算有解决时间的",
       "goldSql": "SELECT c.name, AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.resolved_at)) AS avg_hours FROM ticket t JOIN ticket_category c ON t.category_id = c.id WHERE t.deleted = 0 AND t.resolved_at IS NOT NULL GROUP BY c.name",
       "ordered": false,
       "columnOrder": "ANY",
@@ -634,7 +634,7 @@
     {
       "id": "ticket-m-051",
       "difficulty": "HARD",
-      "question": "各优先级的工单平均解决时长（小时）是多少？只算已解决的",
+      "question": "各优先级的工单平均解决时长（小时）是多少？只算有解决时间的",
       "goldSql": "SELECT priority, AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) AS avg_hours FROM ticket WHERE deleted = 0 AND resolved_at IS NOT NULL GROUP BY priority",
       "ordered": false,
       "columnOrder": "ANY",
