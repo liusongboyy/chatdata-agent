@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -230,6 +231,57 @@ class InsightCalculatorTest {
             StepResult s = step("s2", dsl, List.of("区域", "订单金额"), List.of(
                     List.of("华东", bd("100")),
                     List.of("华南", bd("-100"))), Set.of());
+
+            assertThat(InsightCalculator.compute(List.of(s), model())).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("交叉表（两个维度）")
+    class CrossTab {
+
+        private StepResult grid() {
+            AskDsl dsl = dsl(List.of("金额"), List.of("大类", "渠道"), AskDsl.Granularity.DAY, null);
+            return step("s1", dsl, List.of("大类", "渠道", "金额"), List.of(
+                    List.of("车", "线上", bd("80")),
+                    List.of("车", "线下", bd("20")),
+                    List.of("房", "线上", bd("30")),
+                    List.of("房", "线下", bd("70"))), Set.of());
+        }
+
+        @Test
+        @DisplayName("★ 两维交叉产出整体占比，而不是一条事实都没有")
+        void overallSplit() {
+            var fs = InsightCalculator.compute(List.of(grid()), model());
+
+            assertThat(fs).isNotEmpty();
+            assertThat(fs.get(0).kind()).isEqualTo(Finding.Kind.CONTRIBUTION);
+            assertThat(fs.get(0).text())
+                    .as("线上 110 / 200 = 55%")
+                    .contains("线上").contains("55.0%");
+        }
+
+        @Test
+        @DisplayName("★ 找出偏离整体格局最大的那一行")
+        void worstDeviation() {
+            var fs = InsightCalculator.compute(List.of(grid()), model());
+
+            assertThat(fs).hasSize(2);
+            assertThat(fs.get(1).text())
+                    .as("车 里线上占 80%，整体 55%，偏离最大")
+                    .contains("车").contains("80.0%").contains("55.0%");
+        }
+
+        @Test
+        @DisplayName("系列取值太多 → 不产出（读不出对比）")
+        void tooManySeriesSkipped() {
+            AskDsl dsl = dsl(List.of("金额"), List.of("大类", "渠道"), AskDsl.Granularity.DAY, null);
+            List<List<Object>> rows = new ArrayList<>();
+            for (int i = 0; i < 10; i++) {
+                rows.add(List.of("第" + i + "类", "渠道" + i, bd("10")));
+            }
+            rows.add(List.of("第0类", "渠道9", bd("10")));
+            StepResult s = step("s1", dsl, List.of("大类", "渠道", "金额"), rows, Set.of());
 
             assertThat(InsightCalculator.compute(List.of(s), model())).isEmpty();
         }

@@ -143,7 +143,8 @@ public final class AnalysisService {
                 return NarrativeGuard.deterministicNarrative(executed.findings());
             }
             // 数字白名单：结论里的每个数字都必须能在 facts 的 evidence 里找到
-            var violation = NarrativeGuard.violation(text, executed.findings());
+            var violation = NarrativeGuard.violation(text, executed.findings(),
+                    structuralNumbers(executed));
             if (violation.isPresent()) {
                 log.warn("结论里出现未经验证的数字，退回确定性文本：user={} 原因={}",
                         request.username(), violation.get());
@@ -155,6 +156,34 @@ public final class AnalysisService {
                     request.username(), e.getMessage());
             return NarrativeGuard.deterministicNarrative(executed.findings());
         }
+    }
+
+    /**
+     * 本次结果里的"结构性数字"：每个步骤的行数、每个维度的取值个数。
+     *
+     * <p>它们不是 findings 算出来的业务数字，但模型确实看到了，
+     * 会在结论里说「这 7 个分类」「3 种状态」。把这些拦下来没有意义。
+     */
+    private static java.util.Set<java.math.BigDecimal> structuralNumbers(
+            com.liusongboyy.chatdata.engine.analysis.AnalysisResult result) {
+        java.util.Set<java.math.BigDecimal> out = new java.util.LinkedHashSet<>();
+        for (StepResult s : result.steps()) {
+            if (!s.isOk()) {
+                continue;
+            }
+            out.add(java.math.BigDecimal.valueOf(s.rows().rowCount()));
+            for (String dim : s.dsl() == null ? List.<String>of() : s.dsl().dimensions()) {
+                int idx = s.rows().columns().indexOf(dim);
+                if (idx < 0) {
+                    continue;
+                }
+                out.add(java.math.BigDecimal.valueOf(s.rows().rows().stream()
+                        .map(r -> idx < r.size() ? String.valueOf(r.get(idx)) : null)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct().count()));
+            }
+        }
+        return out;
     }
 
     /**

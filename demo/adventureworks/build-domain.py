@@ -135,7 +135,7 @@ tables.append((240009, "salesperson", "销售员", "TABLE", None, [
 tables.append((240010, "specialoffer", "促销活动", "TABLE", None, [
     col("SpecialOfferID", "int", "COUNT", "促销数"),
     col("Description", "varchar", "", "促销描述"),
-    col("DiscountPct", "double", "AVG", "平均折扣率"),
+    col("DiscountPct", "double", "AVG", "促销平均折扣率"),
     col("Type", "varchar", "", "促销类型"),
     col("Category", "varchar", "", "促销类别"),
     col("MinQty", "int", "AVG", "最低数量"),
@@ -372,14 +372,20 @@ mysql(f"DELETE FROM ask_domain WHERE id={DOMAIN_ID}")
 
 # ── 业务术语 ──
 mysql(f"DELETE FROM ask_term WHERE domain_id={DOMAIN_ID}")
+# **术语名必须是真实存在的列别名**——它是指向，不是新造的名字。
+# 一开始我把「产品大类」「销售区域」当术语名，但列里叫「大类名称」「区域名称」，
+# 于是模型按术语名去找字段，报"找不到字段"。用户的说法才该放近义词里
 terms = [
     ("下单时间", ["订单日期", "下单日期"], "订单创建日期，销售分析的主时间轴", "time"),
     ("发货时间", ["发货日期"], "订单实际发货日期", "time"),
-    ("销售区域", ["区域"], "按销售区域划分，含国家与大区", "none"),
+    ("区域名称", ["区域", "销售区域"], "按销售区域划分，含国家与大区", "none"),
     ("客户类型", ["客户类别"], "S=门店（经销商），I=个人客户", "none"),
-    ("产品大类", ["大类", "品类"], "Bikes/Components/Clothing/Accessories", "none"),
+    ("大类名称", ["大类", "品类", "产品大类"], "Bikes/Components/Clothing/Accessories", "none"),
+    ("子类名称", ["子类", "产品子类"], "产品的第二层分类", "none"),
     ("产品线", ["产品系列"], "R=公路车 S=山地车 M=童车 T=旅行车", "none"),
     ("促销类型", ["折扣类型"], "No Discount / Volume Discount / Seasonal Discount 等", "none"),
+    ("部门名称", ["部门"], "员工所属部门", "none"),
+    ("供应商名称", ["供应商"], "外部供应商", "none"),
 ]
 for i, (name, syn, desc, kind) in enumerate(terms):
     mysql(f"""INSERT INTO ask_term (domain_id, name, synonyms_json, description, apply_kind, sort_no, created_by)

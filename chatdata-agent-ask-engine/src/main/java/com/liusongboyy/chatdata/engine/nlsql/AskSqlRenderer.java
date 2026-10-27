@@ -128,7 +128,40 @@ public final class AskSqlRenderer {
         // 所有事实表自动受约束。缺的就是这一步。
         involvedTableIds.addAll(permissionTableIds(allowed.rowScope(), model));
 
-        // ④ 规划 join 路径。连不通或必须反向遍历 LEFT 边时在这里失败。
+        // ④ 时间范围与时间列。**必须在 join 规划之前**——
+        //    时间列所在的表可能还没进 FROM，而它必须进来才能过滤。
+        //    实测：域里明细表没有日期列、日期在订单主表上，模型拆的步骤只用了明细表，
+        //    于是「2004 年」这个条件报"找不到可用的日期列"。
+        //    正确做法是：找到时间列 → 把它所在的表拉进 FROM → 再规划 join。
+        ResolvedTime rt = dsl.timeRange() == null ? null : resolveTime(dsl.timeRange(), today);
+        FieldRef timeRef = rt == null ? null : resolveTimeColumn(model, involvedTableIds, dsl.timeRange());
+        if (timeRef != null) {
+            String timeTableId = model.tableIdOfAlias(timeRef.tableAlias());
+            if (!involvedTableIds.contains(timeTableId)) {
+                // **只在"能当父表"时才自动拉进来。**
+                //
+                // 沿 join 声明的方向（子 → 父）可达，说明时间表是上游维表，
+                // 拉进来不会放大行数。实测：明细表没有日期列、日期在订单主表上，
+                // 用户问「2004 年各大类销售额」，不拉订单表就报"找不到日期列"。
+                //
+                // 反方向不拉：客户等级 ← 保单表 是父 → 子，拉进来会把每个客户
+                // 按保单数放大，结果**静默变样**。那种情况仍然拒绝，让管理员
+                // 用术语显式指一个本表上的日期列。
+                if (reachableAsParent(model, involvedTableIds, timeTableId)) {
+                    involvedTableIds.add(timeTableId);
+                } else {
+                    throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND,
+                            "问数里带了时间条件（" + dsl.timeRange().kind() + "），"
+                                    + "可用的日期列在「" + model.domain().tableById(timeTableId)
+                                    .map(RegisteredTable::displayName).orElse(timeTableId)
+                                    + "」上，但它与本次查询用的表是**父子反方向**——"
+                                    + "拉进来会放大行数，结果会静默变样。"
+                                    + "请在语义建模中给本表的日期列配一条 apply_kind=time 的术语");
+                }
+            }
+        }
+
+        // ⑤ 规划 join 路径。连不通或必须反向遍历 LEFT 边时在这里失败。
         //    preferredRoot = 第一个指标所在的表：INNER 场景下根的选择不影响语义，
         //    但以事实表为根生成的 SQL 读起来自然（FROM 事实表 JOIN 维表），排查时人要读它。
         //    若指标为空（纯维度查询）则退化为无偏好，仍按 id 排序保证确定性。
@@ -139,12 +172,9 @@ public final class AskSqlRenderer {
         JoinPlanner.JoinPlan plan = JoinPlanner.plan(model.domain(), involvedTableIds, preferredRoot);
         String alias = model.aliasOfTable(plan.rootTableId());
 
-        // ④ 时间范围与时间列。同环比要在 SELECT 里用它们，故比 WHERE 提前解析。
-        //    resolveTime 可能返回 null（口径词解析不出来），此时没有任何时间条件
-        ResolvedTime rt = dsl.timeRange() == null ? null : resolveTime(dsl.timeRange(), today);
-        String timeCol = rt == null
+        String timeCol = timeRef == null
                 ? null
-                : resolveTimeColumn(model, dialect, involvedTableIds, dsl.timeRange());
+                : dialect.quoteQualified(timeRef.tableAlias() + "." + timeRef.column());
 
         AskDsl.Compare compare = dsl.compare();
         ResolvedTime prevRt = null;
@@ -606,31 +636,40 @@ public final class AskSqlRenderer {
      * <p>正式实现应当用**业务术语**（{@code Term} 的 {@code apply_kind=time}）显式声明
      * 时间口径对应哪个列，而不是按名字猜。等 {@code semantic} 包的术语部分落地后替换这里。
      */
-    private static String resolveTimeColumn(SemanticModel model, SqlDialect dialect,
-                                            Set<String> involvedTableIds, AskDsl.TimeRange tr) {
+    private static FieldRef resolveTimeColumn(SemanticModel model,
+                                              Set<String> involvedTableIds, AskDsl.TimeRange tr) {
         // ① **术语显式声明优先。** 管理员在术语上写了 apply_kind=time，
         //    就是明确说了"这个说法落在哪一列"，比按别名猜可靠得多。
         //    实测：域里同时有「生效日期」「报案日期」时，按名字猜会一律落到生效日期，
         //    于是「按报案日期查」得到的是另一段时间的数据——数字看着正常，只是错的。
+        List<FieldRef> declared = new ArrayList<>();
         for (Term term : model.domain().terms()) {
             if (term.applyKind() != Term.ApplyKind.TIME) {
                 continue;
             }
-            // 术语名本身就指一个时间列（如「投保时间」→ 生效日期）。
-            // 名称在某些域里是"口径名"而非列名，解析不到就跳到下一个
-            String col = tryTimeColumn(model, dialect, involvedTableIds, term.name());
-            if (col != null) {
-                return col;
+            FieldRef r = tryResolve(model, term.name());
+            if (r != null) {
+                declared.add(r);
             }
+        }
+        FieldRef hit = preferInvolved(declared, model, involvedTableIds);
+        if (hit != null) {
+            return hit;
         }
 
         // ② 没有声明的，退回按别名猜
+        List<FieldRef> guessed = new ArrayList<>();
         for (String candidate : TIME_COLUMN_CANDIDATES) {
-            String col = tryTimeColumn(model, dialect, involvedTableIds, candidate);
-            if (col != null) {
-                return col;
+            FieldRef r = tryResolve(model, candidate);
+            if (r != null) {
+                guessed.add(r);
             }
         }
+        hit = preferInvolved(guessed, model, involvedTableIds);
+        if (hit != null) {
+            return hit;
+        }
+
         throw new SemanticException(SemanticException.Reason.FIELD_NOT_FOUND,
                 "问数里带了时间条件（" + tr.kind() + "），但本域内找不到可用的日期列。"
                         + "请在语义建模中把日期列的别名设为「生效日期」「统计日期」等，"
@@ -638,20 +677,58 @@ public final class AskSqlRenderer {
     }
 
     /**
-     * 试解析一个名字为时间列；不可用返回 null。
+     * 优先选**已经在 FROM 里**的表上的时间列；都不在就取第一个。
      *
-     * <p>**时间列必须落在本次参与 FROM 的表上。** 否则渲染出
-     * {@code FROM ins_customer WHERE t2.effect_date >= ?}——t2 不在 FROM 里，
-     * MySQL 报 Unknown column，用户看到的是"查询失败"而不是"这个域查不了时间"。
+     * <p>为什么要分两档：时间列所在的表不在 FROM 里时，调用方会把它拉进来
+     * （见 render 的主流程）。但若域里有多张带日期列的表，优先用已经参与的那张——
+     * 少 JOIN 一张表，行数和性能都更可控。
+     *
+     * <p>两档都为空才算"本域没有可用的日期列"。
      */
-    private static String tryTimeColumn(SemanticModel model, SqlDialect dialect,
-                                        Set<String> involvedTableIds, String name) {
-        try {
-            FieldRef r = model.resolveDimension(name);
-            if (!involvedTableIds.contains(model.tableIdOfAlias(r.tableAlias()))) {
-                return null;
+    private static FieldRef preferInvolved(List<FieldRef> candidates, SemanticModel model,
+                                           Set<String> involvedTableIds) {
+        for (FieldRef r : candidates) {
+            if (involvedTableIds.contains(model.tableIdOfAlias(r.tableAlias()))) {
+                return r;
             }
-            return dialect.quoteQualified(r.tableAlias() + "." + r.column());
+        }
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    /**
+     * 时间表能否沿 join 声明的方向（左 → 右）从已参与的表到达。
+     *
+     * <p>join 配置里 {@code leftTableId → rightTableId} 是"从子表指向父表"的方向
+     * （事实表在左、维表在右）。沿这个方向走，每一步都是多对一，**不放大行数**，
+     * 所以拉进来是安全的。
+     *
+     * <p>反方向意味着要把一条记录按下游明细展开——那会改变结果语义。
+     */
+    private static boolean reachableAsParent(SemanticModel model, Set<String> from, String target) {
+        Set<String> seen = new LinkedHashSet<>(from);
+        java.util.ArrayDeque<String> queue = new java.util.ArrayDeque<>(from);
+        while (!queue.isEmpty()) {
+            String cur = queue.poll();
+            for (TableJoin j : model.domain().joins()) {
+                if (!j.leftTableId().equals(cur)) {
+                    continue;
+                }
+                String next = j.rightTableId();
+                if (next.equals(target)) {
+                    return true;
+                }
+                if (seen.add(next)) {
+                    queue.add(next);
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 试解析一个名字为时间列；不可用返回 null。 */
+    private static FieldRef tryResolve(SemanticModel model, String name) {
+        try {
+            return model.resolveDimension(name);
         } catch (SemanticException e) {
             return null;
         }

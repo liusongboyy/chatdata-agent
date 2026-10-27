@@ -45,10 +45,22 @@ public final class NarrativeGuard {
      * @return 违规说明；空表示通过
      */
     public static Optional<String> violation(String narrative, List<Finding> findings) {
+        return violation(narrative, findings, Set.of());
+    }
+
+    /**
+     * @param structural 额外的"结构性数字"——不是业务数据，但确实来自本次结果。
+     *                   典型是**结果集规模**：「7 个大类」里的 7 来自步骤行数。
+     *                   不放行的话，模型说"这 7 个分类"就会被白名单拦下，
+     *                   而那明明是它亲眼看到的事实
+     */
+    public static Optional<String> violation(String narrative, List<Finding> findings,
+                                             Set<BigDecimal> structural) {
         if (narrative == null || narrative.isBlank()) {
             return Optional.empty();
         }
         Set<BigDecimal> allowed = allowedNumbers(findings);
+        allowed.addAll(structural);
         List<String> unknown = new ArrayList<>();
 
         Matcher m = NUMBER.matcher(narrative);

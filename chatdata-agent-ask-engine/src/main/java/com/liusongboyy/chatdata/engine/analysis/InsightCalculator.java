@@ -9,8 +9,10 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 从分析步骤的结果里算出**确定性事实**。
@@ -72,6 +74,17 @@ public final class InsightCalculator {
             if (dsl.dimensions().isEmpty() && dsl.compare() == null && rows.rowCount() == 1) {
                 out.addAll(scalar(step, metric, rows, metricIdx));
             }
+            // 两个维度：交叉表。**这是最常见的分析形态之一**——
+            // 实测「各大类里，线上和线下的销售表现有什么差别」拆出来全是
+            // 「大类 + 线上/线下」两维，而当时只处理零维/一维，于是**一条事实都算不出**
+            if (dsl.dimensions().size() >= 2) {
+                // 多维交叉：自动挑一维当"系列"，其余合并成"行"。
+                // 实测「各大类里线上和线下」拆出来是三维（大类 + 渠道 + 月份），
+                // 只处理两维的话，这类最常见的分析会**一条事实都算不出**。
+                out.addAll(crossTab(step, metric, rows, dsl.dimensions(), model));
+                continue;
+            }
+
             if (dsl.dimensions().size() == 1) {
                 String dim = dsl.dimensions().get(0);
                 int dimIdx = rows.columns().indexOf(dim);
@@ -239,6 +252,172 @@ public final class InsightCalculator {
                 "「%s」的%s %s 明显偏离序列（均值 %s，标准差 %s，超出 2 倍标准差）".formatted(
                         worst.key(), metric, num(worst.value()), num(mean), num(sd)),
                 ev));
+        return out;
+    }
+
+    // ── 交叉表（两个维度）──
+
+    /** 交叉表里当作"系列"的那一维，取值数不能太多——太多了读不出对比。 */
+    private static final int MAX_SERIES_VALUES = 6;
+
+    /**
+     * 多维交叉：挑一维当"系列"，其余维度合并成"行"。
+     *
+     * <p>只产出两条事实，且都是能直接说给用户听的：
+     * <ol>
+     *   <li>整体上各系列的占比（「线上占 62.1%」）</li>
+     *   <li>偏离整体格局最大的那一组（「Bikes 里线上占 81%，明显高于整体」）</li>
+     * </ol>
+     *
+     * <p>不做"每组都报一遍"——几十行 × 多个系列会产出几十条事实，结论里塞不下，
+     * 而且用户自己看表更快。
+     *
+     * <h3>系列的挑法</h3>
+     *
+     * <p>取**取值数最少且不超过 {@value #MAX_SERIES_VALUES}** 的那一维，且它不能是时间维。
+     * 理由：系列的语义就是"可以并排比较的少数几类"（线上/线下、状态、等级），
+     * 取值太多读不出对比；时间维应该按走势看，不是按占比看。
+     *
+     * <p>实测反例：「按日期 × 区域」被当成交叉表，算出了
+     * 「2025-02 里华南占 100%」——因为每个「日期+区域」组合本来就只有一行。
+     */
+    private static List<Finding> crossTab(StepResult step, String metric, QueryResult rows,
+                                          List<String> dims, SemanticModel model) {
+        if (rows.columns().indexOf(metric) < 0) {
+            return List.of();
+        }
+        // 统计每维的取值数
+        Map<String, Integer> cardinality = new LinkedHashMap<>();
+        for (String d : dims) {
+            int idx = rows.columns().indexOf(d);
+            if (idx < 0) {
+                continue;
+            }
+            Set<String> vals = new LinkedHashSet<>();
+            for (List<Object> r : rows.rows()) {
+                String v = cell(r, idx);
+                if (v != null) {
+                    vals.add(v);
+                }
+            }
+            if (!isTemporal(d, model) && vals.size() >= 2 && vals.size() <= MAX_SERIES_VALUES) {
+                cardinality.put(d, vals.size());
+            }
+        }
+        if (cardinality.isEmpty()) {
+            return List.of();
+        }
+        // 基数并列时取**靠后**的那一维：系列的惯例是"列"（线上/线下这类），
+        // 而"行"通常是主分类。取第一维会算出「车占 50%」这种废话
+        String seriesDim = dims.stream()
+                .filter(cardinality::containsKey)
+                .reduce((a, b) -> cardinality.get(b) <= cardinality.get(a) ? b : a)
+                .orElseThrow();
+        List<String> rowDims = dims.stream().filter(d -> !d.equals(seriesDim)).toList();
+        if (rowDims.isEmpty()) {
+            return List.of();
+        }
+
+        int seriesIdx = rows.columns().indexOf(seriesDim);
+        List<Integer> rowIdx = rowDims.stream().map(rows.columns()::indexOf)
+                .filter(i -> i >= 0).toList();
+        int metricIdx = rows.columns().indexOf(metric);
+        if (rowIdx.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, java.util.LinkedHashMap<String, BigDecimal>> grid = new LinkedHashMap<>();
+        for (List<Object> row : rows.rows()) {
+            String series = cell(row, seriesIdx);
+            BigDecimal v = decimal(cellRaw(row, metricIdx));
+            if (series == null || v == null) {
+                continue;
+            }
+            String key = rowIdx.stream().map(i -> String.valueOf(cell(row, i)))
+                    .reduce((a, b) -> a + " / " + b).orElse("");
+            grid.computeIfAbsent(key, k -> new java.util.LinkedHashMap<>()).merge(series, v, BigDecimal::add);
+        }
+        if (grid.isEmpty()) {
+            return List.of();
+        }
+        // **稀疏交叉不产出。** 若多数"行组"里只有一个系列，说明这两维其实是
+        // 一一对应的（如「日期 × 区域」，每个日期只有一行），算出来的占比
+        // 只会是 100% 或 0%，毫无信息量。实测这里曾产出
+        // 「2025-02 里华南占 100%」——技术上没错，但读起来是废话
+        long multiSeriesGroups = grid.values().stream().filter(m -> m.size() >= 2).count();
+        if (multiSeriesGroups * 2 < grid.size()) {
+            return List.of();
+        }
+
+        Map<String, BigDecimal> bySeries = new LinkedHashMap<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (var rowEntry : grid.values()) {
+            for (var e : rowEntry.entrySet()) {
+                bySeries.merge(e.getKey(), e.getValue(), BigDecimal::add);
+                total = total.add(e.getValue());
+            }
+        }
+        if (total.signum() <= 0) {
+            return List.of();
+        }
+
+        List<Finding> out = new ArrayList<>(2);
+        var top = bySeries.entrySet().stream().max(Map.Entry.comparingByValue()).orElse(null);
+        if (top == null) {
+            return out;
+        }
+        BigDecimal overallShare = percentOf(top.getValue(), total);
+        Map<String, Object> ev = new LinkedHashMap<>();
+        ev.put("series", seriesDim);
+        ev.put("key", top.getKey());
+        ev.put("value", top.getValue());
+        ev.put("total", total);
+        if (overallShare != null) {
+            ev.put("sharePct", overallShare);
+        }
+        out.add(new Finding(Finding.Kind.CONTRIBUTION, step.id(),
+                "整体上「%s」的%s占 %s%%（%s / %s）".formatted(
+                        top.getKey(), metric,
+                        overallShare == null ? "?" : pct(overallShare),
+                        num(top.getValue()), num(total)), ev));
+
+        if (overallShare == null) {
+            return out;
+        }
+        // 偏离整体格局最大的那一组
+        String worstKey = null;
+        BigDecimal worstShare = null;
+        BigDecimal worstValue = null;
+        BigDecimal worstDiff = null;
+        for (var e : grid.entrySet()) {
+            BigDecimal rowTotal = e.getValue().values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal v = e.getValue().get(top.getKey());
+            if (v == null || rowTotal.signum() <= 0) {
+                continue;
+            }
+            BigDecimal share = percentOf(v, rowTotal);
+            if (share == null) {
+                continue;
+            }
+            BigDecimal diff = share.subtract(overallShare).abs();
+            if (worstDiff == null || diff.compareTo(worstDiff) > 0) {
+                worstDiff = diff;
+                worstShare = share;
+                worstKey = e.getKey();
+                worstValue = v;
+            }
+        }
+        if (worstKey != null) {
+            Map<String, Object> ev2 = new LinkedHashMap<>();
+            ev2.put("series", seriesDim);
+            ev2.put("key", worstKey);
+            ev2.put("value", worstValue);
+            ev2.put("sharePct", worstShare);
+            ev2.put("overallSharePct", overallShare);
+            out.add(new Finding(Finding.Kind.CONTRIBUTION, step.id(),
+                    "「%s」里「%s」占 %s%%，整体是 %s%%——这一组偏离最大".formatted(
+                            worstKey, top.getKey(), pct(worstShare), pct(overallShare)), ev2));
+        }
         return out;
     }
 

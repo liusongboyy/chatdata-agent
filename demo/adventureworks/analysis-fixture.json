@@ -1,0 +1,142 @@
+{
+  "name": "AdventureWorks 分析编排基线",
+  "domainId": "2100",
+  "userId": "eval",
+  "roles": [
+    "super_admin"
+  ],
+  "assistantId": null,
+  "primaryMetric": "strict",
+  "cases": [
+    {
+      "id": "aw-an-001",
+      "difficulty": "MEDIUM",
+      "question": "各大类的销售金额构成是怎样的？哪个大类占比最高？",
+      "goldSql": "SELECT pc.Name, SUM(sod.LineTotal) AS amt FROM salesorderdetail sod JOIN product p ON p.ProductID=sod.ProductID JOIN productsubcategory ps ON ps.ProductSubcategoryID=p.ProductSubcategoryID JOIN productcategory pc ON pc.ProductCategoryID=ps.ProductCategoryID GROUP BY pc.Name ORDER BY amt DESC",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "analysis",
+        "contribution"
+      ],
+      "note": "三层雪花上的构成分析。Bikes 应最高。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [
+          "CONTRIBUTION:"
+        ],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "aw-an-002",
+      "difficulty": "MEDIUM",
+      "question": "销售金额逐年的走势如何？",
+      "goldSql": "SELECT YEAR(OrderDate) AS y, SUM(TotalDue) AS amt FROM salesorderheader GROUP BY y ORDER BY y",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "analysis",
+        "trend"
+      ],
+      "note": "时间序列。2001-2004 四年，2003 最高。要求按月/年分组。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [
+          "TREND:"
+        ],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": [],
+        "expectsTimeSeries": true
+      }
+    },
+    {
+      "id": "aw-an-003",
+      "difficulty": "HARD",
+      "question": "线上订单和线下订单的销售金额谁更高？差多少？",
+      "goldSql": "SELECT CASE WHEN OnlineOrderFlag=1 THEN 'online' ELSE 'offline' END AS ch, SUM(TotalDue) AS amt FROM salesorderheader GROUP BY ch",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "analysis",
+        "compare"
+      ],
+      "note": "两个条件的对比。模型可能用条件指标或分组。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "aw-an-004",
+      "difficulty": "HARD",
+      "question": "各销售区域的销售金额差距有多大？哪个区域最好？",
+      "goldSql": "SELECT st.Name, SUM(soh.TotalDue) AS amt FROM salesorderheader soh JOIN customer c ON c.CustomerID=soh.CustomerID JOIN salesterritory st ON st.TerritoryID=c.TerritoryID GROUP BY st.Name ORDER BY amt DESC",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "analysis",
+        "contribution",
+        "join"
+      ],
+      "note": "两跳 JOIN 上的构成。Southwest 最高。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [
+          "CONTRIBUTION:"
+        ],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "aw-an-005",
+      "difficulty": "HARD",
+      "question": "2004 年销售金额比 2003 年下降了这么多，主要是什么原因造成的？",
+      "goldSql": "SELECT YEAR(OrderDate) AS y, SUM(TotalDue) AS amt FROM salesorderheader WHERE OrderDate >= '2003-01-01' AND OrderDate < '2006-01-01' GROUP BY y",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "analysis",
+        "attribution"
+      ],
+      "note": "归因题：必须拆成「总量对比」+「按维度拆解」至少两步才有意义。单步答不了 why。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [
+          "COMPARE:"
+        ],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    },
+    {
+      "id": "aw-an-006",
+      "difficulty": "HARD",
+      "question": "各大类里，线上和线下的销售表现有什么差别？",
+      "goldSql": "SELECT pc.Name, SUM(CASE WHEN soh.OnlineOrderFlag=1 THEN sod.LineTotal ELSE 0 END) AS online, SUM(CASE WHEN soh.OnlineOrderFlag=0 THEN sod.LineTotal ELSE 0 END) AS offline FROM salesorderdetail sod JOIN salesorderheader soh ON soh.SalesOrderID=sod.SalesOrderID JOIN product p ON p.ProductID=sod.ProductID JOIN productsubcategory ps ON ps.ProductSubcategoryID=p.ProductSubcategoryID JOIN productcategory pc ON pc.ProductCategoryID=ps.ProductCategoryID GROUP BY pc.Name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "analysis",
+        "multidim"
+      ],
+      "note": "两个维度交叉，需要多次取数或条件指标组合。",
+      "analyze": true,
+      "analysis": {
+        "expectedFindings": [],
+        "maxStepFailures": 0,
+        "expectNarrative": true,
+        "forbiddenNarrativeNumbers": []
+      }
+    }
+  ]
+}

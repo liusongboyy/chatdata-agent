@@ -4,7 +4,6 @@ import com.liusongboyy.chatdata.engine.analysis.NarrativeSource;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.SystemMessage;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.Model;
 
@@ -39,7 +38,12 @@ public final class NarrativeGenerator implements NarrativeSource {
                 .sessionId(sessionId)
                 .build();
 
-        Msg reply = agent.call(List.of(new SystemMessage(SYS), new UserMessage(prompt)), ctx).block();
+        // **只传 UserMessage。** 系统提示已经由 builder.sysPrompt 给了；
+        // 再往 messages 里塞一条 SystemMessage，agentscope 会直接拒绝：
+        // 「Hooks must not inject SYSTEM messages into PreCallEvent.inputMessages」。
+        // 这个错误此前是静默的——异常被 AnalysisService 吞掉、退回确定性文本，
+        // 所以"模型写结论"看似一直正常，实际从未成功过一次。
+        Msg reply = agent.call(List.of(new UserMessage(prompt)), ctx).block();
         if (reply == null) {
             return null;
         }

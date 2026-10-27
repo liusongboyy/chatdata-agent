@@ -995,7 +995,40 @@ class AskSqlRendererTest {
                             new AskDsl.TimeRange("今年", null, null), List.of()),
                     m, SqlDialects.of("MYSQL5.7"), allowed(perm, "分析师"), TODAY))
                     .isInstanceOf(SemanticException.class)
-                    .hasMessageContaining("找不到可用的日期列");
+                    // 措辞变了、判据没变：仍然拒绝，只是说清了"为什么不自动 JOIN"
+                    .hasMessageContaining("父子反方向");
+        }
+
+        @Test
+        @DisplayName("★ 时间表是**父表**时自动拉进 FROM——明细没有日期、日期在主表上是常见形态")
+        void timeColumnParentIsPulledIn() {
+            // 明细 → 主表（多对一）：拉主表不放大行数，可以自动 JOIN
+            RegisteredTable header = new RegisteredTable("tbl-order", "f_order", "订单表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("id", "bigint", Aggregation.COUNT, "订单数", true),
+                    new ColumnDef("order_date", "date", Aggregation.NONE, "日期", true)));
+
+            RegisteredTable detail = new RegisteredTable("tbl-line", "f_order_line", "订单明细",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    new ColumnDef("qty", "int", Aggregation.SUM, "数量", true),
+                    new ColumnDef("order_id", "bigint", Aggregation.NONE, "订单ID", true)));
+
+            Domain d = new Domain("d1", "订单域", "ds1", "MYSQL5.7", true,
+                    List.of(header, detail),
+                    List.of(new TableJoin(1L, "tbl-line", "tbl-order",
+                            "order_id", "id", TableJoin.JoinType.INNER)),
+                    openPermission(), List.of(), List.of());
+
+            RenderedSql r = AskSqlRenderer.render(
+                    new AskDsl(List.of("数量"), List.of(),
+                            new AskDsl.TimeRange("今年", null, null), List.of()),
+                    new SemanticModel(d), SqlDialects.of("MYSQL5.7"), allowed(openPermission(), "分析师"), TODAY);
+
+            assertThat(r.sql())
+                    .as("订单表被自动 JOIN 进来，时间条件才落得下")
+                    .contains("JOIN `f_order`")
+                    // 别名按注册表 id 排序分配：tbl-line=t1、tbl-order=t2
+                    .contains("`t2`.`order_date` >= ?");
         }
     }
 
