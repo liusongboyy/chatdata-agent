@@ -15,8 +15,17 @@
 -- 与 SQL 虚拟表的区别：
 --   虚拟表（mode=SQL）适合"整张表的口径"（如 SELECT * FROM ticket WHERE deleted = 0），
 --   它连表结构一起换掉；base_filter 只加条件、不动结构，适合"物理表 + 少量默认过滤"。
+--
+-- **幂等**：全新部署的 08-ask-engine.sql 已包含该列，这里会跳过。
 -- =====================================================================
 
-ALTER TABLE `ask_domain_table`
-  ADD COLUMN `base_filter` VARCHAR(512) DEFAULT NULL
-  COMMENT '默认过滤条件（原始 SQL 片段）。如 status = ''生效''；为空表示不过滤。仅对本表生效';
+SET @db := DATABASE();
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'ask_domain_table' AND COLUMN_NAME = 'base_filter') = 0,
+  'ALTER TABLE `ask_domain_table`
+     ADD COLUMN `base_filter` VARCHAR(512) DEFAULT NULL
+     COMMENT ''默认过滤条件（原始 SQL 片段），如 status = ''''生效''''；空表示不过滤''',
+  'SELECT ''ask_domain_table 已有 base_filter，跳过'' AS skipped');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

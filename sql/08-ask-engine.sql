@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS `ask_domain` (
   `description`   VARCHAR(500) NULL                    COMMENT '描述',
   `datasource_id` BIGINT       NULL                    COMMENT '绑定数据源 id，空表示用应用默认库',
   `status`        VARCHAR(20)  NOT NULL DEFAULT 'enabled' COMMENT '状态 enabled/disabled',
+  -- MODELED（建模）/ RAW（直连）。直连模式没有行级/列级权限，只做表级授权
+  `mode`          VARCHAR(16)  NOT NULL DEFAULT 'MODELED' COMMENT 'MODELED 建模 / RAW 直连',
   `joins_json`    TEXT         NULL                    COMMENT '表关联 JSON [{id,left,right,leftCol,rightCol,type}]，left/right 为注册表 id',
   `perm_json`     TEXT         NULL                    COMMENT '权限配置 JSON，含 v 版本号与 unrestrictedRoles',
   `sort_no`       INT          NOT NULL DEFAULT 0      COMMENT '排序号',
@@ -96,7 +98,10 @@ CREATE TABLE IF NOT EXISTS `ask_domain_table` (
   `label`         VARCHAR(100) NULL                    COMMENT '显示名称',
   `mode`          VARCHAR(20)  NOT NULL DEFAULT 'TABLE' COMMENT '类型 TABLE/数据库表，SQL/SQL 虚拟表',
   `sql_text`      TEXT         NULL                    COMMENT 'SQL 虚拟表定义（mode=SQL 时必填）',
-  `columns_json`  TEXT         NULL                    COMMENT '列定义 JSON [{col,type,agg,alias,enabled}]',
+  `columns_json`  TEXT         NULL                    COMMENT '列定义 JSON [{col,type,agg,alias,enabled,derived,condition,description,samples}]',
+  -- 默认过滤条件（原始 SQL 片段），如 status = '生效'。
+  -- 只由管理员在建模时填写，**不经模型产出**，因此没有注入面
+  `base_filter`   VARCHAR(512) NULL                    COMMENT '默认过滤条件；空表示不过滤',
   `enabled`       TINYINT(1)   NOT NULL DEFAULT 1      COMMENT '是否对 LLM 可见：0=否 1=是',
   `sort_no`       INT          NOT NULL DEFAULT 0      COMMENT '排序号',
   `created_by`    VARCHAR(64)  NULL                    COMMENT '创建人',
