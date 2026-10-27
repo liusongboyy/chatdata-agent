@@ -1,0 +1,58 @@
+name: 报告问题
+description: 问数答错了、服务起不来、或者哪里不对劲
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        如果是"**答案不对**"，最有价值的信息是**你的问题被理解成了什么**——
+        「我理解成了」那一块能直接区分是语义建模的问题、还是模型理解的问题。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 期望结果 vs 实际结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 用 xxx 账号登录
+        2. 在 xxx 域问「xxx」
+        3. 看到 xxx
+    validations:
+      required: true
+
+  - type: textarea
+    id: ask-detail
+    attributes:
+      label: 如果涉及问数
+      description: 问题原文、生成的 SQL、「我理解成了」的内容
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 输出 `git log -1 --oneline`
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 影响哪部分
+      multiple: true
+      options:
+        - 问数（问数页面）
+        - 分析编排
+        - 语义建模（管理台）
+        - 权限 / 脱敏
+        - 登录 / 账号（IAM）
+        - 本地启动 / 构建
+        - 评测基线
+        - 其他

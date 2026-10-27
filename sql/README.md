@@ -14,9 +14,9 @@
 问数时，ask 从 `chatdata_ask` 读**配置**，再去数据源指向的库（如 `chatdata_demo`）
 读**业务数据**。两者刻意分开：业务库通常是别人维护的只读库，不该混进我们的配置表。
 
-> 历史说明：早期这些表都建在 `jimureport` 库里（借用了 JimuReport 的库）。
-> 2026-10-24 已拆分迁出，旧库连同 57 张 JimuReport 遗留表一并删除，
-> 备份见 `~/chatdata-backups/jimureport-full-20261024-092503.sql`。
+> 历史说明：早期这些表都建在 `vendor` 库里（借用了 第三方报表工具 的库）。
+> 2026-10-24 已拆分迁出，旧库连同 57 张 第三方报表工具 遗留表一并删除，
+> 备份见 `~/chatdata-backups/vendor-full-20261024-092503.sql`。
 
 ## 全新部署
 
@@ -32,8 +32,8 @@ CREATE DATABASE chatdata_demo DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci
 for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/11-ask-assistant.sql sql/12-ask-agent-session.sql \
          sql/14-ask-sql-example.sql sql/15-ask-sql-example-unique.sql \
-         sql/16-ask-feedback.sql sql/17-ask-conversation.sql sql/18-ask-policy-audit.sql \
-         sql/19-ask-audit-analysis.sql
+         sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
+         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
 do
   mysql -uroot -p chatdata_ask < "$f"
 done
@@ -47,18 +47,11 @@ mysql -uroot -p chatdata_iam < sql/iam/07-role-permission.sql
 mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
 ```
 
-## 已退役的脚本
+## 不要执行的历史脚本
 
-这些**不要在新部署里执行**，只作历史记录：
-
-| 脚本 | 退役原因 |
-|---|---|
-| `sql/03-domain-grant.sql` `sql/05-assistant-grant.sql` | 授权已并入 `perm_json`，见 ADR-0010 |
-| `sql/06-user.sql` `sql/07-user-org.sql` | 用户与组织已收敛到 IAM |
-| `sql/13-ask-domain-mode.sql` | 已并入 `sql/08-ask-engine.sql` |
-| `sql/iam/03-migrate-from-ask.sql` | 一次性迁移，源表（`sys_role`/`chatdata_user`）已删除 |
-| `sql/iam/05-policy.sql` `06-import-policies.sql` `09-fix-stale-role-refs.sql` `10-migrate-policies-back-to-ask.sql` | IAM 数据策略路径已下线，见 ADR-0010 |
-| `sql/iam/11-retire-iam-policy.sql` | 收尾脚本，已执行 |
+早期版本的建库脚本（授权独立表、用户/组织本地表、IAM 数据策略路径）已经从仓库里移除——
+它们对应的能力都收敛到了现行 schema（授权并入 `perm_json`、用户与组织归 IAM）。
+如果你在别处看到引用，那些文档描述的是迁移当时的状态。
 
 ## 改库名时要注意
 

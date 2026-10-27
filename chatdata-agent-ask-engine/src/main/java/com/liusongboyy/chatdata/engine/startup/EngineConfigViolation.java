@@ -68,8 +68,7 @@ public record EngineConfigViolation(
          * <p><strong>这条比上一条严重，故为 ERROR。</strong>规则是用来**限制**的，
          * 角色匹配不上意味着限制整条不生效：本意"区域经理只能看华东"，
          * 结果区域经理看到全部。这是**静默的数据过度暴露**——
-         * 与 ADR-0002 记的「等价字段脱敏遗漏」同一类，也是 docs/permission-config.md
-         * 第五节的坑⑤之外另一个静默失效点。
+         * 与「等价字段脱敏遗漏」同一类——静默的数据过度暴露。
          */
         DANGLING_RULE_ROLE("行列规则里的角色不存在", Severity.ERROR),
 

@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * 语义域内的一张注册表。
  *
- * <p>对应厂商 {@code chat2bi_table}。两种模式：
+ * <p>对应厂商 {@code vendor_table}。两种模式：
  * <ul>
  *   <li>{@link Mode#TABLE}——直接引用数据源里的物理表，{@code name} 就是表名</li>
  *   <li>{@link Mode#SQL}——SQL 虚拟表，{@code sqlText} 是它的定义，渲染时当作子查询</li>

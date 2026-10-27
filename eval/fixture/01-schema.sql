@@ -1,5 +1,5 @@
 -- 评测夹具库：与业务库完全隔离，可反复重建
--- DDL 与数据快照来自 aiticket / jimureport，生成脚本见 eval/fixture/prepare.sh
+-- DDL 与数据快照来自一组真实业务库，生成脚本见 eval/fixture/prepare.sh
 
 CREATE DATABASE IF NOT EXISTS `chatdata_eval` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `chatdata_eval`;

@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>要防的是一个已经发生过的静默失效：权限配置里写了不存在的角色，
  * 界面保存成功、库里存着规则、而运行时一条都不匹配。
- * 见 {@code docs/permission-config.md} 第四节，以及本次排查撞到的
+ * 角色名是逐字符匹配的，本次排查撞到过
  * 「助理授权里写了不存在的角色 {@code 管理员}」。
  */
 class RoleReferenceValidatorTest {

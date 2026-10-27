@@ -5,7 +5,7 @@ import java.util.Locale;
 /**
  * 注册表里的一列——**或一个派生指标**。
  *
- * <p>对应厂商 {@code chat2bi_table.columns_json} 的一项，字段名保持一致以便照搬配置。
+ * <p>对应厂商 {@code vendor_table.columns_json} 的一项，字段名保持一致以便照搬配置。
  *
  * @param col     物理列名。**必须与 {@code DatabaseMetaData} 报告的原文一致**——
  *                渲染器会原样加引号引用它，差一个字符就查不到列。

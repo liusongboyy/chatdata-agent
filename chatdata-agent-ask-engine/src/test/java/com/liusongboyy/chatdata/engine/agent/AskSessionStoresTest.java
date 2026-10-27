@@ -61,7 +61,7 @@ class AskSessionStoresTest {
                     throw new AssertionError("配了库名就不该去连库");
                 });
 
-        assertThat(AskSessionStores.resolveDatabase(boom, "jimureport")).isEqualTo("jimureport");
+        assertThat(AskSessionStores.resolveDatabase(boom, "vendor")).isEqualTo("vendor");
     }
 
     @Test
@@ -73,18 +73,18 @@ class AskSessionStoresTest {
     @Test
     @DisplayName("没配库名：读连接上实际连着的那个库")
     void fallsBackToCatalog() {
-        DataSource ds = dataSourceReturningCatalog("jimureport", null);
+        DataSource ds = dataSourceReturningCatalog("vendor", null);
 
-        assertThat(AskSessionStores.resolveDatabase(ds, null)).isEqualTo("jimureport");
+        assertThat(AskSessionStores.resolveDatabase(ds, null)).isEqualTo("vendor");
     }
 
     @Test
     @DisplayName("空白配置按没配处理——空字符串与 null 同义")
     void blankIsTreatedAsUnset() {
-        DataSource ds = dataSourceReturningCatalog("jimureport", null);
+        DataSource ds = dataSourceReturningCatalog("vendor", null);
 
-        assertThat(AskSessionStores.resolveDatabase(ds, "")).isEqualTo("jimureport");
-        assertThat(AskSessionStores.resolveDatabase(ds, "   ")).isEqualTo("jimureport");
+        assertThat(AskSessionStores.resolveDatabase(ds, "")).isEqualTo("vendor");
+        assertThat(AskSessionStores.resolveDatabase(ds, "   ")).isEqualTo("vendor");
     }
 
     @Test

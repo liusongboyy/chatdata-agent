@@ -37,7 +37,7 @@ public class AskSessionProperties {
     /**
      * 状态表名。
      *
-     * <p>用 {@code ask_} 前缀，与厂商的 {@code chat2bi_*} 隔离——见 PRD §6。
+     * <p>用 {@code ask_} 前缀，与厂商的 {@code vendor_*} 隔离——见 PRD §6。
      * 不用 agentscope 默认的 {@code agentscope_sessions}，是因为它默认还要建一个
      * **独立的 {@code agentscope} 库**（spike E7 实测），那在只给单库权限的生产环境里
      * 会直接起不来。

@@ -12,10 +12,10 @@ Status: accepted
 
 ## 背景
 
-JimuChatBI 用同一个角色名 `chat2bi` 承担了两件被我们混为一谈的事。最初的判断是
+第三方 BI 产品 用同一个角色名 `chat2bi` 承担了两件被我们混为一谈的事。最初的判断是
 「`chat2bi` 是必需角色，否则问数接口会 403」——**该判断是错的**，它来自一次越界推断：
-看到 `Chat2biAssistantController./savePerm` 上有 `@RequiresRoles({"chat2bi","admin"})`，
-就把它推广成了「问数接口需要 `chat2bi`」。实际上 `Chat2biAskController` **没有任何角色注解**。
+看到 `第三方助手控制器./savePerm` 上有 `@RequiresRoles({"chat2bi","admin"})`，
+就把它推广成了「问数接口需要 `chat2bi`」。实际上 `第三方问数控制器` **没有任何角色注解**。
 
 这个错误判断的直接后果是：所有用户都被授予了 `chat2bi`，于是**每个能问数的人都能进入管理台，
 配置数据源、语义域与指标口径**。

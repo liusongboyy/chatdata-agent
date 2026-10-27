@@ -8,7 +8,7 @@ Status: accepted
 
 「会话形态」一项已定：**SSE 流式 + MVP 支持多轮追问**。其动机是避免 LLM 首 token 延迟（通常 1–3 秒，问数链路更长）让界面看起来卡死。
 
-实现前对 JimuChatBI 的流式能力做了核查，结论与预期不符：
+实现前对 第三方 BI 产品 的流式能力做了核查，结论与预期不符：
 
 | 层 | 流式能力 |
 |---|---|
@@ -18,7 +18,7 @@ Status: accepted
 
 即：**逐字（token 级）流式在本技术栈中不可获得**，除非重写 LLM 调用点。
 
-同时发现一个对治理层有独立价值的扩展点：`JimuAiAutoConfiguration.jimuAiChatClient(JimuAiConfigBean, ObjectProvider<ChatClient.Builder>, ObjectProvider<ChatModel>)` —— **宿主可提供自己的 `ChatModel` / `ChatClient.Builder`**，jimureport 便不再自建 `OpenAiChatModel`。
+同时发现一个对治理层有独立价值的扩展点：`JimuAiAutoConfiguration.jimuAiChatClient(JimuAiConfigBean, ObjectProvider<ChatClient.Builder>, ObjectProvider<ChatModel>)` —— **宿主可提供自己的 `ChatModel` / `ChatClient.Builder`**，vendor 便不再自建 `OpenAiChatModel`。
 
 ## 决定
 
@@ -29,7 +29,7 @@ Status: accepted
 3. 执行期间发**心跳事件**，避免长连接被中间层掐断
 4. 完成后发 `result` 事件，载荷即 chat2bi 的完整响应对象（含 `dsl` / `sql` / `data` / `columns` / `insight` / `chartType`）
 
-**文字小结（`insight`）若需逐字呈现，由本项目基于 agentscope-java 的层自行生成**，而非从 chat2bi 内部提取——这符合既定的 agent 分工（主链路交给 JimuChatBI，agentscope 负责路由、澄清与**解读**）。
+**文字小结（`insight`）若需逐字呈现，由本项目基于 agentscope-java 的层自行生成**，而非从 chat2bi 内部提取——这符合既定的 agent 分工（主链路交给 第三方 BI 产品，agentscope 负责路由、澄清与**解读**）。
 
 ## 考虑过的其他方案
 

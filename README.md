@@ -1,22 +1,103 @@
-## chat-data-agent 智能问数 agent 系统
+# chat-data-agent
 
-面向业务人员的自然语言数据问答系统。用户用中文提问，系统返回表格、图表与文字结论，
-不要求用户理解或编写 SQL。
+**面向业务人员的中文问数系统。** 用户用自然语言提问，系统返回表格、图表与文字结论，
+不要求理解 SQL。
 
-## 文档入口
+[![Java](https://img.shields.io/badge/Java-21-blue)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-green)](https://spring.io/projects/spring-boot)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-| 文档 | 内容 |
-|---|---|
-| [GLOSSARY.md](GLOSSARY.md) | 术语表（问数、语义建模、行级权限、直连模式…） |
-| [docs/local-dev.md](docs/local-dev.md) | **本地启动**：依赖、建库、环境变量、运行、常见问题 |
-| [sql/README.md](sql/README.md) | 库的划分、建表顺序、已退役脚本 |
-| [docs/modeling-coverage.md](docs/modeling-coverage.md) | **建模覆盖度**：准确率最大的杠杆、新建域检查清单、实测对照 |
-| [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
-| [demo/adventureworks/](demo/adventureworks/) | **复杂业务域**：11 表 / 80 列 / 11 关联的销售分析场景 |
-| [docs/adr/](docs/adr/) | 架构决策记录 |
-| [AGENTS.md](AGENTS.md) | 给 agent 的工作约定（issue、triage、领域文档） |
+---
 
-## 模块
+## 这个项目解决什么问题
+
+企业里的业务人员想问数据，但只有分析师会写 SQL。市面上多数 NL2SQL 产品让模型
+**直接写 SQL**——快，但错了不报错，只是数字不对，而用户没法察觉。
+
+这个项目的做法不同：**模型只产出结构化的查询意图（DSL），SQL 由我们渲染。**
+
+```
+中文问题 → 问数 DSL（指标/维度/时间/筛选）→ 我们渲染 SQL → 注入权限 → 执行
+                    ↑                                        ↓
+              可校验、可审计                          行级规则、列脱敏
+```
+
+带来三个直接后果：
+
+| | 让模型写 SQL | 本项目 |
+|---|---|---|
+| 模型能不能算错 | 能，且静默 | 不能——它只说"查什么"，不说"怎么查" |
+| 权限能不能保证 | 难以保证（SQL 是模型自由生成的） | 能——渲染器固定注入行级/列级规则 |
+| 同一个问题两次结果 | 可能不同 | 同一份配置生成逐字节相同的 SQL |
+
+## 功能
+
+- **语义建模**：把物理表抽象成业务可理解的指标与维度，口径在建模层定死
+- **问数**：一句话得到表格 / 图表 / 结论；「我理解成了」回显系统实际理解的口径
+- **分析编排**：把"为什么下降"这类问题拆成多步取数，再由 Java 算出确定性结论
+- **权限**：行级规则（支持组织层级动态变量）、列级脱敏、fail-closed
+- **审计**：每次提问、每步查询、每句 SQL 都可追溯
+- **评测基线**：199 条用例，分数据集报告通过率与失败原因
+
+## 快速开始
+
+需要 **Java 21**、**Maven**、**MySQL 8**、**Redis**。
+
+```bash
+# 1) 起依赖
+docker compose up -d
+
+# 2) 配置
+cp .env.example .env          # 填入数据库密码与 LLM API Key
+set -a; . ./.env; set +a
+
+# 3) 建库
+mysql -uroot -p -e "
+CREATE DATABASE chatdata_ask  DEFAULT CHARSET utf8mb4;
+CREATE DATABASE chatdata_iam  DEFAULT CHARSET utf8mb4;
+CREATE DATABASE chatdata_demo DEFAULT CHARSET utf8mb4;"
+for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
+         sql/11-ask-assistant.sql sql/12-ask-agent-session.sql \
+         sql/14-ask-sql-example.sql sql/15-ask-sql-example-unique.sql \
+         sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
+         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
+do mysql -uroot -p chatdata_ask < "$f"; done
+mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql   # 演示数据（可选）
+mysql -uroot -p chatdata_iam < sql/iam/01-schema.sql
+mysql -uroot -p chatdata_iam < sql/iam/07-role-permission.sql
+mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
+
+# 4) 构建并启动
+mvn -DskipTests package
+java -jar chatdata-agent-iam/target/chatdata-agent-iam-*-SNAPSHOT.jar     &
+java -jar chatdata-agent-ask/target/chatdata-agent-ask-*-SNAPSHOT.jar     &
+java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-*-SNAPSHOT.jar &
+```
+
+打开 <http://127.0.0.1:8080/app/>，默认账号 `admin` / `admin123`。
+
+**详细步骤、常见问题见 [docs/local-dev.md](docs/local-dev.md)。**
+
+## 架构
+
+```
+                    ┌─────────────────┐
+   浏览器 ────────→ │ gateway (8080)  │  唯一入口：路由、BFF 会话、令牌中继
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼                             ▼
+      ┌───────────────┐            ┌──────────────┐
+      │  ask (8081)   │──内省令牌→ │  iam (9000)  │  身份 / 角色 / 功能权限
+      └───────┬───────┘            └──────────────┘
+              │
+              ▼
+      ┌───────────────────────────────────────────┐
+      │           ask-engine                      │
+      │  语义模型 → DSL → SQL 渲染 → 权限注入      │
+      │             → 执行 → 审计                  │
+      └───────────────────────────────────────────┘
+```
 
 | 模块 | 说明 |
 |---|---|
@@ -25,5 +106,45 @@
 | `chatdata-agent-ask-engine` | 问数引擎：语义模型、DSL、SQL 渲染、权限执行 |
 | `chatdata-agent-iam` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
 | `chatdata-agent-iam-client` | 服务间读取身份与目录的客户端 |
-| `chatdata-agent-web` | 问数前端（Vue 3，独立 npm 工程） |
-| `chatdata-agent-iam-web` | 账号中心前端（Vue 3，独立 npm 工程） |
+| `chatdata-agent-web` | 问数前端（Vue 3） |
+| `chatdata-agent-iam-web` | 账号中心前端（Vue 3） |
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [GLOSSARY.md](GLOSSARY.md) | 术语表（问数、语义建模、行级权限、直连模式…） |
+| [docs/local-dev.md](docs/local-dev.md) | 本地启动：依赖、建库、环境变量、常见问题 |
+| [docs/modeling-coverage.md](docs/modeling-coverage.md) | **建模覆盖度**：准确率最大的杠杆、新建域检查清单 |
+| [docs/adr/](docs/adr/) | 架构决策记录——每个决定的**为什么** |
+| [sql/README.md](sql/README.md) | 库的划分与建表顺序 |
+| [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
+| [demo/adventureworks/](demo/adventureworks/) | 复杂业务域：28 表 / 172 列 / 30 关联的销售分析场景 |
+| [.scratch/](.scratch/) | 设计过程：每轮的 spec、取舍、被否决的方案 |
+| [AGENTS.md](AGENTS.md) | 给 AI agent 的工作约定 |
+
+## 开发
+
+```bash
+mvn test                                    # 631 个测试
+npm --prefix chatdata-agent-web run build   # 前端（产物要一起提交，见下）
+```
+
+**前端产物必须提交。** Maven 不构建前端（没有 frontend-maven-plugin），
+`src/main/resources/static/**` 里的文件是 `npm run build` 生成的。
+删掉它们，clone 下来就是白屏。改了前端要重新 build 再提交。
+
+## 设计取向
+
+这个项目里有几条反复出现的原则，看代码时会遇到：
+
+1. **宁可拒绝，不要猜。** 字段有歧义、时间口径不明、权限规则求值失败——都直接拒绝，
+   而不是选一个"看起来合理"的。猜错的表现是数字不对，而用户无从察觉。
+2. **失败方向必须安全。** 没配授权 = 拒绝访问（不是放开）；认不出的聚合方式 = 报错（不是当维度）；
+   敏感列默认关闭（不是默认开启）。
+3. **不静默。** 降级要说明、截断要提示、理解错了要回显。「我理解成了」那一块就是为此存在的。
+4. **可复现。** 同一份配置生成逐字节相同的 SQL；评测夹具改一次就重跑全量基线。
+
+## 许可
+
+[Apache License 2.0](LICENSE)

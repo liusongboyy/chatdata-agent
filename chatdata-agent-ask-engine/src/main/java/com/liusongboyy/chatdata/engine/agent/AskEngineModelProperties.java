@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 问数引擎的模型配置。
  *
- * <p>与现有 {@code jeecg.jmreport.ai.*} 并存——那是 JimuChatBI 的配置，
+ * <p>与现有 {@code vendor.jmreport.ai.*} 并存——那是 第三方 BI 产品 的配置，
  * 本引擎不共用（见 ADR-0006：两者并行运行，切换方式另行决策）。
  */
 @ConfigurationProperties(prefix = "chatdata.engine.model")

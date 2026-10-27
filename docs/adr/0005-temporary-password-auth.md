@@ -10,7 +10,7 @@ Status: accepted
 而系统需要一套能上生产的登录方式——此前的 `/dev/login`（读请求头/Cookie 直接认身份）
 只存在于 dev profile，绝不能进生产。
 
-JimuChatBI 自带界面的登录页调用的是 **jeecg-boot 的 `/sys/**` 接口**：
+第三方 BI 产品 自带界面的登录页调用的是 **vendor-boot 的 `/sys/**` 接口**：
 
 ```
 GET  /sys/randomImage/{checkKey}       → PNG
@@ -20,12 +20,12 @@ GET  /sys/user/getUserInfo             → {success, result:{...}}
 GET  /sys/tenant/getCurrentUserTenant  → {success, result:{list:[...]}}
 ```
 
-已核实：**这些接口既不在 chatbi jar 里，也不在 jimu jar 里**——它们属于宿主框架 jeecg-boot。
-因此不存在「开启 jimureport 登录」这个选项，只能自己实现这套契约。
+已核实：**这些接口既不在 chatbi jar 里，也不在 jimu jar 里**——它们属于宿主框架 vendor-boot。
+因此不存在「开启 vendor 登录」这个选项，只能自己实现这套契约。
 
 ## 决定
 
-实现 `/sys/**` 契约（`JeecgCompatAuthController`），以本地账号密码 + 图形验证码认证，
+实现 `/sys/**` 契约（`vendorCompatAuthController`），以本地账号密码 + 图形验证码认证，
 签发 HMAC 签名的无状态令牌。**同时移除 dev 身份旁路。**
 
 ## 关键设计

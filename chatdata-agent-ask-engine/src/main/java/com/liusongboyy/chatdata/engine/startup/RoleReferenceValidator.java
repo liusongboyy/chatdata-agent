@@ -16,7 +16,7 @@ import java.util.TreeSet;
  *
  * <h2>它挡的是什么</h2>
  *
- * <p>{@code docs/permission-config.md} 第四节记了这个坑，并且记了一个现成的反例：
+ * <p>这个坑有一个现成的反例：
  * 「演示数据 {@code 系统用户分析域} 的 {@code colRules} 引用了角色 {@code 财务}，
  * 而本项目 {@code sys_role} 里没有这个角色——该规则永远不会生效」，且
  * <b>"角色名不一致 → 规则静默不生效，不报错、不打日志"</b>。

@@ -162,7 +162,7 @@ class AskEngineRecomputeEndpointTest {
      *   at tools.jackson.databind-3.1.4.jar
      * </pre>
      *
-     * <p>原因：classpath 上同时有 Jackson 2（{@code com.fasterxml}，agentscope/jeecg 带进来的）
+     * <p>原因：classpath 上同时有 Jackson 2（{@code com.fasterxml}，agentscope/vendor 带进来的）
      * 与 Jackson 3（{@code tools.jackson}，Spring Boot 4 的默认）。**Spring MVC 用的是
      * Jackson 3**，而记录里写的是 Jackson 2 的 {@code JsonNode}——转换器构造不出来，
      * 请求在进入方法体之前就炸了。

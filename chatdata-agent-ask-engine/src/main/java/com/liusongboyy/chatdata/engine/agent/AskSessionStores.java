@@ -44,7 +44,7 @@ public final class AskSessionStores {
     /**
      * 定库名：配了就用配的，没配就从连接上读当前库。
      *
-     * <p>不配默认值（比如写死 {@code jimureport}）是有意的——库名已经由 JDBC URL 表达过一次，
+     * <p>不配默认值（比如写死 {@code vendor}）是有意的——库名已经由 JDBC URL 表达过一次，
      * 再写一份就是给"改了 URL 忘了改这里"留机会。而读 {@code getCatalog()} 拿到的是
      * **驱动实际连上的那个库**，不会有第二种解释。
      *

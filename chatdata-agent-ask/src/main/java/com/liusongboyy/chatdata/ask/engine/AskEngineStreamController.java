@@ -260,7 +260,7 @@ public class AskEngineStreamController {
             // 前端把 DSL 原样传回来时同样用得上
             //
             // **请求体里刻意不用任何 Jackson 类型**（这里用 Map + 手工转字符串）。
-            // classpath 上同时有 Jackson 2（agentscope / jeecg 带进来的
+            // classpath 上同时有 Jackson 2（agentscope / vendor 带进来的
             // `com.fasterxml`）与 Jackson 3（Spring Boot 4 的默认，`tools.jackson`），
             // 而 **Spring MVC 的消息转换器用的是 Jackson 3**。记录组件一旦写成
             // Jackson 2 的 `JsonNode`，转换器在**进入方法体之前**就构造不出来，

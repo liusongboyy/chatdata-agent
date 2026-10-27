@@ -1,0 +1,50 @@
+# 本地开发依赖
+#
+#   docker compose up -d
+#
+# 只起 MySQL 与 Redis；三个 Java 服务用 mvn package 后 java -jar 启动，
+# 原因见 docs/local-dev.md「为什么不用 mvn spring-boot:run」。
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: chatdata-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-chatdata}
+      MYSQL_DATABASE: chatdata_ask
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # 中文排序与大小写：默认配置下 ORDER BY 中文名的顺序与预期不同
+      - --default-time-zone=+08:00
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动建另外两个库（chatdata_ask 由 MYSQL_DATABASE 建）
+      - ./docker/mysql-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatdata-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mysql-data:
+  redis-data:

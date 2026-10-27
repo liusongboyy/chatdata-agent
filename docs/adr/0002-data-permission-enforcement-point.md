@@ -3,7 +3,7 @@ Status: decision superseded by ADR-0006; findings retained
 ---
 
 > **⚠️ 本 ADR 的「决定」已作废，但「结论」全部保留并升级为规格。**
-> ADR-0006 改为自研后，本文「只实现 `JmReportTokenServiceI`、不自建 SQL 改写层」不再成立
+> ADR-0006 改为自研后，本文「只实现 `第三方令牌服务接口`、不自建 SQL 改写层」不再成立
 > ——没有厂商能力可复用了，改写层必须自建。
 >
 > 但本文**实测出来的权限语义**仍是新实现的规格来源，已全文迁入
@@ -16,21 +16,21 @@ Status: decision superseded by ADR-0006; findings retained
 > 权限存在哪两个 `perm_json` 字段里、每个字段的含义、以及四个实测踩出来的坑。
 > 本文只记录**决策**，配置细节不在这里重复。
 
-# 数据权限完全复用 JimuChatBI 自带能力，不自建 SQL 拦截层
+# 数据权限完全复用 第三方 BI 产品 自带能力，不自建 SQL 拦截层
 
 ## 背景
 
-数据权限是本项目「企业级」诉求中排第一优先的项。原计划（本 ADR 的 proposed 版本）采用两层纵深防御：实现 `JmReportTokenServiceI` 作为主通道，外加包装 `IChat2biDatasourceService.openConnection` 返回的 `Connection` 作为兜底层。
+数据权限是本项目「企业级」诉求中排第一优先的项。原计划（本 ADR 的 proposed 版本）采用两层纵深防御：实现 `第三方令牌服务接口` 作为主通道，外加包装 `第三方数据源服务接口.openConnection` 返回的 `Connection` 作为兜底层。
 
 该计划基于一个未验证的假设：自带的 `rowRules` / `colRules` 可能只作用于报表定义，而不作用于 LLM 生成的临时 SQL。此假设已通过 spike 实测证伪。
 
 ## 决定
 
-**只实现 `JmReportTokenServiceI`，不自建任何 SQL 改写层。** 兜底层取消。
+**只实现 `第三方令牌服务接口`，不自建任何 SQL 改写层。** 兜底层取消。
 
 ## 验证证据
 
-spike 在 `chatbi-spike` 工程中以同一请求体、仅切换角色复现（`POST /jimu/chat2bi/ask/recompute`，该端点按 DSL 重算、不经过 LLM，但走同一条 SQL 构造与权限路径）：
+spike 在 `chatbi-spike` 工程中以同一请求体、仅切换角色复现（`POST /<vendor>/ask/recompute`，该端点按 DSL 重算、不经过 LLM，但走同一条 SQL 构造与权限路径）：
 
 | 角色 | 命中的规则 | 结果 |
 |---|---|---|
@@ -38,7 +38,7 @@ spike 在 `chatbi-spike` 工程中以同一请求体、仅切换角色复现（`
 | `区域经理` | `rowRules: region = 华东` | **1 行**（仅华东） |
 | `分析师` | `colRules: premium 脱敏` | 6 行，金额为 `***` |
 
-三种角色三种行为，与 `chat2bi_domain.perm_json` 的配置一一对应。
+三种角色三种行为，与 `vendor_domain.perm_json` 的配置一一对应。
 
 **行级过滤的实际形态**（实测下发 SQL）：
 
@@ -58,17 +58,17 @@ SELECT * FROM (
 **驱动链路**（字节码与运行时双向确认）：
 
 ```
-JmReportTokenServiceI.getRoles(token) → String[]
-   ↓  Chat2biAskController 提取为 Set<String>
-IChat2biAskService.ask(..., Set<String> roles)
+第三方令牌服务接口.getRoles(token) → String[]
+   ↓  第三方问数控制器 提取为 Set<String>
+第三方问数服务接口.ask(..., Set<String> roles)
    ↓
-Chat2biPermHelper 按 role 匹配 rowRules / colRules，改写即将执行的查询
+第三方权限助手 按 role 匹配 rowRules / colRules，改写即将执行的查询
 ```
 
 ## 考虑过的其他方案
 
 - **额外包装 `openConnection` 返回的 Connection，用 JSqlParser 自行注入谓词**：原 proposed 版本的第二层。实测证明多余——自带能力已覆盖，且自建改写要处理 CTE、UNION、窗口函数等，正确性风险高于收益。
-- **数据源层强制（视图 / 只读账号）**：不写代码但运维成本随「权限组合 × 数据源数量」爆炸，JimuChatBI 支持 30+ 数据源，不可行。
+- **数据源层强制（视图 / 只读账号）**：不写代码但运维成本随「权限组合 × 数据源数量」爆炸，第三方 BI 产品 支持 30+ 数据源，不可行。
 
 ## 后果
 
@@ -81,7 +81,7 @@ Chat2biPermHelper 按 role 匹配 rowRules / colRules，改写即将执行的查
   | `nobody` | **无任何角色** | **6 行，全部明文** |
 
   两处默认行为都是**放行**而非拒绝：
-  1. **`chat2bi_domain.perm_json.grantRoles` 为空数组 = 对所有已认证用户开放。** 把 `grantRoles` 设为 `["区域经理"]` 后重测，`lisi` 与 `nobody` 均返回 0 行——**闸门本身是失败关闭的，问题在于默认值**。
+  1. **`vendor_domain.perm_json.grantRoles` 为空数组 = 对所有已认证用户开放。** 把 `grantRoles` 设为 `["区域经理"]` 后重测，`lisi` 与 `nobody` 均返回 0 行——**闸门本身是失败关闭的，问题在于默认值**。
   2. **某角色被授予域访问权但没有匹配的 `rowRules` 时，不附加任何过滤条件**，该角色看到域内全部行。这是「按角色授予限制」模型的固有语义，不是缺陷。
 
   **由此得出两条硬性要求：**
@@ -92,8 +92,8 @@ Chat2biPermHelper 按 role 匹配 rowRules / colRules，改写即将执行的查
 
   | 层 | 配置位置 | 闸门判据 | 缺口 |
   |---|---|---|---|
-  | **域** | `chat2bi_domain.perm_json` | `grantRoles` / `grantUsers` 有内容，或 `isPublic=true` | 授权为空且未公开 → 对所有已认证用户开放 |
-  | **助手** | `chat2bi_assistant.perm_json` | `enabled=true` **且** 角色在 `grantRoles` 内 | `enabled` 缺失 → 对**任何角色集**放行，包括空集与不存在的角色 |
+  | **域** | `vendor_domain.perm_json` | `grantRoles` / `grantUsers` 有内容，或 `isPublic=true` | 授权为空且未公开 → 对所有已认证用户开放 |
+  | **助手** | `vendor_assistant.perm_json` | `enabled=true` **且** 角色在 `grantRoles` 内 | `enabled` 缺失 → 对**任何角色集**放行，包括空集与不存在的角色 |
 
   两层判据**不同且不可统一**：域看"有没有授权内容"，助手看"enabled 开关是否打开"。后者是实测结论——助手在 `enabled=true` 且授权为空时是**拒绝**（安全），而缺 `enabled` 时是**放行**。这是厂商各自默认值的差异，不是笔误。
 
@@ -101,7 +101,7 @@ Chat2biPermHelper 按 role 匹配 rowRules / colRules，改写即将执行的查
 
   两者均由 `AccessGrantStartupCheck` 在启动时校验，未设置有效授权即拒绝启动。
 
-- **`Chat2biAskController` 没有任何 `@RequiresRoles` / `@RequiresPermissions`。** 问数端点厂商层面不设角色门槛（`Chat2biAssistantController` 有 8 处）。域与助手两层校验由此成为问数链路上仅有的两道门。
+- **`第三方问数控制器` 没有任何 `@RequiresRoles` / `@RequiresPermissions`。** 问数端点厂商层面不设角色门槛（`第三方助手控制器` 有 8 处）。域与助手两层校验由此成为问数链路上仅有的两道门。
 
 - **`getRoles` 返回空数组不是失败关闭。** 见上表无角色者一行。修改 `ChatbiTokenService` 时不要把它当作安全兜底。
 - **角色名必须与 `rowRules[].role` 逐字符一致。** 注意非 ASCII 角色名（如 `区域经理`）不能经由 HTTP 头传递：头按 RFC 7230 只允许 ASCII，容器按 ISO-8859-1 解码会产生乱码，导致匹配失败且**静默放行**。生产实现从 JWT 的 `getRoles(token)` 取角色，不经过头部，可规避此问题。
@@ -128,4 +128,4 @@ Chat2biPermHelper 按 role 匹配 rowRules / colRules，改写即将执行的查
 
 - **厂商对「被拒绝」返回 HTTP 200。** 无权限时响应体为 `{"blocked":true, "text":"您没有模型[...]权限"}`，而非错误码。任何基于"有没有抛异常"的判断都会把它当作成功——审计中尤其危险，因为"被拒绝"与"正常查了但无数据"会变得无法区分。审计因此为拒绝单列 `BLOCKED` 结果类型。
 
-- **`chat2bi_domain.datasource_id` 为空时使用应用默认库**，权限规则仍生效（spike 与真实 ask 路径均为该情形）。
+- **`vendor_domain.datasource_id` 为空时使用应用默认库**，权限规则仍生效（spike 与真实 ask 路径均为该情形）。

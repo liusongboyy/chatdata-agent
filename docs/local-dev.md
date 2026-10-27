@@ -35,9 +35,9 @@ export JAVA_HOME=/Users/liusongbo/Library/Java/JavaVirtualMachines/azul-21.0.11/
 **为什么配置与业务数据分库**：业务库通常是别人维护的只读库，不该混进我们的配置表。
 问数时 ask 从 `chatdata_ask` 读配置，再去数据源指向的库读数据。
 
-> 历史：2026-10-24 之前这些表都建在 `jimureport` 库里（借用了 JimuReport 的库），
-> 与 57 张 JimuReport 遗留表混在一起。已拆分迁出，旧库连同遗留表一并删除。
-> 备份在 `~/chatdata-backups/jimureport-full-20261024-092503.sql`。
+> 历史：2026-10-24 之前这些表都建在 `vendor` 库里（借用了 第三方报表工具 的库），
+> 与 57 张 第三方报表工具 遗留表混在一起。已拆分迁出，旧库连同遗留表一并删除。
+> 备份在 `~/chatdata-backups/vendor-full-20261024-092503.sql`。
 
 ### 建库与建表
 
@@ -52,7 +52,8 @@ CREATE DATABASE chatdata_demo DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci
 for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/11-ask-assistant.sql sql/12-ask-agent-session.sql \
          sql/14-ask-sql-example.sql sql/15-ask-sql-example-unique.sql \
-         sql/16-ask-feedback.sql sql/17-ask-conversation.sql sql/18-ask-policy-audit.sql
+         sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
+         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
 do
   mysql -uroot -p chatdata_ask < "$f"
 done
@@ -72,7 +73,7 @@ mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
 只捞这三张即可（已实测：恢复后 300 / 80 / 128 行，与迁移前一致）：
 
 ```bash
-BK=~/chatdata-backups/jimureport-full-20261024-092503.sql
+BK=~/chatdata-backups/vendor-full-20261024-092503.sql
 
 for t in ins_policy ins_customer ins_claim; do
   awk -v tbl="$t" '
