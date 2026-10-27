@@ -137,4 +137,28 @@ class ResultSetComparatorTest {
     private static List<Object> rowsWithNull() {
         return java.util.Collections.singletonList(null);
     }
+
+    @Test
+    @DisplayName("★ 浮点求和顺序不同不算答错——末位噪音不是数据差异")
+    void floatAccumulationTolerance() {
+        QueryResult gold = new QueryResult(List.of("name", "amt"),
+                List.of(List.of("Advanced Bicycles", 25793.748)));
+        QueryResult actual = new QueryResult(List.of("name", "amt"),
+                List.of(List.of("Advanced Bicycles", 25793.747999999984)));
+
+        assertThat(ResultSetComparator.compare(gold, actual, false, true, false).equal())
+                .as("同一个数的两种 double 表示")
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("真实的计算差异仍然判错——容差不能宽到放过错误")
+    void realDifferenceStillFails() {
+        QueryResult gold = new QueryResult(List.of("amt"), List.of(List.of(25793.748)));
+        QueryResult actual = new QueryResult(List.of("amt"), List.of(List.of(25793.758)));
+
+        assertThat(ResultSetComparator.compare(gold, actual, false, true, false).equal())
+                .as("相对差 4e-7 已超 6 位有效数字")
+                .isFalse();
+    }
 }

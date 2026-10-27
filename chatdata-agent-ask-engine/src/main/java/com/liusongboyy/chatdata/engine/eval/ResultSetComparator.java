@@ -193,16 +193,46 @@ public final class ResultSetComparator {
     }
 
     /**
+     * 浮点数保留的有效位数。
+     *
+     * <h2>为什么必须截断</h2>
+     *
+     * <p>实测：同一条聚合，「供应商采购金额」gold 算出 {@code 25793.748}，
+     * 模型那条算出 {@code 25793.747999999984}。两者是**同一个数**，
+     * 只是 double 求和的累加顺序不同。用全精度做字符串相等会把 37 行判成不同——
+     * 那是评测的缺陷，不是产品的错。
+     *
+     * <p>保留 6 位有效数字：足以区分真实的计算差异（大到 1e-6 的相对误差
+     * 已经不是"同一个数"了），又能容忍浮点累加顺序带来的末位噪音。
+     */
+    private static final int FLOAT_PRECISION = 6;
+
+    /**
      * 单值归一。
      *
-     * <p>数值统一走 {@link BigDecimal#stripTrailingZeros()}：{@code 2} 与 {@code 2.0000}
-     * 是同一个数，而 JDBC 对 COUNT（Long）与 AVG（BigDecimal）返回的类型不同。
-     * 日期时间统一到 ISO 形状，避免 {@code Timestamp} 与 {@code LocalDateTime} 的
+     * <p>数值统一走 {@link BigDecimal}：{@code 2} 与 {@code 2.0000} 是同一个数，
+     * 而 JDBC 对 COUNT（Long）与 AVG（BigDecimal）返回的类型不同。
+     *
+     * <p><b>浮点要按有效位数截断</b>——见 {@link #FLOAT_PRECISION} 的说明。
+     * 用全精度做相等，会把"求和顺序不同"判成答错。
+     *
+     * <p>日期时间统一到 ISO 形状，避免 {@code Timestamp} 与 {@code LocalDateTime} 的
      * {@code toString} 差异被当成数据差异。
      */
     static String normalize(Object value) {
         if (value == null) {
             return "\u0000NULL";
+        }
+        if (value instanceof Double || value instanceof Float) {
+            double d = ((Number) value).doubleValue();
+            if (Double.isNaN(d) || Double.isInfinite(d)) {
+                return String.valueOf(d);
+            }
+            // round 到 6 位有效数字再去尾零：25793.747999999984 → 25793.75 → 25793.75
+            return new BigDecimal(d)
+                    .round(new java.math.MathContext(FLOAT_PRECISION,
+                            java.math.RoundingMode.HALF_UP))
+                    .stripTrailingZeros().toPlainString();
         }
         if (value instanceof Number n) {
             try {

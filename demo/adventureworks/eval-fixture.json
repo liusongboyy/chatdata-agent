@@ -2,7 +2,9 @@
   "name": "AdventureWorks 销售分析域基线",
   "domainId": "2100",
   "userId": "eval",
-  "roles": ["super_admin"],
+  "roles": [
+    "super_admin"
+  ],
   "assistantId": null,
   "primaryMetric": "strict",
   "cases": [
@@ -13,7 +15,9 @@
       "goldSql": "SELECT COUNT(*) AS cnt FROM salesorderheader",
       "ordered": false,
       "columnOrder": "ANY",
-      "tags": ["count"],
+      "tags": [
+        "count"
+      ],
       "note": "星型模型单表计数"
     },
     {
@@ -23,7 +27,10 @@
       "goldSql": "SELECT SUM(TotalDue) AS total FROM salesorderheader WHERE OrderDate >= '2003-01-01' AND OrderDate < '2004-01-01'",
       "ordered": false,
       "columnOrder": "ANY",
-      "tags": ["time", "agg"],
+      "tags": [
+        "time",
+        "agg"
+      ],
       "note": "时间窗 + 求和"
     },
     {
@@ -33,7 +40,10 @@
       "goldSql": "SELECT pc.Name, SUM(sod.LineTotal) AS amt FROM salesorderdetail sod JOIN product p ON p.ProductID = sod.ProductID JOIN productsubcategory ps ON ps.ProductSubcategoryID = p.ProductSubcategoryID JOIN productcategory pc ON pc.ProductCategoryID = ps.ProductCategoryID GROUP BY pc.Name",
       "ordered": false,
       "columnOrder": "ANY",
-      "tags": ["join", "snowflake"],
+      "tags": [
+        "join",
+        "snowflake"
+      ],
       "note": "三层雪花：明细 → 产品 → 子类 → 大类"
     },
     {
@@ -43,7 +53,9 @@
       "goldSql": "SELECT st.Name, COUNT(*) AS cnt FROM salesorderheader soh JOIN customer c ON c.CustomerID = soh.CustomerID JOIN salesterritory st ON st.TerritoryID = c.TerritoryID GROUP BY st.Name",
       "ordered": false,
       "columnOrder": "ANY",
-      "tags": ["join"],
+      "tags": [
+        "join"
+      ],
       "note": "订单 → 客户 → 区域，两跳"
     },
     {
@@ -53,7 +65,10 @@
       "goldSql": "SELECT SUM(CASE WHEN OnlineOrderFlag = 1 THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM salesorderheader",
       "ordered": false,
       "columnOrder": "ANY",
-      "tags": ["condition", "derived"],
+      "tags": [
+        "condition",
+        "derived"
+      ],
       "note": "条件指标 + 占比"
     },
     {
@@ -63,8 +78,63 @@
       "goldSql": "SELECT p.Name, SUM(sod.LineTotal) AS amt FROM salesorderdetail sod JOIN product p ON p.ProductID = sod.ProductID GROUP BY p.Name ORDER BY amt DESC LIMIT 5",
       "ordered": false,
       "columnOrder": "ANY",
-      "tags": ["sort", "topn", "join"],
+      "tags": [
+        "sort",
+        "topn",
+        "join"
+      ],
       "note": "Top-N + 连接"
+    },
+    {
+      "id": "aw-007",
+      "difficulty": "MEDIUM",
+      "question": "各供应商的采购金额分别是多少？",
+      "goldSql": "SELECT v.Name, SUM(pod.LineTotal) AS amt FROM purchaseorderdetail pod JOIN purchaseorderheader poh ON poh.PurchaseOrderID = pod.PurchaseOrderID JOIN vendor v ON v.VendorID = poh.VendorID GROUP BY v.Name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "purchase"
+      ],
+      "note": "采购链两跳。vendor 表 0 行，预期空结果"
+    },
+    {
+      "id": "aw-008",
+      "difficulty": "MEDIUM",
+      "question": "各部门的采购单数是多少？",
+      "goldSql": "SELECT d.Name, COUNT(*) AS cnt FROM purchaseorderheader poh JOIN employee e ON e.EmployeeID = poh.EmployeeID JOIN employeedepartmenthistory edh ON edh.EmployeeID = e.EmployeeID JOIN department d ON d.DepartmentID = edh.DepartmentID GROUP BY d.Name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "hr"
+      ],
+      "note": "采购 → 员工 → 部门履历 → 部门，三跳"
+    },
+    {
+      "id": "aw-009",
+      "difficulty": "HARD",
+      "question": "各销售原因的订单数分别是多少？",
+      "goldSql": "SELECT sr.Name, COUNT(*) AS cnt FROM salesorderheadersalesreason s JOIN salesreason sr ON sr.SalesReasonID = s.SalesReasonID GROUP BY sr.Name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "join",
+        "bridge"
+      ],
+      "note": "多对多桥接表"
+    },
+    {
+      "id": "aw-010",
+      "difficulty": "SIMPLE",
+      "question": "在职员工有多少人？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM employee WHERE CurrentFlag = 1",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": [
+        "condition"
+      ],
+      "note": "条件指标；bit 类型过滤"
     }
   ]
 }

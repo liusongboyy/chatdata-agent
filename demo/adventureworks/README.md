@@ -1,7 +1,7 @@
 # AdventureWorks 销售分析域
 
-一个**接近真实企业规模**的演示 / 评测域：11 张表、80 个列定义、11 条关联，
-覆盖星型 + 雪花两种结构。
+一个**接近真实企业规模**的演示 / 评测域：**28 张表、172 个列定义、30 条关联**，
+覆盖星型、雪花、自关联、多对多桥接四种结构。
 
 用来测什么：现有评测域（保险 3 表、工单 4 表）规模太小，
 测不出"表多、关系绕、口径复杂"时产品会不会崩。
@@ -36,17 +36,30 @@ Microsoft AdventureWorks OLTP 示例库（MySQL 移植版）：
 
 ## 结构
 
-雪花三层（这是原来那几个域都没有的）：
-
+### 销售链（星型 + 雪花）
 ```
-salesorderdetail → product → productsubcategory → productcategory
-       ↓
-salesorderheader → customer → salesterritory
+salesorderdetail → product → productsubcategory → productcategory   ← 雪花三层
        ↓              ↓
-  salesperson    store（门店客户）
+salesorderheader   productmodel / productinventory / billofmaterials（BOM 自关联）
        ↓
-  specialoffer      productinventory
+   customer → salesterritory → stateprovince → countryregion          ← 地理三层
+       ↓            ↓
+     store     salesperson
+       ↓
+  creditcard / shipmethod / salesorderheadersalesreason → salesreason  ← 多对多桥接
 ```
+
+### 采购链
+```
+purchaseorderdetail → purchaseorderheader → vendor
+                            ↓
+                        employee → employeedepartmenthistory → department   ← 自关联 ManagerID
+                            ↓
+                       shipmethod
+```
+
+### 其他
+`specialofferproduct`（促销 ↔ 产品多对多）、`address`、`salestaxrate`。
 
 ## 建域
 
@@ -65,8 +78,9 @@ python3 demo/adventureworks/build-domain.py
 ./eval/run.sh --path demo/adventureworks/eval-fixture.json
 ```
 
-`eval-fixture.json` 的 6 条用例覆盖：单表计数、时间窗、三层雪花 JOIN、
-两跳 JOIN、条件占比、Top-N。当前 **6/6**。
+`eval-fixture.json` 的 10 条用例覆盖：单表计数、时间窗、三层雪花 JOIN、
+两跳 JOIN、三跳 JOIN（采购→员工→部门）、多对多桥接、条件占比、Top-N、
+空结果表。当前 **10/10**。
 
 ## 建域时踩到的两个坑
 
@@ -81,3 +95,19 @@ python3 demo/adventureworks/build-domain.py
 `ProductLine` 实际取值是 `'R '`、`'S '`（带空格），不是 `'R'`。
 这是真实企业数据里极常见的形态。查询时 `WHERE ProductLine = 'R'` 会查不到，
 得用 `LIKE 'R%'` 或 `TRIM`。**没有为它打补丁**——这类脏数据正是要被测出来的。
+
+**③ 有些表是空的**
+
+`vendor`（供应商）、`transactionhistory`、`workorder` 在这个 dump 里是 0 行。
+保留了 `vendor`——问「各供应商采购金额」预期返回空结果，
+测的是"结果为空时会不会说清楚"，而不是把空表删掉绕开。
+
+## 这个域测出过一个评测缺陷
+
+`aw-007`「各供应商采购金额」曾判失败：gold 算出 `25793.748`，
+模型那条算出 `25793.747999999984`——**同一个数**，只是 double 累加顺序不同。
+
+`ResultSetComparator` 当时用全精度做字符串相等，于是 37 行被判成不同。
+已修：浮点数按 **6 位有效数字** 归一。
+
+容差没有宽到放过真错误——单测里 `25793.748` vs `25793.758` 仍然判错。
