@@ -1,0 +1,70 @@
+{
+  "name": "AdventureWorks 销售分析域基线",
+  "domainId": "2100",
+  "userId": "eval",
+  "roles": ["super_admin"],
+  "assistantId": null,
+  "primaryMetric": "strict",
+  "cases": [
+    {
+      "id": "aw-001",
+      "difficulty": "SIMPLE",
+      "question": "订单总数是多少？",
+      "goldSql": "SELECT COUNT(*) AS cnt FROM salesorderheader",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["count"],
+      "note": "星型模型单表计数"
+    },
+    {
+      "id": "aw-002",
+      "difficulty": "MEDIUM",
+      "question": "2003 年的销售总额是多少？",
+      "goldSql": "SELECT SUM(TotalDue) AS total FROM salesorderheader WHERE OrderDate >= '2003-01-01' AND OrderDate < '2004-01-01'",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["time", "agg"],
+      "note": "时间窗 + 求和"
+    },
+    {
+      "id": "aw-003",
+      "difficulty": "MEDIUM",
+      "question": "各大类的销售金额分别是多少？",
+      "goldSql": "SELECT pc.Name, SUM(sod.LineTotal) AS amt FROM salesorderdetail sod JOIN product p ON p.ProductID = sod.ProductID JOIN productsubcategory ps ON ps.ProductSubcategoryID = p.ProductSubcategoryID JOIN productcategory pc ON pc.ProductCategoryID = ps.ProductCategoryID GROUP BY pc.Name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["join", "snowflake"],
+      "note": "三层雪花：明细 → 产品 → 子类 → 大类"
+    },
+    {
+      "id": "aw-004",
+      "difficulty": "MEDIUM",
+      "question": "各销售区域的订单数是多少？",
+      "goldSql": "SELECT st.Name, COUNT(*) AS cnt FROM salesorderheader soh JOIN customer c ON c.CustomerID = soh.CustomerID JOIN salesterritory st ON st.TerritoryID = c.TerritoryID GROUP BY st.Name",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["join"],
+      "note": "订单 → 客户 → 区域，两跳"
+    },
+    {
+      "id": "aw-005",
+      "difficulty": "HARD",
+      "question": "线上订单占比是多少？用 0 到 1 之间的小数表示",
+      "goldSql": "SELECT SUM(CASE WHEN OnlineOrderFlag = 1 THEN 1 ELSE 0 END) / COUNT(*) AS ratio FROM salesorderheader",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["condition", "derived"],
+      "note": "条件指标 + 占比"
+    },
+    {
+      "id": "aw-006",
+      "difficulty": "HARD",
+      "question": "销售金额最高的 5 个产品是什么？",
+      "goldSql": "SELECT p.Name, SUM(sod.LineTotal) AS amt FROM salesorderdetail sod JOIN product p ON p.ProductID = sod.ProductID GROUP BY p.Name ORDER BY amt DESC LIMIT 5",
+      "ordered": false,
+      "columnOrder": "ANY",
+      "tags": ["sort", "topn", "join"],
+      "note": "Top-N + 连接"
+    }
+  ]
+}

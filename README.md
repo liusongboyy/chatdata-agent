@@ -12,6 +12,7 @@
 | [sql/README.md](sql/README.md) | 库的划分、建表顺序、已退役脚本 |
 | [docs/modeling-coverage.md](docs/modeling-coverage.md) | **建模覆盖度**：准确率最大的杠杆、新建域检查清单、实测对照 |
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
+| [demo/adventureworks/](demo/adventureworks/) | **复杂业务域**：11 表 / 80 列 / 11 关联的销售分析场景 |
 | [docs/adr/](docs/adr/) | 架构决策记录 |
 | [AGENTS.md](AGENTS.md) | 给 agent 的工作约定（issue、triage、领域文档） |
 
