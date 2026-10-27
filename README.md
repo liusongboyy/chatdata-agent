@@ -65,7 +65,8 @@ do mysql -uroot -p chatdata_ask < "$f"; done
 mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql   # 演示数据（可选）
 mysql -uroot -p chatdata_iam < sql/iam/01-schema.sql
 mysql -uroot -p chatdata_iam < sql/iam/07-role-permission.sql
-mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
+mysql -uroot -p chatdata_iam < sql/iam/02-seed-dev.sql   # 建 admin / admin123
+mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql  # 会打印角色与超管核对报告
 
 # 4) 构建并启动
 mvn -DskipTests package
@@ -75,6 +76,9 @@ java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-*-SNAPSHOT.jar &
 ```
 
 打开 <http://127.0.0.1:8080/app/>，默认账号 `admin` / `admin123`。
+
+> `08-bootstrap.sql` 最后会打印一份核对报告。**确认「超级管理员持有者数」>= 1**——
+> 为 0 的话没人能进管理台。生产部署不要用 `02-seed-dev.sql` 里的固定密码。
 
 **详细步骤、常见问题见 [docs/local-dev.md](docs/local-dev.md)。**
 

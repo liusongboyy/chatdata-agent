@@ -64,6 +64,7 @@ mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql
 # IAM（顺序有讲究，见 .scratch/iam-platform/spec.md §18）
 mysql -uroot -p chatdata_iam < sql/iam/01-schema.sql
 mysql -uroot -p chatdata_iam < sql/iam/07-role-permission.sql
+mysql -uroot -p chatdata_iam < sql/iam/02-seed-dev.sql   # admin / admin123
 mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
 ```
 
