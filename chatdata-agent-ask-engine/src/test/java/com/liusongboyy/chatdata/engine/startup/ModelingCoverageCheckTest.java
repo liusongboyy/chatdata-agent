@@ -207,6 +207,80 @@ class ModelingCoverageCheckTest {
         }
     }
 
+    @Nested
+    @DisplayName("同名列的归属")
+    class NameCollision {
+
+        private Domain twoTables(ColumnDef claimCol, ColumnDef policyCol) {
+            RegisteredTable claim = new RegisteredTable("t1", "ins_claim", "理赔表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    claimCol,
+                    col("settle_amount", "decimal", Aggregation.AVG, "赔付金额")));
+            RegisteredTable policy = new RegisteredTable("t2", "ins_policy", "保单表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    policyCol,
+                    col("province", "varchar", Aggregation.COUNT_DISTINCT, "省份数")));
+            return new Domain("d1", "保险域", "ds1", "MYSQL5.7", true,
+                    List.of(claim, policy), List.of(), DomainPermission.from(null),
+                    noTerms(), List.of());
+        }
+
+        @Test
+        @DisplayName("★ 同一列在两表上、业务名相同、都没描述 → 提示模型只能猜")
+        void sameColumnSameNameNoDescription() {
+            var out = check(twoTables(
+                    col("province", "varchar", Aggregation.NONE, "省份"),
+                    col("province", "varchar", Aggregation.NONE, "省份")));
+
+            assertThat(out)
+                    .anySatisfy(v -> assertThat(v.message())
+                            .contains("张表上都注册").contains("province")
+                            .contains("只能靠猜"));
+        }
+
+        @Test
+        @DisplayName("业务名不同（出险省份 / 出单省份）→ 名字已能区分，不提示")
+        void differentAliasesAreFine() {
+            var out = check(twoTables(
+                    col("province", "varchar", Aggregation.NONE, "出险省份"),
+                    col("province", "varchar", Aggregation.NONE, "出单省份")));
+
+            assertThat(out).noneSatisfy(v -> assertThat(v.message()).contains("province"));
+        }
+
+        @Test
+        @DisplayName("★ 同名但都有描述说清区别 → 不提示（描述补上了名字的不足）")
+        void descriptionsResolveIt() {
+            ColumnDef a = new ColumnDef("province", "varchar", Aggregation.NONE,
+                    "省份", true, null, null, "出险地，理赔发生所在省", List.of());
+            ColumnDef b = new ColumnDef("province", "varchar", Aggregation.NONE,
+                    "省份", true, null, null, "出单地，保单签发所在省", List.of());
+
+            var out = check(twoTables(a, b));
+
+            assertThat(out).noneSatisfy(v -> assertThat(v.message()).contains("province"));
+        }
+
+        @Test
+        @DisplayName("同一张表里两行（指标/维度双登记）不算冲突")
+        void sameTableNotCollision() {
+            RegisteredTable t = new RegisteredTable("t1", "ticket", "工单表",
+                    RegisteredTable.Mode.TABLE, null, true, List.of(
+                    col("term_years", "int", Aggregation.AVG, "平均保障年限")));
+            // 手动构造同名双登记
+            var withDual = new Domain("d1", "域", "ds1", "MYSQL5.7", true,
+                    List.of(new RegisteredTable("t1", "ticket", "工单表",
+                            RegisteredTable.Mode.TABLE, null, true, List.of(
+                            col("term_years", "int", Aggregation.AVG, "平均保障年限"),
+                            col("term_years", "int", Aggregation.NONE, "保障年限"),
+                            col("province", "varchar", Aggregation.COUNT_DISTINCT, "省份数")))),
+                    List.of(), DomainPermission.from(null), noTerms(), List.of());
+
+            assertThat(check(withDual))
+                    .noneSatisfy(v -> assertThat(v.message()).contains("都在注册"));
+        }
+    }
+
     @Test
     @DisplayName("直连域跳过这套检查——它没有列定义")
     void rawDomainSkipped() {

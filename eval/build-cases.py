@@ -67,7 +67,10 @@ INSURANCE = [
     ("insurance-016", "MEDIUM", "按客户等级统计保单数量",
      "SELECT c.cust_level, COUNT(*) AS cnt FROM ins_policy p JOIN ins_customer c ON p.cust_id = c.id GROUP BY c.cust_level",
      False, ["join", "group"]),
-    ("insurance-017", "MEDIUM", "各区域的理赔赔付金额合计是多少？",
+    # 「各区域」在理赔域是歧义：理赔表只有「出险省份」，而「区域」是保单表的概念。
+    # 出险地与出单地不一致（128 条理赔里 121 条不同），两种理解得到完全不同的答案。
+    # 这不是产品缺陷，是问题没说清——改问法锁定口径
+    ("insurance-017", "MEDIUM", "按出险省份统计理赔赔付金额合计",
      "SELECT province, SUM(settle_amount) AS total_settle FROM ins_claim GROUP BY province", False, ["group", "agg"]),
     ("insurance-018", "MEDIUM", "状态为已赔付的理赔，赔付金额合计是多少？",
      "SELECT SUM(settle_amount) AS total_settle FROM ins_claim WHERE status = '已赔付'", False, ["filter", "agg"]),

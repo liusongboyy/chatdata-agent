@@ -74,6 +74,7 @@ public final class ModelingCoverageCheck {
         out.addAll(checkDualRole(domain));
         out.addAll(checkTimeTerms(domain, model));
         out.addAll(checkContradictions(domain));
+        out.addAll(checkNameCollisions(domain));
         return out;
     }
 
@@ -225,6 +226,86 @@ public final class ModelingCoverageCheck {
                 }
             }
         }
+        return out;
+    }
+
+    /**
+     * 同一物理列在多张表上都注册了——同名但**含义不同**。
+     *
+     * <h2>为什么这是问题</h2>
+     *
+     * <p>实测：「出险省份」与「出单省份」是两回事（128 条理赔里 121 条不一致）。
+     * 若两张表都把它叫「省份」，模型只能靠猜——猜错的 SQL 合法、数字合理，
+     * 只是答的是另一个问题。
+     *
+     * <p>当前的防法是**把别名起得不一样**（出险省份 / 出单省份）。这是对的，
+     * 但依赖管理员每次都想到。这条检查把它变成可发现的问题。
+     *
+     * <h2>判据：同名列，别名不同，但都没有可区分的描述</h2>
+     *
+     * <p>别名不同就已经能区分了——这时描述可有可无。真正危险的是
+     * <b>别名也相同</b>（解析时会报歧义，那是另一种失败），或
+     * <b>别名不同但都像"省份"这种通用词</b>，模型分不出谁是谁。
+     */
+    private static List<EngineConfigViolation> checkNameCollisions(Domain domain) {
+        // 物理列名 → [(表, 列定义)]
+        var byColumn = new java.util.LinkedHashMap<String, List<java.util.Map.Entry<RegisteredTable, ColumnDef>>>();
+        for (RegisteredTable t : domain.visibleTables()) {
+            for (ColumnDef c : t.columns()) {
+                if (!c.enabled() || c.col() == null || c.col().isBlank() || c.derived() != null) {
+                    continue;
+                }
+                byColumn.computeIfAbsent(c.col().toLowerCase(Locale.ROOT),
+                                k -> new ArrayList<>())
+                        .add(java.util.Map.entry(t, c));
+            }
+        }
+
+        List<EngineConfigViolation> out = new ArrayList<>();
+        byColumn.forEach((col, entries) -> {
+            Set<String> tables = new LinkedHashSet<>();
+            entries.forEach(e -> tables.add(e.getKey().id()));
+            // 同一张表里多条（指标/维度双登记）不算跨表冲突
+            if (tables.size() < 2) {
+                return;
+            }
+
+            // 只看**跨表**的那些：同一张表内的双登记是刻意的，不该参与判定
+            List<java.util.Map.Entry<RegisteredTable, ColumnDef>> cross = entries.stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            e -> e.getKey().id(),
+                            e -> e,
+                            // 一张表只留一条：优先保留没描述的，那才是"说不清"的那条
+                            (a, b) -> a.getValue().description() == null ? a : b,
+                            java.util.LinkedHashMap::new))
+                    .values().stream().toList();
+            if (cross.size() < 2) {
+                return;
+            }
+
+            // 都有描述 → 已经说清了，不提示
+            if (cross.stream().allMatch(e -> e.getValue().description() != null)) {
+                return;
+            }
+            // 别名互不相同 → 名字本身已经能区分，也不提示
+            Set<String> aliases = new LinkedHashSet<>();
+            cross.forEach(e -> aliases.add(e.getValue().displayName()));
+            if (aliases.size() == cross.size()) {
+                return;
+            }
+
+            List<String> where = cross.stream()
+                    .map(e -> e.getKey().displayName() + "." + e.getValue().displayName())
+                    .distinct()
+                    .toList();
+            out.add(violation(EngineConfigViolation.Category.THIN_MODELING, domain,
+                    "列「%s」在 %d 张表上都注册了，但业务名相同或不足以区分（%s），"
+                            .formatted(col, tables.size(), String.join("、", where))
+                            + "而且没有描述说明各自含义。模型只能靠猜——猜错的 SQL 合法、"
+                            + "数字合理，只是答的是另一个问题。"
+                            + "请给它们起不同的业务名，或补上 description 说清区别"
+                            + "（例如「出险地」与「出单地」是两回事）"));
+        });
         return out;
     }
 

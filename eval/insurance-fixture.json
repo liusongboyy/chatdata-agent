@@ -208,7 +208,7 @@
     {
       "id": "insurance-017",
       "difficulty": "MEDIUM",
-      "question": "各区域的理赔赔付金额合计是多少？",
+      "question": "按出险省份统计理赔赔付金额合计",
       "goldSql": "SELECT province, SUM(settle_amount) AS total_settle FROM ins_claim GROUP BY province",
       "ordered": false,
       "columnOrder": "ANY",
