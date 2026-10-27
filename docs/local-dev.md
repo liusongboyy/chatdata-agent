@@ -51,7 +51,7 @@ CREATE DATABASE chatdata_demo DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci
 # ask 的表（SQL 里不写库名，靠命令行参数指定）
 for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/11-ask-assistant.sql sql/12-ask-agent-session.sql \
-         sql/14-ask-sql-example.sql sql/15-ask-sql-example-unique.sql \
+         sql/14-ask-sql-example.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
 do

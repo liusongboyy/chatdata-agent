@@ -41,8 +41,12 @@ CREATE TABLE IF NOT EXISTS `ask_sql_example` (
   `updated_by`  VARCHAR(64)  NULL,
   `updated_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  -- 同一域内问法唯一：create 是"插入后按问法读回主键"，不唯一时会读回错的那条；
-  -- 而且两条同问法的范例对检索毫无意义（见 sql/15 的说明）
+  -- 同一域内问法唯一，两个理由：
+  --   1. **数据本身**：两条问法完全相同的范例是纯冗余——检索只会挑中其中一条，
+  --      而管理员以为自己加了两条不同的写法。
+  --   2. **实现依赖**：管理面的 create 是"插入后按问法读回主键"。
+  --      问法不唯一时，读回会拿到错的那条 id。
+  -- 作用域是 (domain_id, question) 而不是全局：同一个问法在不同域里引用不同的表。
   UNIQUE KEY `uk_ask_sql_example_domain_question` (`domain_id`, `question`),
   KEY `idx_ask_sql_example_domain` (`domain_id`, `enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='直连模式的 SQL 范例库（few-shot）';
