@@ -171,7 +171,7 @@
       "id": "ticket-m-014",
       "difficulty": "MEDIUM",
       "question": "每个分类下的工单平均评论数是多少？",
-      "goldSql": "SELECT c.name, COUNT(cm.id) AS cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 GROUP BY c.name",
+      "goldSql": "SELECT c.name, COUNT(cm.id) / COUNT(DISTINCT t.id) AS avg_cnt FROM ticket t JOIN ticket_category c ON t.category_id = c.id JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 GROUP BY c.name",
       "ordered": false,
       "columnOrder": "ANY",
       "tags": [
@@ -260,7 +260,7 @@
       "id": "ticket-m-021",
       "difficulty": "MEDIUM",
       "question": "平均每张工单有多少次状态流转？",
-      "goldSql": "SELECT COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_flow FROM ticket_flow WHERE deleted = 0",
+      "goldSql": "SELECT (SELECT COUNT(*) FROM ticket_flow WHERE deleted = 0)      / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_flow",
       "ordered": false,
       "columnOrder": "ANY",
       "tags": [
@@ -546,7 +546,7 @@
       "id": "ticket-m-044",
       "difficulty": "MEDIUM",
       "question": "状态为已关闭的工单，平均有多少条评论？",
-      "goldSql": "SELECT COUNT(*) / COUNT(DISTINCT t.id) AS avg_comment FROM ticket t JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 WHERE t.deleted = 0 AND t.status = 'CLOSED'",
+      "goldSql": "SELECT (SELECT COUNT(*) FROM ticket t JOIN ticket_comment cm         ON cm.ticket_id = t.id AND cm.deleted = 0         WHERE t.deleted = 0 AND t.status = 'CLOSED')      / (SELECT COUNT(*) FROM ticket WHERE deleted = 0 AND status = 'CLOSED') AS avg_comment",
       "ordered": false,
       "columnOrder": "ANY",
       "tags": [
@@ -698,7 +698,7 @@
       "id": "ticket-m-056",
       "difficulty": "HARD",
       "question": "按优先级统计平均流转次数",
-      "goldSql": "SELECT t.priority, COUNT(f.id) / COUNT(DISTINCT t.id) AS avg_flow FROM ticket t JOIN ticket_flow f ON f.ticket_id = t.id AND f.deleted = 0 WHERE t.deleted = 0 GROUP BY t.priority",
+      "goldSql": "SELECT p.priority, IFNULL(f.cnt, 0) / p.cnt AS avg_flow FROM (SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY priority) p LEFT JOIN (SELECT t.priority, COUNT(*) AS cnt FROM ticket t            JOIN ticket_flow f ON f.ticket_id = t.id AND f.deleted = 0            WHERE t.deleted = 0 GROUP BY t.priority) f ON f.priority = p.priority",
       "ordered": false,
       "columnOrder": "ANY",
       "tags": [

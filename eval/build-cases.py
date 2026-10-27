@@ -83,7 +83,7 @@ INSURANCE = [
     ("insurance-023", "MEDIUM", "理赔状态为已拒赔的理赔申请金额合计是多少？",
      "SELECT SUM(claim_amount) AS total_claim FROM ins_claim WHERE status = '已拒赔'", False, ["filter", "agg"]),
     # HARD
-    ("insurance-024", "HARD", "2025 年生效的保单保费合计是多少？",
+    ("insurance-024", "HARD", "2025 年投保的保单保费合计是多少？",
      "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01'",
      False, ["time", "agg"]),
     ("insurance-025", "HARD", "2025 年生效且状态为生效的保单有多少张？",
@@ -102,7 +102,7 @@ INSURANCE = [
      "SELECT product_type, SUM(coverage_amount) AS total_coverage FROM ins_policy GROUP BY product_type",
      False, ["group", "agg"]),
     ("insurance-030", "HARD", "2025 年理赔金额合计比申请金额合计少多少？",
-     "SELECT SUM(settle_amount) AS total_settle, SUM(claim_amount) AS total_claim "
+     "SELECT SUM(settle_amount) - SUM(claim_amount) AS diff "
      "FROM ins_claim WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01'",
      False, ["time", "agg"]),
 ]
@@ -140,7 +140,7 @@ TICKET_MODELED = [
      "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 "
      "AND created_at >= '2025-03-01' AND created_at < '2025-04-01'", False, ["time"]),
     ("ticket-m-014", "MEDIUM", "每个分类下的工单平均评论数是多少？",
-     "SELECT c.name, COUNT(cm.id) AS cnt FROM ticket t "
+     "SELECT c.name, COUNT(cm.id) / COUNT(DISTINCT t.id) AS avg_cnt FROM ticket t "
      "JOIN ticket_category c ON t.category_id = c.id "
      "JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 "
      "WHERE t.deleted = 0 GROUP BY c.name", False, ["join", "group"]),
@@ -164,8 +164,9 @@ TICKET_MODELED = [
      "SELECT COUNT(*) AS cnt FROM ticket WHERE deleted = 0 AND ai_category_id <> category_id",
      False, ["compare"]),
     ("ticket-m-021", "MEDIUM", "平均每张工单有多少次状态流转？",
-     "SELECT COUNT(*) / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_flow "
-     "FROM ticket_flow WHERE deleted = 0", False, ["agg"]),
+     "SELECT (SELECT COUNT(*) FROM ticket_flow WHERE deleted = 0) "
+     "     / (SELECT COUNT(*) FROM ticket WHERE deleted = 0) AS avg_flow",
+     False, ["agg"]),
     ("ticket-m-022", "MEDIUM", "每个处理团队的平均 AI 置信度是多少？",
      "SELECT team_id, AVG(ai_confidence) AS avg_conf FROM ticket WHERE deleted = 0 GROUP BY team_id",
      False, ["group", "agg"]),
@@ -295,7 +296,8 @@ TICKET_RAW = [
 
 INSURANCE_2 = [
     ("insurance-031", "SIMPLE", "保额最高的那类险种是什么？",
-     "SELECT product_type FROM ins_policy ORDER BY coverage_amount DESC LIMIT 1", True, ["order", "limit"]),
+     "SELECT product_type FROM ins_policy GROUP BY product_type "
+     "ORDER BY SUM(coverage_amount) DESC LIMIT 1", True, ["order", "limit"]),
     ("insurance-032", "SIMPLE", "一共涉及多少个省份的保单？",
      "SELECT COUNT(DISTINCT province) AS cnt FROM ins_policy", False, ["distinct"]),
     ("insurance-033", "SIMPLE", "理赔单号一共有多少个？",
@@ -372,7 +374,7 @@ INSURANCE_2 = [
     ("insurance-062", "HARD", "赔付金额比申请金额少多少？",
      "SELECT SUM(settle_amount) - SUM(claim_amount) AS diff FROM ins_claim",
      False, ["derived", "diff"]),
-    ("insurance-060", "HARD", "2025 年生效的保单中，健康险的保费合计是多少？",
+    ("insurance-060", "HARD", "2025 年投保的保单中，健康险的保费合计是多少？",
      "SELECT SUM(premium) AS total_premium FROM ins_policy "
      "WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' AND product_type = '健康险'",
      False, ["time", "filter", "agg"]),
@@ -436,9 +438,13 @@ TICKET_MODELED_2 = [
      "SELECT COUNT(*) AS cnt FROM (SELECT ticket_id FROM ticket_comment WHERE deleted = 0 "
      "GROUP BY ticket_id HAVING COUNT(*) > 2) x", False, ["subquery"]),
     ("ticket-m-044", "MEDIUM", "状态为已关闭的工单，平均有多少条评论？",
-     "SELECT COUNT(*) / COUNT(DISTINCT t.id) AS avg_comment FROM ticket t "
-     "JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 "
-     "WHERE t.deleted = 0 AND t.status = 'CLOSED'", False, ["join", "business"]),
+     # 分母必须是**全部**已关闭工单。原来的写法 JOIN 了评论表，
+     # 分母变成"有评论的那些"，把没评论的工单排除在外了
+     "SELECT (SELECT COUNT(*) FROM ticket t JOIN ticket_comment cm "
+     "        ON cm.ticket_id = t.id AND cm.deleted = 0 "
+     "        WHERE t.deleted = 0 AND t.status = 'CLOSED') "
+     "     / (SELECT COUNT(*) FROM ticket WHERE deleted = 0 AND status = 'CLOSED') AS avg_comment",
+     False, ["join", "business"]),
     ("ticket-m-045", "MEDIUM", "按来源统计内部备注数量",
      "SELECT t.source, COUNT(*) AS cnt FROM ticket t "
      "JOIN ticket_comment cm ON cm.ticket_id = t.id AND cm.deleted = 0 "
@@ -481,9 +487,13 @@ TICKET_MODELED_2 = [
      "FROM ticket WHERE deleted = 0 AND created_at >= '2025-01-01' AND created_at < '2026-01-01'",
      False, ["business", "time"]),
     ("ticket-m-056", "HARD", "按优先级统计平均流转次数",
-     "SELECT t.priority, COUNT(f.id) / COUNT(DISTINCT t.id) AS avg_flow FROM ticket t "
-     "JOIN ticket_flow f ON f.ticket_id = t.id AND f.deleted = 0 "
-     "WHERE t.deleted = 0 GROUP BY t.priority", False, ["join", "business"]),
+     # 分母是**该优先级下的全部工单**，不是"有流转记录的那些"
+     "SELECT p.priority, IFNULL(f.cnt, 0) / p.cnt AS avg_flow FROM "
+     "(SELECT priority, COUNT(*) AS cnt FROM ticket WHERE deleted = 0 GROUP BY priority) p "
+     "LEFT JOIN (SELECT t.priority, COUNT(*) AS cnt FROM ticket t "
+     "           JOIN ticket_flow f ON f.ticket_id = t.id AND f.deleted = 0 "
+     "           WHERE t.deleted = 0 GROUP BY t.priority) f ON f.priority = p.priority",
+     False, ["join", "business"]),
     ("ticket-m-057", "HARD", "已关闭工单中，关闭时间早于 SLA 截止时间的比例是多少？",
      "SELECT SUM(CASE WHEN closed_at <= sla_deadline THEN 1 ELSE 0 END) / COUNT(*) AS ratio "
      "FROM ticket WHERE deleted = 0 AND status = 'CLOSED' AND closed_at IS NOT NULL",

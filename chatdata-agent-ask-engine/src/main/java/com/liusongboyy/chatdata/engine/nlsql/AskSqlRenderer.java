@@ -408,6 +408,18 @@ public final class AskSqlRenderer {
         // 6c. **行级权限谓词** —— 这是权限真正生效的地方
         appendRowScope(whereParts, params, allowed.rowScope(), model, dialect);
 
+        // 6d. **表的默认过滤** —— "什么算有效数据"的业务口径。
+        //
+        // 实测反复出现同一类错：问「2025 年保费合计」，模型自己补上
+        // `AND status = '生效'`（它觉得过期的保单不算保费）。那个判断不算离谱，
+        // 但它是**猜的**——SQL 合法、数字合理，只是少了三分之一，而没人知道。
+        //
+        // 配在建模里之后，模型不必猜；这里固定拼进 WHERE，每次都对。
+        //
+        // 片段来自管理员配置，不经模型产出，因此没有注入面。但仍然只接受
+        // **不含参数的纯条件文本**——带 ? 的片段会打乱参数顺序。
+        appendBaseFilters(whereParts, model, plan, dialect);
+
         if (!whereParts.isEmpty()) {
             sql.append(" WHERE ").append(String.join(" AND ", whereParts));
         }
@@ -637,6 +649,97 @@ public final class AskSqlRenderer {
             return null;
         }
     }
+
+    /**
+     * 把参与本次查询的表上的默认过滤条件拼进 WHERE。
+     *
+     * <p>只拼**本次真的用到的表**：没参与 FROM 的表拼它的条件会得到
+     * {@code Unknown column}，而那个错误离"某张表配了默认过滤"很远。
+     *
+     * <p>条件里若含占位符 {@code ?} 就拒绝——参数顺序会乱，而且我们没有它的值。
+     * 这是管理员手写片段唯一需要防的形态。
+     */
+    private static void appendBaseFilters(List<String> whereParts, SemanticModel model,
+                                          JoinPlanner.JoinPlan plan, SqlDialect dialect) {
+        Set<String> used = new LinkedHashSet<>();
+        used.add(plan.rootTableId());
+        plan.steps().forEach(step -> used.add(step.toTableId()));
+
+        for (String tableId : used) {
+            RegisteredTable t = model.domain().tableById(tableId).orElse(null);
+            if (t == null || t.baseFilter() == null) {
+                continue;
+            }
+            if (t.baseFilter().contains("?")) {
+                throw new SemanticException(SemanticException.Reason.INVALID_TABLE_DEFINITION,
+                        "表「" + t.displayName() + "」的默认过滤条件里不能带占位符："
+                                + t.baseFilter());
+            }
+            // 物理表给条件里的裸列名补上别名——多表时裸列名会歧义或注错表。
+            // 虚拟表包在子查询里，条件本来就在子查询作用域内，不加别名
+            whereParts.add(t.isPhysical()
+                    ? "(" + aliasColumns(t.baseFilter(), model.aliasOfTable(tableId), dialect) + ")"
+                    : "(" + t.baseFilter() + ")");
+        }
+    }
+
+    /**
+     * 给条件里的裸列名补上表别名。
+     *
+     * <p>只处理形如 {@code status = '生效'} 这种简单形态——识别标识符，跳过
+     * 字符串字面量、数字、SQL 关键字。**不做完整 SQL 解析**：这是管理员手写的
+     * 一小段条件，不是任意 SQL。
+     */
+    private static String aliasColumns(String condition, String alias, SqlDialect dialect) {
+        StringBuilder out = new StringBuilder(condition.length() + 16);
+        int i = 0;
+        while (i < condition.length()) {
+            char c = condition.charAt(i);
+            if (c == '\'') {
+                // 字符串字面量原样搬运（含转义的单引号）
+                int end = i + 1;
+                while (end < condition.length()) {
+                    if (condition.charAt(end) == '\'') {
+                        if (end + 1 < condition.length() && condition.charAt(end + 1) == '\'') {
+                            end += 2;
+                            continue;
+                        }
+                        break;
+                    }
+                    end++;
+                }
+                out.append(condition, i, Math.min(end + 1, condition.length()));
+                i = end + 1;
+                continue;
+            }
+            if (Character.isLetter(c) || c == '_') {
+                int end = i;
+                while (end < condition.length()
+                        && (Character.isLetterOrDigit(condition.charAt(end))
+                            || condition.charAt(end) == '_')) {
+                    end++;
+                }
+                String word = condition.substring(i, end);
+                if (SQL_KEYWORDS.contains(word.toUpperCase(Locale.ROOT))) {
+                    out.append(word);
+                } else {
+                    // 列名与别名都要按方言加引号——不加的话 Oracle/PostgreSQL
+                    // 会折叠大小写，SQL Server 遇到保留字还会直接报错
+                    out.append(dialect.quoteQualified(alias + "." + word));
+                }
+                i = end;
+                continue;
+            }
+            out.append(c);
+            i++;
+        }
+        return out.toString();
+    }
+
+    /** 条件片段里会出现的关键字，不当作列名。 */
+    private static final Set<String> SQL_KEYWORDS = Set.of(
+            "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE", "BETWEEN",
+            "TRUE", "FALSE", "CASE", "WHEN", "THEN", "ELSE", "END");
 
     /**
      * 行规则的谓词引用了哪些表。

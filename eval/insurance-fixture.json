@@ -298,7 +298,7 @@
     {
       "id": "insurance-024",
       "difficulty": "HARD",
-      "question": "2025 年生效的保单保费合计是多少？",
+      "question": "2025 年投保的保单保费合计是多少？",
       "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01'",
       "ordered": false,
       "columnOrder": "ANY",
@@ -377,7 +377,7 @@
       "id": "insurance-030",
       "difficulty": "HARD",
       "question": "2025 年理赔金额合计比申请金额合计少多少？",
-      "goldSql": "SELECT SUM(settle_amount) AS total_settle, SUM(claim_amount) AS total_claim FROM ins_claim WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01'",
+      "goldSql": "SELECT SUM(settle_amount) - SUM(claim_amount) AS diff FROM ins_claim WHERE report_date >= '2025-01-01' AND report_date < '2026-01-01'",
       "ordered": false,
       "columnOrder": "ANY",
       "tags": [
@@ -390,7 +390,7 @@
       "id": "insurance-031",
       "difficulty": "SIMPLE",
       "question": "保额最高的那类险种是什么？",
-      "goldSql": "SELECT product_type FROM ins_policy ORDER BY coverage_amount DESC LIMIT 1",
+      "goldSql": "SELECT product_type FROM ins_policy GROUP BY product_type ORDER BY SUM(coverage_amount) DESC LIMIT 1",
       "ordered": true,
       "columnOrder": "ANY",
       "tags": [
@@ -779,7 +779,7 @@
     {
       "id": "insurance-060",
       "difficulty": "HARD",
-      "question": "2025 年生效的保单中，健康险的保费合计是多少？",
+      "question": "2025 年投保的保单中，健康险的保费合计是多少？",
       "goldSql": "SELECT SUM(premium) AS total_premium FROM ins_policy WHERE effect_date >= '2025-01-01' AND effect_date < '2026-01-01' AND product_type = '健康险'",
       "ordered": false,
       "columnOrder": "ANY",

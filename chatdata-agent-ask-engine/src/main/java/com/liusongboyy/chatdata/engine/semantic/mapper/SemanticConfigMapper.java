@@ -144,7 +144,7 @@ public interface SemanticConfigMapper {
 
     @Select("""
             SELECT id, domain_id AS domainId, name, label, mode, sql_text AS sqlText,
-                   columns_json AS columnsJson, enabled
+                   columns_json AS columnsJson, enabled, base_filter AS baseFilter
             FROM ask_domain_table
             WHERE domain_id = #{domainId}
             ORDER BY sort_no, id

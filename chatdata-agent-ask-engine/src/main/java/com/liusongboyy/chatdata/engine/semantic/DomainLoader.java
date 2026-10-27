@@ -89,7 +89,8 @@ public final class DomainLoader {
                     parseMode(row.mode(), where),
                     row.sqlText(),
                     row.enabled(),
-                    loadColumns(row.columnsJson(), where));
+                    loadColumns(row.columnsJson(), where),
+                    row.baseFilter());
         } catch (SemanticException e) {
             // 子构造器（ColumnDef / RegisteredTable）抛的异常只有局部信息，
             // 如"列定义缺少物理列名"——不知道是哪个域哪张表。
