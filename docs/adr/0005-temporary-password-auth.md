@@ -20,7 +20,7 @@ GET  /sys/user/getUserInfo             → {success, result:{...}}
 GET  /sys/tenant/getCurrentUserTenant  → {success, result:{list:[...]}}
 ```
 
-已核实：**这些接口既不在 chatbi jar 里，也不在 jimu jar 里**——它们属于宿主框架 vendor-boot。
+已核实：**这些接口不在第三方产品的任何 jar 里**——它们属于宿主框架。
 因此不存在「开启 vendor 登录」这个选项，只能自己实现这套契约。
 
 ## 决定

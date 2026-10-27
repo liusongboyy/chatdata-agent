@@ -112,7 +112,7 @@ class SqlToolsAllowlistTest {
         @ParameterizedTest
         @ValueSource(strings = {
                 "SELECT * FROM ins_policy UNION SELECT * FROM chatdata_user",
-                "SELECT (SELECT count(*) FROM jimu_report) FROM ins_policy",
+                "SELECT (SELECT count(*) FROM other_table) FROM ins_policy",
         })
         @DisplayName("★ UNION / 标量子查询里夹带 —— 正则式筛查会被这些绕过")
         void sneakyForms(String sql) {

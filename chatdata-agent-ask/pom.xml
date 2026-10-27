@@ -13,7 +13,7 @@
     <packaging>jar</packaging>
 
     <name>chatdata-agent-ask</name>
-    <description>问数服务：嵌入 JimuChatBI，实现 JmReportTokenServiceI，暴露问数 API</description>
+    <description>问数服务：SSE 流式问答、管理台 API、会话历史</description>
 
     <properties>
         <jsqlparser.version>5.0</jsqlparser.version>

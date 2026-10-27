@@ -21,7 +21,7 @@
     <name>chatdata-agent-ask-engine</name>
     <description>
         自研问数引擎：语义层 + NL2SQL + 数据源适配 + 助理 + 权限。
-        取代 JimuChatBI，见 docs/adr/0006 与 .scratch/self-built-chatbi/spec.md。
+        自研引擎，见 docs/adr/0006 与 .scratch/self-built-chatbi/spec.md。
 
         包结构与各包的落地状态见 spec.md §8。
         注意该节历史快照曾一度过期——想知道某块做到哪，以代码和测试为准。
