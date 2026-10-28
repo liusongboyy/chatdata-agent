@@ -1,11 +1,15 @@
 # chat-data-agent
 
-**面向业务人员的中文问数系统。** 用户用自然语言提问，系统返回表格、图表与文字结论，
-不要求理解 SQL。
+**一个不让模型写 SQL 的问数系统。**
+
+业务人员用中文提问，得到表格、图表与结论。模型只产出**结构化的查询意图（DSL）**——
+查什么指标、按什么维度、什么时间范围——SQL 由确定性渲染器生成。结果是：
+答案可校验、权限可控、同一份配置永远生成同样的 SQL。
 
 [![Java](https://img.shields.io/badge/Java-21-blue)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-green)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-631-brightgreen)](CONTRIBUTING.md)
 
 ---
 
