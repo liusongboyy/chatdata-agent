@@ -49,8 +49,17 @@ jobs:
       - name: Verify jars
         run: |
           set -e
-          for m in iam ask gateway; do
-            jar=$(ls chatdata-agent-$m/target/chatdata-agent-$m-*-SNAPSHOT.jar)
+          # 只有这三个是可执行服务；engine / client / common 是库
+          for m in chatdata-gateway chatdata-query-service chatdata-identity-service; do
+            jar=$(ls "$m"/target/"$m"-*-SNAPSHOT.jar 2>/dev/null | grep -v original | head -1)
+            [ -n "$jar" ] || { echo "找不到 $m 的 jar"; exit 1; }
             echo "checking $jar"
             unzip -l "$jar" | grep -q 'BOOT-INF/' || { echo "$jar 不是可执行的 fat jar"; exit 1; }
+          done
+
+          # 库模块不该产出 fat jar——产出了说明 spring-boot-maven-plugin 的 skip 失效了
+          for m in chatdata-query-engine chatdata-identity-client; do
+            if unzip -l "$m"/target/"$m"-*-SNAPSHOT.jar 2>/dev/null | grep -q 'BOOT-INF/'; then
+              echo "$m 是库，不该是 fat jar"; exit 1
+            fi
           done
