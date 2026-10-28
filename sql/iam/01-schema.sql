@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS `iam_org` (
   `code`              VARCHAR(64)  NOT NULL COMMENT '稳定编码，展示与外部映射用；授权内部用 id',
   `name`              VARCHAR(100) NOT NULL,
   `path`              VARCHAR(500) NOT NULL COMMENT '物化路径，如 /1/12/37/',
+  `code_path`         VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '编码物化路径，如 /HQ/华东/上海/（给业务库看的，行规则用）',
   `sort_no`           INT          NOT NULL DEFAULT 0,
   `enabled`           TINYINT(1)   NOT NULL DEFAULT 1,
   `external_provider` VARCHAR(32)  NULL COMMENT '外部来源：feishu/ldap/...',
@@ -37,7 +38,10 @@ CREATE TABLE IF NOT EXISTS `iam_org` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_iam_org_code` (`tenant_id`, `code`),
   KEY `idx_iam_org_parent` (`tenant_id`, `parent_id`),
-  KEY `idx_iam_org_path` (`tenant_id`, `path`)
+  KEY `idx_iam_org_path` (`tenant_id`, `path`),
+  -- 前缀索引 191 字符：utf8mb4 下整列 1000 字符 = 4000 字节，超过 InnoDB 的 3072 上限。
+  -- 191 足以覆盖真实层级深度，且能匹配 `LIKE 'xxx%'` 的前缀扫描
+  KEY `idx_iam_org_code_path` (`tenant_id`, `code_path`(191))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='组织（树）';
 
 -- ── 用户 ──

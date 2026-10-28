@@ -29,6 +29,10 @@ public record IamPrincipal(
         String orgPath,
         /** 全部组织路径（兼岗）。行权限按它取并集；空表示未绑定组织。 */
         List<String> orgPaths,
+        /** 主组织的**编码**物化路径（/HQ/华东/上海/），业务库认这个。 */
+        String orgCodePath,
+        /** 全部组织**编码**物化路径（兼岗）。与 {@code orgPaths} 一一对应。 */
+        List<String> orgCodePaths,
         Set<String> roles,
         Set<String> permissions,
         Set<String> scope,
@@ -39,6 +43,7 @@ public record IamPrincipal(
 
     public IamPrincipal {
         orgPaths = orgPaths == null ? List.of() : List.copyOf(orgPaths);
+        orgCodePaths = orgCodePaths == null ? List.of() : List.copyOf(orgCodePaths);
         roles = roles == null ? Set.of() : dedupe(roles);
         permissions = permissions == null ? Set.of() : dedupe(permissions);
         scope = scope == null ? Set.of() : dedupe(scope);
@@ -67,6 +72,8 @@ public record IamPrincipal(
                 asString(body.get("orgCode")),
                 asString(body.get("orgPath")),
                 asList(body.get("orgPaths")),
+                asString(body.get("orgCodePath")),
+                asList(body.get("orgCodePaths")),
                 new java.util.LinkedHashSet<>(asList(body.get("roles"))),
                 new java.util.LinkedHashSet<>(asList(body.get("permissions"))),
                 new java.util.LinkedHashSet<>(asList(body.get("scope"))),

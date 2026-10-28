@@ -14,7 +14,7 @@ import java.util.Map;
 public interface OrgMapper {
 
     @Select("""
-            SELECT id, tenant_id AS tenantId, parent_id AS parentId, code, name, path,
+            SELECT id, tenant_id AS tenantId, parent_id AS parentId, code, name, path, code_path AS codePath,
                    sort_no AS sortNo, enabled, created_at AS createdAt
             FROM iam_org
             WHERE tenant_id = #{tenant}
@@ -31,7 +31,7 @@ public interface OrgMapper {
      * 少一个断言就等于没有。
      */
     @Select("""
-            SELECT id, tenant_id AS tenantId, parent_id AS parentId, code, name, path,
+            SELECT id, tenant_id AS tenantId, parent_id AS parentId, code, name, path, code_path AS codePath,
                    sort_no AS sortNo, enabled, created_at AS createdAt
             FROM iam_org
             WHERE id = #{id} AND tenant_id = #{tenant}
@@ -40,7 +40,7 @@ public interface OrgMapper {
 
     /** 无租户断言的版本，仅供 {@code AdminOrgService} 之外的内部调用（如按主键回读 path）。 */
     @Select("""
-            SELECT id, tenant_id AS tenantId, parent_id AS parentId, code, name, path,
+            SELECT id, tenant_id AS tenantId, parent_id AS parentId, code, name, path, code_path AS codePath,
                    sort_no AS sortNo, enabled, created_at AS createdAt
             FROM iam_org
             WHERE id = #{id}
@@ -49,7 +49,7 @@ public interface OrgMapper {
 
     @Select("""
             SELECT o.id, o.tenant_id AS tenantId, o.parent_id AS parentId, o.code, o.name,
-                   o.path, o.sort_no AS sortNo, o.enabled, o.created_at AS createdAt
+                   o.path, o.code_path AS codePath, o.sort_no AS sortNo, o.enabled, o.created_at AS createdAt
             FROM iam_user_org uo
             JOIN iam_org o ON o.id = uo.org_id
             WHERE uo.user_id = #{userId}
@@ -78,6 +78,26 @@ public interface OrgMapper {
     java.util.List<String> selectOrgPathsByUser(@Param("userId") long userId);
 
     /**
+     * 该用户所属的**全部**组织编码路径（主组织在前）。
+     *
+     * <p>与 {@link #selectOrgPathsByUser} 一一对应，只是取 code_path 而不是 path。
+     * 行规则的动态变量 {@code orgCodePaths} 用它——业务库里存的是组织编码，
+     * 用 id 路径一条都匹配不到。
+     *
+     * <p>同样排除已停用的组织：停用意味着那段树不再有效。
+     */
+    @Select("""
+            SELECT o.code_path
+            FROM iam_user_org uo
+            JOIN iam_org o ON o.id = uo.org_id
+            WHERE uo.user_id = #{userId}
+              AND o.enabled = 1
+              AND o.code_path <> ''
+            ORDER BY uo.is_primary DESC, o.id
+            """)
+    java.util.List<String> selectOrgCodePathsByUser(@Param("userId") long userId);
+
+    /**
      * 插入。path 先占位，拿到自增 id 后由调用方回填——
      * 路径必须包含自己的 id，不能在建行前算出来。
      */
@@ -100,4 +120,13 @@ public interface OrgMapper {
 
     @Update("UPDATE iam_org SET path = #{path} WHERE id = #{id}")
     int updatePath(@Param("id") long id, @Param("path") String path);
+
+    /**
+     * 回填编码路径。
+     *
+     * <p>与 {@link #updatePath} 同一次写入里完成：两条路径必须一致地反映同一棵树，
+     * 分开写会出现"id 路径已更新、编码路径还是旧父节点"的中间态。
+     */
+    @Update("UPDATE iam_org SET code_path = #{codePath} WHERE id = #{id}")
+    int updateCodePath(@Param("id") long id, @Param("codePath") String codePath);
 }

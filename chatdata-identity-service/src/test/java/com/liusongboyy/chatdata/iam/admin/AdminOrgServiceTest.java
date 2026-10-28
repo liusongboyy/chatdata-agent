@@ -40,7 +40,7 @@ class AdminOrgServiceTest {
     @Test
     @DisplayName("★ 子组织的 path = 父 path + 自己的 id + /")
     void childPathIncludesOwnId() {
-        when(orgs.selectById(1L, "t_default")).thenReturn(new OrgRow(1L, "t_default", null, "HQ", "总部", "/1/", 0, true, null));
+        when(orgs.selectById(1L, "t_default")).thenReturn(new OrgRow(1L, "t_default", null, "HQ", "总部", "/1/", "/HQ/", 0, true, null));
         doAnswer(inv -> {
             ((Map<String, Object>) inv.getArgument(0)).put("id", 12L);
             return 1;
@@ -50,6 +50,8 @@ class AdminOrgServiceTest {
 
         assertThat(id).isEqualTo(12L);
         verify(orgs).updatePath(12L, "/1/12/");
+        // 编码路径同步写入：/父编码路径/ + 自己的 code + /
+        verify(orgs).updateCodePath(12L, "/HQ/华南/");
     }
 
     @Test
@@ -63,6 +65,21 @@ class AdminOrgServiceTest {
         service.create(new AdminInputs.OrgCreate("HQ2", "第二总部", null, 0, true));
 
         verify(orgs).updatePath(5L, "/5/");
+        verify(orgs).updateCodePath(5L, "/HQ2/");
+    }
+
+    @Test
+    @DisplayName("★ 父组织缺编码路径 → 拒绝，不写入一条永远匹配不到数据的路径")
+    void rejectsParentWithoutCodePath() {
+        // 迁移没跑过的存量库：path 有值而 code_path 为空
+        when(orgs.selectById(1L, "t_default"))
+                .thenReturn(new OrgRow(1L, "t_default", null, "HQ", "总部", "/1/", "", 0, true, null));
+
+        assertThatThrownBy(() -> service.create(new AdminInputs.OrgCreate("华南", "华南大区", 1L, 30, true)))
+                .isInstanceOf(IamAdminException.class)
+                .hasMessageContaining("09-org-code-path.sql");
+
+        verify(orgs, never()).insertOrg(any());
     }
 
     @Test
@@ -89,7 +106,7 @@ class AdminOrgServiceTest {
     @DisplayName("更新只改名称/排序/启用，不动 code 与 path")
     void updateKeepsIdentity() {
         when(orgs.selectById(10L, "t_default"))
-                .thenReturn(new OrgRow(10L, "t_default", 1L, "华东", "华东大区", "/1/10/", 10, true, null));
+                .thenReturn(new OrgRow(10L, "t_default", 1L, "华东", "华东大区", "/1/10/", "/HQ/华东/", 10, true, null));
 
         service.update(10L, new AdminInputs.OrgUpdate("华东区域", 20, false));
 

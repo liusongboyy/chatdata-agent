@@ -37,7 +37,7 @@ chatdata:
       # 与厂商那套无关：本引擎的模型配置完全独立（见 ADR-0006）。
       base-url: ${LLM_BASE_URL:https://ark.cn-beijing.volces.com/api/coding/v3}
       api-key: ${LLM_API_KEY:}
-      model-name: ${LLM_MODEL:deepseek-v4-1-flash-260910}
+      model-name: ${LLM_MODEL:deepseek-v4-1-flash-261017}
       temperature: 0
       max-tokens: 16384
     datasource:

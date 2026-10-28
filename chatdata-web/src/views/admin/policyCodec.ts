@@ -70,7 +70,17 @@ export const ROW_OPERATORS = ['=', '!=', '>', '>=', '<', '<=', '包含', '前缀
 export const MASK_ACTION = '脱敏'
 
 /** 引擎认识的动态变量名。与后端 PolicyReferenceValidator 的 KNOWN_SYS_VARS 一致 */
-export const KNOWN_SYS_VARS: readonly string[] = ['orgCode', 'orgPath', 'orgPaths', 'userCode', 'userId']
+export const KNOWN_SYS_VARS: readonly string[] = [
+  'orgCode',
+  'orgPath',
+  'orgPaths',
+  // 编码路径：与 orgPath(s) 同构，只是用组织编码拼。业务库通常只认编码，
+  // 存的是 /HQ/华东/ 这类值而不是 /1/10/
+  'orgCodePath',
+  'orgCodePaths',
+  'userCode',
+  'userId',
+]
 
 export function emptyDomainPolicy(): DomainPolicy {
   return {

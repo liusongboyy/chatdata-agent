@@ -167,6 +167,10 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
         // 全部组织路径。行规则里 sysVar 写 orgPaths 时取它，支持兼岗的并集语义。
         // 单一组织时 orgPaths 与 orgPath 内容一致，两种写法等价
         attributes.put("orgPaths", principal.orgPaths());
+        // 编码路径。业务库认组织编码，行规则按它做前缀匹配；
+        // sysVar 写 orgCodePath / orgCodePaths 时取这两个
+        attributes.put("orgCodePath", principal.orgCodePath());
+        attributes.put("orgCodePaths", principal.orgCodePaths());
         attributes.put("roles", principal.roles());
         attributes.put("scope", principal.scope());
         attributes.put("tokenVersion", principal.tokenVersion());
@@ -212,14 +216,17 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
                 String.join("\u001e", p.permissions()),
                 // 组织路径**继续追加在末尾**。同样是为了滚动发布：
                 // 旧实例读到多出来的第 14 段会当作"字段数更多"而正常解析前面的
-                String.join("\u001e", p.orgPaths()));
+                String.join("\u001e", p.orgPaths()),
+                // 编码路径继续往后追加（第 15、16 段），规则同上
+                nullSafe(p.orgCodePath()),
+                String.join("\u001e", p.orgCodePaths()));
     }
 
     static IamPrincipal decode(String encoded) {
         String[] f = encoded.split("\u001f", -1);
-        // 12 → 13 → 14：段数不足的旧缓存会在这里抛，被 fromCache 捕获后退回问 IAM。
+        // 12 → 13 → 14 → 16：段数不足的旧缓存会在这里抛，被 fromCache 捕获后退回问 IAM。
         // 安全降级——多一次往返，不会读出错的身份
-        if (f.length < 14) {
+        if (f.length < 16) {
             throw new IllegalStateException("缓存内容字段数不足：" + f.length);
         }
         return new IamPrincipal(
@@ -231,6 +238,8 @@ public class IamIntrospector implements OpaqueTokenIntrospector {
                 emptyToNull(f[5]),
                 emptyToNull(f[6]),
                 splitList(f[13]),        // orgPaths（编码里追加在末尾，record 里紧跟 orgPath）
+                emptyToNull(f[14]),      // orgCodePath
+                splitList(f[15]),        // orgCodePaths
                 splitSet(f[7]),          // roles
                 // 权限在**编码里排最后**（追加），但 record 的分量顺序里紧跟 roles。
                 // 这两处顺序不一致是刻意的：编码顺序要迁就"新字段只能追加"，

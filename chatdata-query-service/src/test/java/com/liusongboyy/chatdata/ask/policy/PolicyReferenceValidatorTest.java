@@ -84,6 +84,38 @@ class PolicyReferenceValidatorTest {
     }
 
     @Test
+    @DisplayName("★ orgCodePath / orgCodePaths 被当作动态变量名时同样拦住")
+    void codePathSysVarNamesAreGuarded() {
+        when(roleDirectory.roles()).thenReturn(List.of(role("store_level", true)));
+
+        // 新增的编码路径变量必须进 KNOWN_SYS_VARS，否则同一种错法在它们上面放行
+        for (String v : List.of("orgCodePath", "orgCodePaths")) {
+            String json = """
+                    {"grantRoles":["store_level"],
+                     "rowRules":[{"id":5,"role":"store_level","field":"org_code_path",
+                                  "op":"前缀","value":"%s","sysVar":"","dynamic":false}]}""".formatted(v);
+
+            assertThatThrownBy(() -> validator.validateDomain(json))
+                    .as("静态规则的取值写成 " + v)
+                    .isInstanceOf(AdminException.class)
+                    .hasMessageContaining(v);
+        }
+    }
+
+    @Test
+    @DisplayName("编码路径作为动态变量时正常保存")
+    void codePathAsDynamicVarIsAllowed() {
+        when(roleDirectory.roles()).thenReturn(List.of(role("store_level", true)));
+
+        String json = """
+                {"grantRoles":["store_level"],
+                 "rowRules":[{"id":5,"role":"store_level","field":"org_code_path",
+                              "op":"前缀","value":"","sysVar":"orgCodePaths","dynamic":true}]}""";
+
+        assertThatCode(() -> validator.validateDomain(json)).doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("角色不存在 → 拒绝保存，并列出全部缺失的角色")
     void missingRoleRejects() {
         when(roleDirectory.roles()).thenReturn(List.of(role("analyst", true)));

@@ -75,8 +75,11 @@ public class PolicyReferenceValidator {
     }
 
     /** 引擎认识的动态变量名。静态规则的取值写成这些名字，必然是漏勾了「动态」。 */
-    private static final Set<String> KNOWN_SYS_VARS =
-            Set.of("orgCode", "orgPath", "orgPaths", "userCode", "userId");
+    private static final Set<String> KNOWN_SYS_VARS = Set.of(
+            "orgCode", "orgPath", "orgPaths",
+            // 编码路径：与 orgPath(s) 同构，只是用组织编码拼。业务库通常只认编码
+            "orgCodePath", "orgCodePaths",
+            "userCode", "userId");
 
     /**
      * 行规则的取值语义。

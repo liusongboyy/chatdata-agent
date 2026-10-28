@@ -3,9 +3,12 @@ package com.liusongboyy.chatdata.iam.admin;
 import com.liusongboyy.chatdata.common.core.result.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 管理面的异常映射。
@@ -47,6 +50,23 @@ public class AdminExceptionHandler {
                 request.getRequestURI(), e.getMessage());
         return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
                 .body(Result.error(403, "您没有该操作权限"));
+    }
+
+    /**
+     * 没有这个路径 → <strong>404</strong>，不是 500。
+     *
+     * <p>这条不能少。{@code NoResourceFoundException} 是静态资源处理器在"文件不存在"时
+     * 抛的，而本 advice 是全局的（没有 basePackages），不加这个处理器它会落到
+     * {@link #handleOther(Exception)}，把每一个 404 变成 500 "操作失败，请稍后重试"。
+     *
+     * <p>踩过的现场：浏览器请求 {@code /favicon.ico} 记一条 ERROR；在 IAM 的域名下点
+     * 一个属于 ask 的链接（{@code /app/ask}）返回 500 —— 看起来像 IAM 崩了，
+     * 实际只是"这个路径不归我管"。
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<Result<Void>> handleNotFound(Exception e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Result.error(404, "资源不存在"));
     }
 
     @ExceptionHandler(IllegalStateException.class)

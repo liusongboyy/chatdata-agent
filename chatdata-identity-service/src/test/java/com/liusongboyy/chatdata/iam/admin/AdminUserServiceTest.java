@@ -196,7 +196,7 @@ class AdminUserServiceTest {
     @DisplayName("按组织筛选走物化路径前缀，含子树")
     void orgFilterUsesPathPrefix() {
         when(orgs.selectById(10L, "t_default"))
-                .thenReturn(new OrgRow(10L, "t_default", null, "hq", "总部", "/1/10/", 0, true, null));
+                .thenReturn(new OrgRow(10L, "t_default", null, "hq", "总部", "/1/10/", "/hq/", 0, true, null));
         when(users.countPage(anyString(), any(), any(), any())).thenReturn(0L);
 
         service.list(1, 20, null, null, 10L);

@@ -90,6 +90,8 @@ public class IamUserDetailsService implements UserDetailsService {
                 org == null ? null : org.code(),
                 org == null ? null : org.path(),
                 orgs.selectOrgPathsByUser(user.id()),
+                orgs.selectOrgCodePathsByUser(user.id()),
+                org == null ? null : org.codePath(),
                 new HashSet<>(users.selectRoleCodes(user.id())),
                 permissions.resolve(user),
                 user.tokenVersion());

@@ -30,6 +30,14 @@ public record IamUserDetails(
          * 会让一半数据凭空消失。不含已停用的组织。
          */
         List<String> orgPaths,
+        /**
+         * 该用户所属**全部**组织的**编码**物化路径，主组织在前。
+         *
+         * <p>与 {@link #orgPaths} 一一对应，区别只在用 code 而不是 id 拼。
+         * 业务库通常只认组织编码，行规则按编码路径做前缀匹配才生效。
+         */
+        List<String> orgCodePaths,
+        String orgCodePath,
         Set<String> roles,
         /** 功能权限码（页面/按钮/tab）。与 {@code roles} 是两个维度：见 PermissionCatalog。 */
         Set<String> permissions,
@@ -38,6 +46,7 @@ public record IamUserDetails(
 
     public IamUserDetails {
         orgPaths = orgPaths == null ? List.of() : List.copyOf(orgPaths);
+        orgCodePaths = orgCodePaths == null ? List.of() : List.copyOf(orgCodePaths);
         roles = roles == null ? Set.of() : Set.copyOf(roles);
         permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
     }

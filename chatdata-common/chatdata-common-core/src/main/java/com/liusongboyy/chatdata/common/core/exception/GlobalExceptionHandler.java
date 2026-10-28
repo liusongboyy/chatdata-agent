@@ -9,6 +9,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理
@@ -36,6 +38,21 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Void> handleConstraintViolationException(ConstraintViolationException e) {
         return Result.error(400, e.getMessage());
+    }
+
+    /**
+     * 路径不存在 → 404，不是 500。
+     *
+     * <p>{@code NoResourceFoundException} 由静态资源处理器在"文件不存在"时抛出，
+     * 它是 {@code ServletException} 而不是 {@code ErrorResponse} 的 404——
+     * 不单独处理就会落到下面的兜底，把每个 404（含 {@code /favicon.ico}）报成 500。
+     * 那会让"链接写错了"看起来像"服务挂了"，排查方向完全跑偏。
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<Void> handleNotFound(Exception e) {
+        log.debug("路径不存在: {}", e.getMessage());
+        return Result.error(404, "资源不存在");
     }
 
     @ExceptionHandler(Exception.class)

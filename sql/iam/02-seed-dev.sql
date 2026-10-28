@@ -12,12 +12,15 @@ VALUES ('t_default', '默认租户', 1)
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
 
 -- 组织：根 + 两个区域。显式 id 仅为种子可读性；生产由自增分配。
-INSERT INTO `iam_org` (`id`, `tenant_id`, `parent_id`, `code`, `name`, `path`, `sort_no`, `enabled`)
+-- code_path 是编码物化路径（行规则的 orgCodePath(s) 取它），与 path 一一对应。
+-- 列由 sql/iam/09-org-code-path.sql 添加；这里一并写入，新库无需再跑回填。
+INSERT INTO `iam_org` (`id`, `tenant_id`, `parent_id`, `code`, `name`, `path`, `code_path`, `sort_no`, `enabled`)
 VALUES
-  (1,  't_default', NULL, 'HQ',   '总部',   '/1/',    0, 1),
-  (10, 't_default', 1,    '华东', '华东大区', '/1/10/', 10, 1),
-  (11, 't_default', 1,    '华北', '华北大区', '/1/11/', 20, 1)
-ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `path` = VALUES(`path`);
+  (1,  't_default', NULL, 'HQ',   '总部',   '/1/',    '/HQ/',      0, 1),
+  (10, 't_default', 1,    '华东', '华东大区', '/1/10/', '/HQ/华东/', 10, 1),
+  (11, 't_default', 1,    '华北', '华北大区', '/1/11/', '/HQ/华北/', 20, 1)
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `path` = VALUES(`path`),
+                        `code_path` = VALUES(`code_path`);
 
 -- 角色：沿用 ADR-0004 的三分。code 与现有权限配置里的字符串保持一致。
 --
