@@ -16,17 +16,42 @@ CREATE DATABASE IF NOT EXISTS `cvs_dw` DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_g
 USE `cvs_dw`;
 
 CREATE TABLE IF NOT EXISTS `dim_org` (
-  `id` BIGINT PRIMARY KEY, `org_path` VARCHAR(200) NOT NULL, `org_name` VARCHAR(64)
+  `id` BIGINT PRIMARY KEY,
+  -- id 物化路径。与 IAM 的 iam_org.path 同构，行规则 sysVar=orgPath(s) 配它
+  `org_path` VARCHAR(200) NOT NULL,
+  -- 编码物化路径。与 iam_org.code_path 同构，行规则 sysVar=orgCodePath(s) 配它。
+  -- 业务库通常认编码不认 id，所以真实项目里这一列才是常用的那一个
+  `org_code_path` VARCHAR(500) NOT NULL DEFAULT '',
+  `org_name` VARCHAR(64)
 ) COMMENT='组织维表（权限挂在这里）';
+
+-- 存量库补列：上面的 CREATE TABLE IF NOT EXISTS 对已存在的表是空操作。
+-- MySQL 8.4 没有 ADD COLUMN IF NOT EXISTS，用 information_schema 判。
+SET @has_col := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = 'cvs_dw' AND TABLE_NAME = 'dim_org' AND COLUMN_NAME = 'org_code_path'
+);
+SET @ddl := IF(@has_col = 0,
+  'ALTER TABLE `dim_org` ADD COLUMN `org_code_path` VARCHAR(500) NOT NULL DEFAULT '''' AFTER `org_path`',
+  'DO 0');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 CREATE TABLE IF NOT EXISTS `f_order` (`id` BIGINT PRIMARY KEY, `store_id` BIGINT, `amount` DECIMAL(12,2)) COMMENT='门店商品订购';
 CREATE TABLE IF NOT EXISTS `f_stock` (`id` BIGINT PRIMARY KEY, `store_id` BIGINT, `qty` INT) COMMENT='门店商品库存';
 CREATE TABLE IF NOT EXISTS `f_scrap` (`id` BIGINT PRIMARY KEY, `store_id` BIGINT, `amount` DECIMAL(12,2)) COMMENT='门店商品报废';
 CREATE TABLE IF NOT EXISTS `f_attendance` (`id` BIGINT PRIMARY KEY, `store_id` BIGINT, `emp_id` BIGINT) COMMENT='门店员工打卡';
 
+-- org_code_path 必须与 chatdata_iam.iam_org 的 code_path 一致；
+-- 对不上时行规则会匹配 0 行，而界面上看不出来（见 docs 里"静默失效"的说明）
 INSERT INTO `dim_org` VALUES
- (140,'/1/100/110/120/130/140/','上海门店1'),(141,'/1/100/110/120/130/141/','上海门店2'),
- (150,'/1/100/111/121/131/150/','北京门店1'),(160,'/1/100/112/122/132/160/','广州门店1')
-ON DUPLICATE KEY UPDATE `org_path`=VALUES(`org_path`), `org_name`=VALUES(`org_name`);
+ (140,'/1/100/110/120/130/140/','/HQ/HQ-CVS/SUB-EAST/DEPT-EAST-A/TEAM-EAST-A1/STORE-SH01/','上海门店1'),
+ (141,'/1/100/110/120/130/141/','/HQ/HQ-CVS/SUB-EAST/DEPT-EAST-A/TEAM-EAST-A1/STORE-SH02/','上海门店2'),
+ (150,'/1/100/111/121/131/150/','/HQ/HQ-CVS/SUB-NORTH/DEPT-NORTH-A/TEAM-NORTH-A1/STORE-BJ01/','北京门店1'),
+ (160,'/1/100/112/122/132/160/','/HQ/HQ-CVS/SUB-SOUTH/DEPT-SOUTH-A/TEAM-SOUTH-A1/STORE-GZ01/','广州门店1')
+ON DUPLICATE KEY UPDATE `org_path`=VALUES(`org_path`),
+                        `org_code_path`=VALUES(`org_code_path`), `org_name`=VALUES(`org_name`);
 
 INSERT INTO `f_order` VALUES (1,140,1000),(2,141,2600),(3,150,4600),(4,160,8600)
 ON DUPLICATE KEY UPDATE `amount`=VALUES(`amount`);
@@ -70,7 +95,7 @@ INSERT INTO `ask_domain_table` (`id`,`domain_id`,`name`,`label`,`mode`,`sql_text
  (230004,2300,'f_attendance','门店员工打卡','TABLE',NULL,
   '[{"col":"id","type":"bigint","agg":"COUNT","alias":"打卡次数","enabled":true}]',1,3,'demo'),
  (230005,2300,'dim_org','组织维表','TABLE',NULL,
-  '[{"col":"org_path","type":"varchar","agg":"","alias":"组织路径","enabled":true},{"col":"org_name","type":"varchar","agg":"","alias":"门店名称","enabled":true}]',1,4,'demo');
+  '[{"col":"org_path","type":"varchar","agg":"","alias":"组织路径","enabled":true},{"col":"org_code_path","type":"varchar","agg":"","alias":"组织编码路径","enabled":true},{"col":"org_name","type":"varchar","agg":"","alias":"门店名称","enabled":true}]',1,4,'demo');
 
 INSERT INTO `ask_assistant`
   (`id`,`name`,`avatar`,`description`,`welcome`,`domain_id`,`domain_ids`,`show_sql`,`status`,`questions_json`,`perm_json`,`sort_no`,`created_by`)

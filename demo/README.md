@@ -84,12 +84,21 @@ mysql -uroot -p < demo/03-ask-domain.sql          # 数据源 + 语义域
 `reviewer` 用 `=` 而不是 `starts_with`，是为了演示「组织树以后在门店下加子节点时，
 店长不该跟着看到」。这条差异由角色区分，不需要新机制。
 
+### id 路径 vs 编码路径
+
+上面用的是 `orgPaths`（id 物化路径，`/1/100/110/`）。真实业务库通常存组织**编码**，
+那时要用 `orgCodePaths`，字段指向 `dim_org.org_code_path`（`/HQ/HQ-CVS/SUB-EAST/`）。
+两者语义完全一致，只是 id 换成 code——选哪个取决于业务表里存的是什么。
+
+`dim_org` 两列都有，可以现场对同一份数据切换着验证。**两列必须与
+`chatdata_iam.iam_org` 的 `path` / `code_path` 对得上**，否则规则静默匹配 0 行。
+
 ## 常见错误
 
 | 症状 | 原因 |
 |---|---|
 | 所有人都看到全量 | 用户角色在 `unrestrictedRoles` 里，或行规则角色名写错（静默不匹配） |
-| 所有人都是 0 | `chatdata_cvs.org.path` 与 `iam_org.path` 不一致 |
+| 所有人都是 0 | `chatdata_cvs.org.path` 与 `iam_org.path` 不一致；或配了 `orgCodePath(s)` 但字段指向 id 路径（应指向 `code_path`） |
 | 报 `找不到字段 org_path` | 虚拟表 SQL 里 SELECT 了 `org_path`，但没登记到 `columns_json` |
 | 报 `找不到可用的日期列` | 「生效日期」列被删了；时间条件需要它 |
 | `Connection is not available` | 忘了跑 `04-encrypt-datasource.sh` |
