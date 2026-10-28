@@ -1,7 +1,13 @@
 package com.liusongboyy.chatdata.iam.config;
 
+import com.liusongboyy.chatdata.iam.channel.ChannelGrantAuthenticationConverter;
+import com.liusongboyy.chatdata.iam.channel.ChannelGrantAuthenticationProvider;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.liusongboyy.chatdata.iam.config.IamProperties;
+import com.liusongboyy.chatdata.iam.user.UserMapper;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -48,7 +54,9 @@ public class AuthorizationServerSecurityConfig {
             OAuth2AuthorizationConsentService consents,
             AuthorizationServerSettings settings,
             OAuth2TokenGenerator<?> tokenGenerator,
-            SecurityContextRepository securityContextRepository) throws Exception {
+            SecurityContextRepository securityContextRepository,
+            UserMapper userMapper,
+            IamProperties iamProperties) throws Exception {
 
         OAuth2AuthorizationServerConfigurer configurer = new OAuth2AuthorizationServerConfigurer();
 
@@ -63,7 +71,12 @@ public class AuthorizationServerSecurityConfig {
                         .authorizationConsentService(consents)
                         .authorizationServerSettings(settings)
                         .tokenGenerator(tokenGenerator)
-                        .oidc(Customizer.withDefaults()))
+                        .oidc(Customizer.withDefaults())
+                        // 渠道换令牌（飞书等）。自定义 grant，理由见 ChannelGrantType
+                        .tokenEndpoint(t -> t
+                                .accessTokenRequestConverter(new ChannelGrantAuthenticationConverter())
+                                .authenticationProvider(new ChannelGrantAuthenticationProvider(
+                                        authorizations, tokenGenerator, userMapper, iamProperties))))
                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository))

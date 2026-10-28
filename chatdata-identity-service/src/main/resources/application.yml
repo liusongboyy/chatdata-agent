@@ -37,6 +37,10 @@ iam:
     bff-redirect-uri: ${IAM_BFF_REDIRECT_URI:http://127.0.0.1:8080/bff/callback}
     resource-id: ask-resource-server
     resource-secret: ${IAM_RESOURCE_SECRET:}
+    # 渠道机器人（飞书/钉钉/企微）。用自定义 grant 换「代表已绑定用户」的令牌。
+    # 不设默认值——共用默认密钥等于谁都能冒充渠道
+    channel-id: channel-bot
+    channel-secret: ${IAM_CHANNEL_SECRET:}
 
 logging:
   level:

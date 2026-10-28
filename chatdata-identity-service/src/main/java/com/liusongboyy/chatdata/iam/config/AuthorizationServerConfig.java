@@ -1,5 +1,6 @@
 package com.liusongboyy.chatdata.iam.config;
 
+import com.liusongboyy.chatdata.iam.channel.ChannelGrantType;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -115,6 +116,7 @@ public class AuthorizationServerConfig {
         return args -> {
             seedBff(clients, props, passwordEncoder);
             seedResource(clients, props, passwordEncoder);
+            seedChannel(clients, props, passwordEncoder);
         };
     }
 
@@ -168,6 +170,46 @@ public class AuthorizationServerConfig {
                 .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .scope("iam.principal")
                 .tokenSettings(referenceTokens())
+                .build();
+        clients.save(client);
+        log.info("已注册 OAuth 客户端：{}", client.getClientId());
+    }
+
+    /**
+     * 渠道机器人（飞书/钉钉/企微）。
+     *
+     * <p>它只能换「已绑定用户」的令牌——权限边界在
+     * {@code ChannelGrantAuthenticationProvider} 里，不在这里。
+     *
+     * <p>**只管着 ask.read / ask.feedback**，与 BFF 同权。渠道不该比浏览器多任何能力：
+     * 它能看到的，就是那个人在 Web 上能看到的。
+     */
+    private static void seedChannel(RegisteredClientRepository clients, IamProperties props,
+                                    PasswordEncoder encoder) {
+        if (clients.findByClientId(props.getClients().getChannelId()) != null) {
+            return;
+        }
+        String secret = props.getClients().getChannelSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "缺少 iam.clients.channel-secret（环境变量 IAM_CHANNEL_SECRET）。"
+                            + "不设默认值——共用默认值等于谁都能冒充渠道为任意用户签发令牌。");
+        }
+        RegisteredClient client = RegisteredClient.withId(UUID.randomUUID().toString())
+                .clientId(props.getClients().getChannelId())
+                .clientSecret(encoder.encode(secret))
+                .clientName("渠道机器人")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .authorizationGrantType(ChannelGrantType.CHANNEL)
+                .scope("ask.read")
+                .scope("ask.feedback")
+                // 渠道不签发 refresh token，但 settings 仍是 reference——
+                // 决定 access token 的格式
+                .tokenSettings(TokenSettings.builder()
+                        .accessTokenFormat(OAuth2TokenFormat.REFERENCE)
+                        // 5 分钟。渠道拿到就立刻用，不需要长命；短 TTL 削弱泄露影响面
+                        .accessTokenTimeToLive(Duration.ofMinutes(5))
+                        .build())
                 .build();
         clients.save(client);
         log.info("已注册 OAuth 客户端：{}", client.getClientId());

@@ -37,6 +37,30 @@ public interface UserMapper {
             """)
     UserRow selectById(@Param("id") long id);
 
+    /**
+     * 按外部身份查用户。渠道（飞书/钉钉/企微）换令牌时用它反查。
+     *
+     * <p><strong>这是 channel grant 的安全支点。</strong>渠道提交
+     * {@code (provider=feishu, username)} 时，必须确认这个 username
+     * 确实绑定了本渠道——只校验白名单不反查，等于给了一把万能钥匙。
+     *
+     * <p>查不到返回 null（未绑定），调用方据此拒绝，不要抛异常——
+     * "未绑定"是正常状态，不是错误。
+     */
+    @Select("""
+            SELECT id, username, password_hash AS passwordHash, display_name AS displayName,
+                   status, token_version AS tokenVersion
+            FROM iam_user
+            WHERE tenant_id = #{tenant}
+              AND username = #{username}
+              AND external_provider = #{provider}
+              AND external_id IS NOT NULL
+              AND external_id <> ''
+            """)
+    UserRow selectBoundToChannel(@Param("tenant") String tenant,
+                                 @Param("username") String username,
+                                 @Param("provider") String provider);
+
     /** 启用中的角色码。停用角色不参与鉴权。 */
     @Select("""
             SELECT r.code

@@ -94,6 +94,16 @@ public class IamProperties {
         private String resourceId = "ask-resource-server";
         private String resourceSecret;
 
+        /**
+         * Channel 客户端（飞书/钉钉/企微机器人）。
+         *
+         * <p>它用自定义 grant 换取「代表某个已绑定用户」的令牌。
+         * 与资源服务器的区别：资源服务器证明"我是可信服务"，
+         * channel 还要证明"这个用户确实绑定在我的渠道上"——见 ChannelGrantAuthenticationProvider。
+         */
+        private String channelId = "channel-bot";
+        private String channelSecret;
+
         public String getBffId() {
             return bffId;
         }
@@ -132,6 +142,22 @@ public class IamProperties {
 
         public void setResourceSecret(String resourceSecret) {
             this.resourceSecret = resourceSecret;
+        }
+
+        public String getChannelId() {
+            return channelId;
+        }
+
+        public void setChannelId(String channelId) {
+            this.channelId = channelId;
+        }
+
+        public String getChannelSecret() {
+            return channelSecret;
+        }
+
+        public void setChannelSecret(String channelSecret) {
+            this.channelSecret = channelSecret;
         }
     }
 }
