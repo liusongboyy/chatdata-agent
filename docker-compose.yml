@@ -4,6 +4,9 @@
 #
 # 只起 MySQL 与 Redis；三个 Java 服务用 mvn package 后 java -jar 启动，
 # 原因见 docs/local-dev.md「为什么不用 mvn spring-boot:run」。
+#
+# 默认用非标准端口（13306 / 16379），避免与本机已装的 MySQL(3306)/Redis(6379) 撞车。
+# 想用标准端口就设 MYSQL_PORT=3306 REDIS_PORT=6379。
 
 services:
   mysql:
@@ -19,7 +22,7 @@ services:
       # 中文排序与大小写：默认配置下 ORDER BY 中文名的顺序与预期不同
       - --default-time-zone=+08:00
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "${MYSQL_PORT:-13306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       # 首次启动自动建另外两个库（chatdata_ask 由 MYSQL_DATABASE 建）
@@ -36,7 +39,7 @@ services:
     container_name: chatdata-redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-16379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:

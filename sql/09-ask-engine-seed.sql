@@ -17,6 +17,13 @@
 -- 需要连库执行时，由管理页写入（会经 PasswordCipher 加密）。
 -- 加载与渲染不依赖密码，故不影响验证。
 -- ---------------------------------------------------------------------
+-- ⚠️ **端口要跟着你的环境改。** 用 docker compose 起的库在 13306，
+--    本机自装的 MySQL 在 3306。库里存的是绝对地址，配错了会让
+--    「问数执行」这一步连不上，而**加载与启动不受影响**——
+--    所以错误会出现在第一次真实查询时，不在启动时。
+--
+--    也可以先跑下面这行改，代替编辑本文件：
+--      UPDATE ask_datasource SET url = REPLACE(url, ':3306/', ':13306/') WHERE id = 1;
 INSERT INTO `ask_datasource` (`id`, `name`, `db_type`, `driver_class`, `url`, `username`, `password_enc`, `enabled`)
 VALUES (1, '本地问数库', 'MYSQL5.7', 'com.mysql.cj.jdbc.Driver',
         'jdbc:mysql://127.0.0.1:3306/chatdata_demo?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai',

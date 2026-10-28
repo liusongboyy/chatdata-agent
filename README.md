@@ -44,7 +44,8 @@
 需要 **Java 21**、**Maven**、**MySQL 8**、**Redis**。
 
 ```bash
-# 1) 起依赖
+# 1) 起依赖（默认非标准端口：MySQL 13306 / Redis 16379，
+#    避免与本机已装的 3306/6379 撞车）
 docker compose up -d
 
 # 2) 配置
@@ -63,6 +64,9 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
 do mysql -uroot -p chatdata_ask < "$f"; done
 mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql   # 演示数据（可选）
+
+# 用 docker 起的库，种子里的数据源地址要改端口（库里存的是绝对地址）：
+#   UPDATE ask_datasource SET url = REPLACE(url, ':3306/', ':13306/') WHERE id = 1;
 mysql -uroot -p chatdata_iam < sql/iam/01-schema.sql
 mysql -uroot -p chatdata_iam < sql/iam/07-role-permission.sql
 mysql -uroot -p chatdata_iam < sql/iam/02-seed-dev.sql   # 建 admin / admin123
