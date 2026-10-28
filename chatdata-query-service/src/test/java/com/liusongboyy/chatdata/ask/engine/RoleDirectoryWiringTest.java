@@ -27,6 +27,7 @@ import static org.mockito.Mockito.when;
  * <p>IAM 客户端在这里被替换掉：本用例要验的是"装配接对了没有"，
  * 而不是 HTTP 细节（后者由 {@code IamRoleDirectoryClientTest} 覆盖）。
  */
+@DatabaseAvailable
 @SpringBootTest(properties = {
         "chatdata.auth.secret=role-dir-test-secret",
         "chatdata.engine.datasource.secret=role-dir-test-engine-secret",

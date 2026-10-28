@@ -1,4 +1,4 @@
-# chat-data-agent
+/# chat-data-agent
 
 **一个不让模型写 SQL 的问数系统。**
 
@@ -8,8 +8,8 @@
 
 [![Java](https://img.shields.io/badge/Java-21-blue)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-green)](https://spring.io/projects/spring-boot)
+[![agentscope-java](https://img.shields.io/badge/agentscope--java-2.0.4-orange)](https://github.com/agentscope-ai/agentscope-java)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-631-brightgreen)](CONTRIBUTING.md)
 
 ---
 

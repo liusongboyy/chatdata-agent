@@ -36,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 所以这里验到 {@code AgentStateStore} 为止——它是 {@code DslSource} 唯一的
  * 新增依赖，也是唯一会连库的那个。
  */
+@DatabaseAvailable
 @SpringBootTest(properties = {
         "chatdata.auth.secret=session-wiring-test-secret",
         "chatdata.engine.datasource.secret=session-wiring-test-engine-secret",
