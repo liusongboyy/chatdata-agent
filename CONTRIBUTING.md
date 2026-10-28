@@ -18,13 +18,14 @@
 
 ```bash
 mvn test                                    # 必须全过
-npm --prefix chatdata-agent-web run build   # 改了前端才需要
+npm --prefix chatdata-web run build   # 改了前端才需要
 git status                                  # 确认构建产物一起提交了
 ```
 
 ### 前端产物必须提交
 
-`chatdata-agent-*/src/main/resources/static/**` 是 `npm run build` 生成的，
+`chatdata-query-service/src/main/resources/static/**` 与
+`chatdata-identity-service/src/main/resources/static/**` 是 `npm run build` 生成的，
 但 **Maven 不会构建它**（没有 frontend-maven-plugin）。
 所以这些文件要在 git 里，否则 clone 下来是白屏。
 

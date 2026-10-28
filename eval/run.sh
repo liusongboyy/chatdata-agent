@@ -38,9 +38,9 @@ fi
 # 评测跑的是引擎的当前源码，先把最新的 ask-engine 装进本地仓库，
 # 否则 spring-boot:run 会用到 ~/.m2 里的旧快照
 cd "$ROOT"
-mvn -q -pl chatdata-agent-ask-engine -am install -DskipTests
+mvn -q -pl chatdata-query-engine -am install -DskipTests
 
-cd "$ROOT/chatdata-agent-ask"
+cd "$ROOT/chatdata-query-service"
 
 # 本地开发从统一的环境文件取密钥；CI 里直接注入环境变量即可
 if [ -f "$HOME/.chatdata-agent.env" ]; then

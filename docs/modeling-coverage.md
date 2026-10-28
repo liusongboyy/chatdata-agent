@@ -141,8 +141,8 @@ GET /api/engine/admin/domains/{id}/modeling-check
 
 | 内容 | 位置 |
 |---|---|
-| 覆盖度检查实现 | `chatdata-agent-ask-engine/.../startup/ModelingCoverageCheck.java` |
+| 覆盖度检查实现 | `chatdata-query-engine/.../startup/ModelingCoverageCheck.java` |
 | 管理台端点 | `GET /api/engine/admin/domains/{id}/modeling-check` |
 | 实测数据与对照 | `eval/README.md` 的「建模覆盖度是单查询基线最大的杠杆」一节 |
-| 列画像实现 | `chatdata-agent-ask-engine/.../semantic/ColumnProfiler.java` |
-| 术语的应用方式 | `chatdata-agent-ask-engine/.../semantic/Term.java`（`ApplyKind`） |
+| 列画像实现 | `chatdata-query-engine/.../semantic/ColumnProfiler.java` |
+| 术语的应用方式 | `chatdata-query-engine/.../semantic/Term.java`（`ApplyKind`） |

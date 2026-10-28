@@ -22,6 +22,8 @@ secrets.*
 !**/src/**/test/**/secrets.*
 
 # ── IDE ──
+# 整个 .idea/ 都不该进库：workspace.xml 每次打开项目都变，会给每个 PR 制造无关 diff
+.idea/
 .idea/modules.xml
 .idea/jarRepositories.xml
 .idea/compiler.xml

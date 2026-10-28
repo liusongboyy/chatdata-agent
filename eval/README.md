@@ -416,7 +416,7 @@ GET /api/engine/admin/domains/{id}/modeling-check
 ## 报告
 
 - 终端：总览 + 每个数据集一段 + 未通过明细
-- JSON：`chatdata-agent-ask/target/eval-report.json`
+- JSON：`chatdata-query-service/target/eval-report.json`
   - 顶层是 `EvalSuiteReport`（多数据集汇总）
   - `reports[]` 每个数据集一份 `EvalReport`
   - 每条用例带 `goldSql`、`generatedSql`、行数、耗时、失败原因

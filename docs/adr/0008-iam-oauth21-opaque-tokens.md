@@ -11,7 +11,7 @@ Status: accepted
 
 当前身份与权限能力分散在三处：
 
-- **登录**在 `chatdata-agent-ask/.../auth`：自研 HMAC 令牌，无 scope、无法单独吊销；
+- **登录**在 `chatdata-query-service/.../auth`：自研 HMAC 令牌，无 scope、无法单独吊销；
 - **用户/角色**在 ask 的库表（`chatdata_user` / `sys_role` / `sys_user_role`）；
 - **数据权限**在 ask-engine 的 `perm_json`，由 `PermissionGuard` 与 `AskSqlRenderer` 在渲染 SQL 时注入。
 
@@ -21,8 +21,8 @@ ADR-0002 的结论仍然有效且是硬约束：**行级/列级权限必须在�
 
 ## 决定
 
-1. **新增 `chatdata-agent-iam`**：独立部署的认证与权限中心，拥有用户、组织、角色、授权、数据策略、渠道身份绑定，使用自己的库。
-2. **网关成为唯一入口**：`chatdata-agent-gateway` 从空壳变为 Spring Cloud Gateway，承担路由、会话/内省、限流、CORS、静态前端与渠道回调入口。
+1. **新增 `chatdata-identity-service`**：独立部署的认证与权限中心，拥有用户、组织、角色、授权、数据策略、渠道身份绑定，使用自己的库。
+2. **网关成为唯一入口**：`chatdata-gateway` 从空壳变为 Spring Cloud Gateway，承担路由、会话/内省、限流、CORS、静态前端与渠道回调入口。
 3. **认证与授权采用 OAuth 2.1 + Spring Security**：
    - IAM 用 Spring Authorization Server；
    - 授权码 + PKCE、客户端凭证、刷新轮换、撤销、内省、Token Exchange；
@@ -32,7 +32,7 @@ ADR-0002 的结论仍然有效且是硬约束：**行级/列级权限必须在�
    - Redis 存 BFF 会话、内省缓存、限流计数与吊销广播；
    - 资源服务器通过 RFC 7662 内省校验，失败 fail-closed。
 5. **Web 采用 BFF 模式**：浏览器只拿 HttpOnly `SESSION` Cookie；令牌只在网关，由网关注入上游 `Authorization`。
-6. **IAM 自身也前后端分离**：新增 `chatdata-agent-iam-web`（Vue 3 + Vite），构建产物放进 IAM 的静态资源目录，与 `chatdata-agent-web → chatdata-agent-ask` 的做法一致。登录不是服务端模板表单，而是 SPA 调用 JSON 登录接口建立会话，然后浏览器继续 `/oauth2/authorize` 授权码流程。**不使用 Thymeleaf。**
+6. **IAM 自身也前后端分离**：新增 `chatdata-identity-web`（Vue 3 + Vite），构建产物放进 IAM 的静态资源目录，与 `chatdata-web → chatdata-query-service` 的做法一致。登录不是服务端模板表单，而是 SPA 调用 JSON 登录接口建立会话，然后浏览器继续 `/oauth2/authorize` 授权码流程。**不使用 Thymeleaf。**
 7. **IAM 是权限的事实来源，引擎仍是执行点**：
    - 授权与数据策略集中存储在 IAM；
    - 引擎通过 `iam-client` 获取有效策略，映射成现有 `DomainPermission`；

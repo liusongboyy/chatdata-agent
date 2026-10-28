@@ -16,12 +16,12 @@
     <name>chatdata-agent</name>
     <url>http://maven.apache.org</url>
     <modules>
-        <module>chatdata-agent-common</module>
-        <module>chatdata-agent-gateway</module>
-        <module>chatdata-agent-iam</module>
-        <module>chatdata-agent-iam-client</module>
-        <module>chatdata-agent-ask</module>
-        <module>chatdata-agent-ask-engine</module>
+        <module>chatdata-common</module>
+        <module>chatdata-gateway</module>
+        <module>chatdata-identity-service</module>
+        <module>chatdata-identity-client</module>
+        <module>chatdata-query-service</module>
+        <module>chatdata-query-engine</module>
     </modules>
 
     <properties>
@@ -57,36 +57,36 @@
         <dependencies>
             <!--
               本工程各模块的版本统一在此管理。放在根 pom 而非 common 聚合器，
-              是因为 chatdata-agent-ask 等模块的 parent 是根 pom，
+              是因为 chatdata-query-service 等模块的 parent 是根 pom，
               聚合器里的管理对它们不生效。
             -->
             <dependency>
                 <groupId>com.liusongboyy.chatdata</groupId>
-                <artifactId>chatdata-agent-common-core</artifactId>
+                <artifactId>chatdata-common-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.liusongboyy.chatdata</groupId>
-                <artifactId>chatdata-agent-common-mybatis</artifactId>
+                <artifactId>chatdata-common-mybatis</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.liusongboyy.chatdata</groupId>
-                <artifactId>chatdata-agent-common-redis</artifactId>
+                <artifactId>chatdata-common-redis</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.liusongboyy.chatdata</groupId>
-                <artifactId>chatdata-agent-ask-engine</artifactId>
+                <artifactId>chatdata-query-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.liusongboyy.chatdata</groupId>
-                <artifactId>chatdata-agent-iam-client</artifactId>
+                <artifactId>chatdata-identity-client</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!--
-              Spring Cloud BOM。网关（chatdata-agent-gateway）用 Spring Cloud Gateway，
+              Spring Cloud BOM。网关（chatdata-gateway）用 Spring Cloud Gateway，
               版本由它统一管理；此前没有模块用到 Spring Cloud，所以只定义了属性没导入 BOM。
             -->
             <dependency>
@@ -116,7 +116,7 @@
                 <scope>import</scope>
             </dependency>
             <!--
-              agentscope-java。问数引擎（chatdata-agent-ask-engine）用它承担 agent 循环、
+              agentscope-java。问数引擎（chatdata-query-engine）用它承担 agent 循环、
               工具调用、结构化输出与会话持久化。
 
               版本由本 BOM 统一管理，各模块只声明 artifactId 不写版本。

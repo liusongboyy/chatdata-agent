@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.liusongboyy.chatdata</groupId>
+        <artifactId>chatdata-agent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <!--
+      groupId 显式声明为 com.liusongboyy.chatdata，与 common-* 各库模块一致。
+      根 pom（chatdata-agent）与 chatdata-query-service 用的是 com.liusongboyy——
+      项目里两种写法并存。本模块是**库**，跟随库那一套。
+    -->
+    <groupId>com.liusongboyy.chatdata</groupId>
+    <artifactId>chatdata-query-engine</artifactId>
+    <packaging>jar</packaging>
+
+    <name>chatdata-query-engine</name>
+    <description>
+        自研问数引擎：语义层 + NL2SQL + 数据源适配 + 助理 + 权限。
+        自研引擎，见 docs/adr/0006 与 .scratch/self-built-chatbi/spec.md。
+
+        包结构与各包的落地状态见 spec.md §8。
+        注意该节历史快照曾一度过期——想知道某块做到哪，以代码和测试为准。
+    </description>
+
+    <dependencies>
+        <!--
+          本项目自己的持久层约定（MyBatis-Plus + Hikari）。
+          引擎读语义配置走 Mapper，与本项目其余模块一致——
+          单独引一个 ORM 会让团队多记一套用法，收益不抵成本。
+        -->
+        <dependency>
+            <groupId>com.liusongboyy.chatdata</groupId>
+            <artifactId>chatdata-common-mybatis</artifactId>
+        </dependency>
+
+        <!-- agentscope：agent 循环、工具调用、结构化输出、会话持久化。版本由根 pom 的 BOM 管理 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-openai</artifactId>
+        </dependency>
+        <!--
+          直连模式的表级白名单校验。**只用来读出 SQL 引用了哪些表**，不改写 SQL——
+          改写方案见 docs/adr/0002（已否决）。
+        -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+        </dependency>
+
+        <!--
+          会话状态存储（多轮追问）。agentscope 的 Memory 自 2.0.0 起废弃，
+          改用 AgentStateStore；本工程用 MySQL 实现，复用应用自己的数据源。
+        -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-mysql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- SqlTools 需要 javax.sql.DataSource 与 JDBC 驱动类型 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- 本模块是库，不是可执行应用：禁用 repackage，避免产出不可用的 fat jar -->
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

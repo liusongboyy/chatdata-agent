@@ -74,9 +74,9 @@ mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql  # 会打印角色与超
 
 # 4) 构建并启动
 mvn -DskipTests package
-java -jar chatdata-agent-iam/target/chatdata-agent-iam-*-SNAPSHOT.jar     &
-java -jar chatdata-agent-ask/target/chatdata-agent-ask-*-SNAPSHOT.jar     &
-java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-*-SNAPSHOT.jar &
+java -jar chatdata-identity-service/target/chatdata-identity-service-*-SNAPSHOT.jar     &
+java -jar chatdata-query-service/target/chatdata-query-service-*-SNAPSHOT.jar     &
+java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 ```
 
 打开 <http://127.0.0.1:8080/app/>，默认账号 `admin` / `admin123`。
@@ -109,13 +109,13 @@ java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-*-SNAPSHOT.jar &
 
 | 模块 | 说明 |
 |---|---|
-| `chatdata-agent-gateway` | 唯一入口：路由、BFF 会话、令牌中继 |
-| `chatdata-agent-ask` | 问数服务：SSE、管理台 API、会话历史 |
-| `chatdata-agent-ask-engine` | 问数引擎：语义模型、DSL、SQL 渲染、权限执行 |
-| `chatdata-agent-iam` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
-| `chatdata-agent-iam-client` | 服务间读取身份与目录的客户端 |
-| `chatdata-agent-web` | 问数前端（Vue 3） |
-| `chatdata-agent-iam-web` | 账号中心前端（Vue 3） |
+| `chatdata-gateway` | 唯一入口：路由、BFF 会话、令牌中继 |
+| `chatdata-query-service` | 问数服务：SSE、管理台 API、会话历史 |
+| `chatdata-query-engine` | 问数引擎：语义模型、DSL、SQL 渲染、权限执行 |
+| `chatdata-identity-service` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
+| `chatdata-identity-client` | 服务间读取身份与目录的客户端 |
+| `chatdata-web` | 问数前端（Vue 3） |
+| `chatdata-identity-web` | 账号中心前端（Vue 3） |
 
 ## 文档
 
@@ -135,7 +135,7 @@ java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-*-SNAPSHOT.jar &
 
 ```bash
 mvn test                                    # 631 个测试
-npm --prefix chatdata-agent-web run build   # 前端（产物要一起提交，见下）
+npm --prefix chatdata-web run build   # 前端（产物要一起提交，见下）
 ```
 
 **前端产物必须提交。** Maven 不构建前端（没有 frontend-maven-plugin），

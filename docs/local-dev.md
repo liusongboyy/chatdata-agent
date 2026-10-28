@@ -131,9 +131,9 @@ export JAVA_HOME=/Users/liusongbo/Library/Java/JavaVirtualMachines/azul-21.0.11/
 
 mvn -q -DskipTests install     # 前端产物已打进 ask/iam 的 static，改前端要先 npm run build
 
-nohup java -jar chatdata-agent-iam/target/chatdata-agent-iam-1.0.0-SNAPSHOT.jar     > /tmp/iam.log 2>&1 &
-nohup java -jar chatdata-agent-ask/target/chatdata-agent-ask-1.0.0-SNAPSHOT.jar     > /tmp/ask.log 2>&1 &
-nohup java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-1.0.0-SNAPSHOT.jar > /tmp/gw.log 2>&1 &
+nohup java -jar chatdata-identity-service/target/chatdata-identity-service-1.0.0-SNAPSHOT.jar     > /tmp/iam.log 2>&1 &
+nohup java -jar chatdata-query-service/target/chatdata-query-service-1.0.0-SNAPSHOT.jar     > /tmp/ask.log 2>&1 &
+nohup java -jar chatdata-gateway/target/chatdata-gateway-1.0.0-SNAPSHOT.jar > /tmp/gw.log 2>&1 &
 ```
 
 顺序无所谓，但 IAM 要能连上 Redis，ask 要能连上 MySQL。
@@ -143,8 +143,8 @@ nohup java -jar chatdata-agent-gateway/target/chatdata-agent-gateway-1.0.0-SNAPS
 两个前端都是独立 npm 工程（不是 Maven module），构建产物输出到后端 `static/`：
 
 ```bash
-(cd chatdata-agent-web     && npm run build)   # → chatdata-agent-ask/src/main/resources/static/app
-(cd chatdata-agent-iam-web && npm run build)   # → chatdata-agent-iam/src/main/resources/static/iam/app
+(cd chatdata-web     && npm run build)   # → chatdata-query-service/src/main/resources/static/app
+(cd chatdata-identity-web && npm run build)   # → chatdata-identity-service/src/main/resources/static/iam/app
 ```
 
 **必须先 build 再 `mvn install`**，否则打进 jar 的是旧产物。
@@ -177,7 +177,7 @@ ask 没有本地登录，`/api/**` 由资源服务器内省 IAM 令牌。
 `java -jar` 跑的是 `target/*-SNAPSHOT.jar` 里的东西。Maven 增量构建在
 "源码时间戳没变"或"只是下游模块变了"时**可能跳过 repackage**，于是 fat jar 里
 嵌的还是上一版引擎模块。实测踩到过：改了 `ask-engine` 的解析器，
-`mvn install` 报成功，但 `chatdata-agent-ask/target/*.jar` 的时间戳没变，
+`mvn install` 报成功，但 `chatdata-query-service/target/*.jar` 的时间戳没变，
 运行中的服务行为与修复前完全一致——而评测（走 `spring-boot:run`，用 target/classes）
 却是通过的，两边对不上，很容易误判成"配置问题"。
 
@@ -185,14 +185,14 @@ ask 没有本地登录，`/api/**` 由资源服务器内省 IAM 令牌。
 
 ```bash
 # ① 引擎模块的 jar 时间戳
-ls -l chatdata-agent-ask-engine/target/*.jar
+ls -l chatdata-query-engine/target/*.jar
 
 # ② ask 的 fat jar 时间戳（必须是刚刚）
-ls -l chatdata-agent-ask/target/chatdata-agent-ask-*.jar
+ls -l chatdata-query-service/target/chatdata-query-service-*.jar
 
 # ③ fat jar 里嵌的引擎是不是新版
-unzip -p chatdata-agent-ask/target/chatdata-agent-ask-*.jar \
-  BOOT-INF/lib/chatdata-agent-ask-engine-1.0.0-SNAPSHOT.jar > /tmp/eng.jar
+unzip -p chatdata-query-service/target/chatdata-query-service-*.jar \
+  BOOT-INF/lib/chatdata-query-engine-1.0.0-SNAPSHOT.jar > /tmp/eng.jar
 unzip -p /tmp/eng.jar com/liusongboyy/chatdata/engine/agent/DslParser.class > /tmp/p.class
 python3 -c "print(b'granularity' in open('/tmp/p.class','rb').read())"
 ```
@@ -203,8 +203,8 @@ python3 -c "print(b'granularity' in open('/tmp/p.class','rb').read())"
 改完引擎或宿主代码后，用**强制重新打包**而不是 `install`：
 
 ```bash
-rm -f chatdata-agent-ask/target/chatdata-agent-ask-*.jar
-mvn -q -pl chatdata-agent-ask -am -DskipTests package
+rm -f chatdata-query-service/target/chatdata-query-service-*.jar
+mvn -q -pl chatdata-query-service -am -DskipTests package
 ```
 
 `-am`（also make）会把依赖的引擎模块一起构建；`rm` 是为了绕开增量判断。
