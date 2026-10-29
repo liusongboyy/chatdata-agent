@@ -53,7 +53,8 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/11-ask-assistant.sql sql/12-ask-agent-session.sql \
          sql/14-ask-sql-example.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
-         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
+         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
+         sql/21-channel.sql
 do
   mysql -uroot -p chatdata_ask < "$f"
 done
@@ -113,6 +114,13 @@ set -a; . ~/.chatdata-agent.env; set +a
 | `CHATDATA_ENGINE_DS_SECRET` | 数据源密码的加解密密钥，**必填** |
 | `IAM_BFF_SECRET` | 网关 BFF 客户端密钥 |
 | `IAM_RESOURCE_SECRET` | 服务间读取角色/用户目录的密钥 |
+| `IAM_CHANNEL_SECRET` | 渠道换取「代表用户」令牌的客户端密钥 |
+| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | 飞书自建应用凭证 |
+| `FEISHU_ENCRYPT_KEY` | 飞书事件加密密钥。**启用渠道后必填**——不配则事件明文传输 |
+| `FEISHU_VERIFICATION_TOKEN` | 回调地址校验用（选填，配了多一道来源校验） |
+| `BIND_BASE_URL` | 用户在飞书点「立即绑定」时浏览器打开的地址（网关），不是回调地址 |
+
+飞书渠道的完整接入步骤见 [feishu-channel-setup.md](feishu-channel-setup.md)。
 
 ## 启动
 
@@ -120,9 +128,10 @@ set -a; . ~/.chatdata-agent.env; set +a
 
 | 服务 | 端口 | 说明 |
 |---|---|---|
-| gateway | 8080 | 唯一入口 |
+| gateway | 8080 | 浏览器唯一入口 |
 | ask | 8081 | 只被网关代理，不直接对外 |
 | IAM | 9000 | 账号中心 |
+| channel | 20000 | IM 渠道。**不经过网关**——它的入站是飞书 webhook，不是浏览器 |
 
 ```bash
 cd /Users/liusongbo/selfProjects/chatdata-agent
@@ -134,9 +143,19 @@ mvn -q -DskipTests install     # 前端产物已打进 ask/iam 的 static，改�
 nohup java -jar chatdata-identity-service/target/chatdata-identity-service-1.0.0-SNAPSHOT.jar     > /tmp/iam.log 2>&1 &
 nohup java -jar chatdata-query-service/target/chatdata-query-service-1.0.0-SNAPSHOT.jar     > /tmp/ask.log 2>&1 &
 nohup java -jar chatdata-gateway/target/chatdata-gateway-1.0.0-SNAPSHOT.jar > /tmp/gw.log 2>&1 &
+
+# 可选：飞书渠道。不接飞书就不用起它
+nohup java -jar chatdata-channel/target/chatdata-channel-1.0.0-SNAPSHOT.jar > /tmp/ch.log 2>&1 &
 ```
 
 顺序无所谓，但 IAM 要能连上 Redis，ask 要能连上 MySQL。
+
+**channel 两个容易搞混的地址**：
+
+- **回调地址**（`https://xxx.ngrok-free.dev/channel/feishu/event`）→ 给飞书用，只有飞书访问
+- **`BIND_BASE_URL`**（`http://127.0.0.1:8080`）→ 给用户浏览器用，走网关
+
+填反了的表现：飞书保存回调地址失败，或者用户点绑定链接打不开。
 
 ### 前端
 
@@ -152,10 +171,21 @@ nohup java -jar chatdata-gateway/target/chatdata-gateway-1.0.0-SNAPSHOT.jar > /t
 ## 验证
 
 ```bash
-for p in 9000 8081 8080; do curl -s -o /dev/null -w "$p: %{http_code}\n" http://127.0.0.1:$p/actuator/health; done
+for p in 9000 8081 8080 20000; do
+  curl -s -o /dev/null -w "$p: %{http_code}\n" http://127.0.0.1:$p/actuator/health
+done
 ```
 
-三个都应是 200。
+都应是 200。没接飞书时 channel 可以不起，前三个 200 就说明主体是通的。
+
+渠道的日志关键字：
+
+```bash
+grep "飞书渠道已启用" /tmp/ch.log     # 配置加载成功
+grep "渠道消息" /tmp/ch.log           # 消息进来了
+grep "换取渠道令牌成功" /tmp/ch.log    # 身份映射成功
+grep "飞书发送失败" /tmp/ch.log        # 卡片被飞书拒了（多半是卡片 JSON 的组件问题）
+```
 
 | 入口 | 地址 |
 |---|---|

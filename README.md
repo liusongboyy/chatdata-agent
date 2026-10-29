@@ -41,6 +41,7 @@
 - **分析编排**：把"为什么下降"这类问题拆成多步取数，再由 Java 算出确定性结论
 - **权限**：行级规则（支持组织层级动态变量）、列级脱敏、fail-closed
 - **审计**：每次提问、每步查询、每句 SQL 都可追溯
+- **IM 渠道**：接入飞书，群里 @ 机器人即可问数；权限与 Web 端完全一致
 - **评测基线**：199 条用例，分数据集报告通过率与失败原因
 
 ## 快速开始
@@ -65,7 +66,8 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/11-ask-assistant.sql sql/12-ask-agent-session.sql \
          sql/14-ask-sql-example.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
-         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql
+         sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
+         sql/21-channel.sql
 do mysql -uroot -p chatdata_ask < "$f"; done
 mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql   # 演示数据（可选）
 
@@ -81,6 +83,9 @@ mvn -DskipTests package
 java -jar chatdata-identity-service/target/chatdata-identity-service-*-SNAPSHOT.jar     &
 java -jar chatdata-query-service/target/chatdata-query-service-*-SNAPSHOT.jar     &
 java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
+
+# 5) 可选：飞书渠道（需要飞书应用与公网回调地址，见文档）
+# java -jar chatdata-channel/target/chatdata-channel-*-SNAPSHOT.jar &
 ```
 
 打开 <http://127.0.0.1:8080/app/>，默认账号 `admin` / `admin123`。
@@ -93,23 +98,22 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 ## 架构
 
 ```
-                    ┌─────────────────┐
-   浏览器 ────────→  │ gateway (8080)  │  唯一入口：路由、BFF 会话、令牌中继
-                    └────────┬────────┘
+  浏览器 ──→ gateway (8080) ──┐         唯一入口：路由、BFF 会话、令牌中继
                              │
-              ┌──────────────┼──────────────┐
-              ▼                             ▼
-      ┌───────────────┐            ┌───────────────┐
-      │  ask (8081)   │──内省令牌-> │  iam (9000)    │  身份 / 角色 / 功能权限
-      └───────┬───────┘            └───────────────┘
-              │
-              ▼
-      ┌───────────────────────────────────────────┐
-      │           ask-engine                      │
-      │  语义模型 → DSL → SQL 渲染 → 权限注入        │
-      │             → 执行 → 审计                  │
-      └───────────────────────────────────────────┘
+                             ├──→ ask (8081) ──→ ask-engine
+                             │        │            语义模型 → DSL → SQL 渲染
+  飞书 ────→ channel (20000) ┘        │              → 权限注入 → 执行 → 审计
+   (webhook)      │                   │ 内省令牌
+                  └──换代表用户的令牌──┴──→ iam (9000)
+                                            身份 / 角色 / 功能权限
 ```
+
+浏览器与飞书是**两个入口、两条鉴权路径**：浏览器走会话 Cookie + 网关 BFF；
+飞书走事件验签 + 换一张"代表该用户"的令牌。两条最后都汇到 ask，由它统一判权限。
+
+**渠道不判断权限。** 它只做「哪个用户问了什么 → 拿他的令牌去问 → 把结果排版回去」。
+行级规则、列脱敏、角色判定全在 ask 里——渠道看不到也不该看到。
+这是刻意的：一旦渠道开始判断"这个人能不能查"，就出现了第二个权限判定点。
 
 | 模块 | 说明 |
 |---|---|
@@ -118,6 +122,7 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 | `chatdata-query-engine` | 问数引擎：语义模型、DSL、SQL 渲染、权限执行 |
 | `chatdata-identity-service` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
 | `chatdata-identity-client` | 服务间读取身份与目录的客户端 |
+| `chatdata-channel` | IM 渠道：飞书 webhook 接入、卡片渲染、翻页与反馈 |
 | `chatdata-web` | 问数前端（Vue 3） |
 | `chatdata-identity-web` | 账号中心前端（Vue 3） |
 
@@ -128,6 +133,7 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 | [GLOSSARY.md](GLOSSARY.md) | 术语表（问数、语义建模、行级权限、直连模式…） |
 | [docs/local-dev.md](docs/local-dev.md) | 本地启动：依赖、建库、环境变量、常见问题 |
 | [docs/modeling-coverage.md](docs/modeling-coverage.md) | **建模覆盖度**：准确率最大的杠杆、新建域检查清单 |
+| [docs/feishu-channel-setup.md](docs/feishu-channel-setup.md) | **飞书渠道接入**：建应用、配权限与回调、排障 |
 | [docs/adr/](docs/adr/) | 架构决策记录——每个决定的**为什么** |
 | [sql/README.md](sql/README.md) | 库的划分与建表顺序 |
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
@@ -138,7 +144,7 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 ## 开发
 
 ```bash
-mvn test                                    # 631 个测试
+mvn test                                    # 844 个测试
 npm --prefix chatdata-web run build   # 前端（产物要一起提交，见下）
 ```
 
