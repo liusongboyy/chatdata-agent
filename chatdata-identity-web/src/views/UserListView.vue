@@ -48,6 +48,9 @@ const editForm = ref({
   displayName: '',
   status: 'ACTIVE' as 'ACTIVE' | 'DISABLED',
   orgId: null as number | null,
+  // 渠道绑定。空白 = 解绑；两项必须一起填或一起空（后端会拒半截绑定）
+  externalProvider: '',
+  externalId: '',
 })
 const editError = ref('')
 
@@ -179,9 +182,21 @@ async function submitCreate(): Promise<void> {
   }
 }
 
+/** 渠道来源的可读名。未知来源原样显示——总比显示空白让人以为没绑。 */
+function providerLabel(provider: string): string {
+  const known: Record<string, string> = { feishu: '飞书', dingtalk: '钉钉', wecom: '企业微信' }
+  return known[provider] ?? provider
+}
+
 function openEdit(user: UserView): void {
   editing.value = user
-  editForm.value = { displayName: user.displayName ?? '', status: user.status, orgId: user.orgId }
+  editForm.value = {
+    displayName: user.displayName ?? '',
+    status: user.status,
+    orgId: user.orgId,
+    externalProvider: user.externalProvider ?? '',
+    externalId: user.externalId ?? '',
+  }
   editError.value = ''
 }
 
@@ -194,6 +209,9 @@ async function submitEdit(): Promise<void> {
       displayName: editForm.value.displayName,
       status: editForm.value.status,
       orgId: editForm.value.orgId,
+      // 空串转 null：后端用"两者同时为空"表示解绑，空串会被当成一个非法值
+      externalProvider: editForm.value.externalProvider.trim() || null,
+      externalId: editForm.value.externalId.trim() || null,
     })
     editing.value = null
     notice.value = '用户已更新'
@@ -319,6 +337,7 @@ async function submitPassword(): Promise<void> {
               <th scope="col">用户</th>
               <th scope="col">所属组织</th>
               <th scope="col">角色</th>
+              <th scope="col">渠道</th>
               <th scope="col">状态</th>
               <th scope="col">操作</th>
             </tr>
@@ -345,6 +364,14 @@ async function submitPassword(): Promise<void> {
                   </span>
                 </div>
                 <span v-else class="dash">无角色</span>
+              </td>
+              <td>
+                <!-- 只显示"绑了哪个渠道"，不显示 open_id：它对人没有意义，
+                     而完整值在编辑弹窗里可以看到 -->
+                <span v-if="u.externalProvider" class="state on">
+                  {{ providerLabel(u.externalProvider) }}
+                </span>
+                <span v-else class="dash">未绑定</span>
               </td>
               <td>
                 <span class="state" :class="{ on: u.status === 'ACTIVE' }">
@@ -458,6 +485,35 @@ async function submitPassword(): Promise<void> {
               <option value="DISABLED">停用</option>
             </select>
             <p class="field-note">停用会同时让该用户已签发的令牌失效（token_version + 1）。</p>
+          </div>
+          <!--
+            渠道绑定。两项必须同时填或同时清空——只给一项后端会拒，
+            避免库里留下"来源是 feishu、id 是空"这种自相矛盾的行。
+          -->
+          <div class="field">
+            <label class="label" for="e-ch-provider">渠道来源</label>
+            <input
+              id="e-ch-provider"
+              v-model="editForm.externalProvider"
+              class="input mono"
+              placeholder="feishu"
+            />
+            <p class="field-note">
+              绑定后，该用户可在对应渠道里直接问数，权限与他在这里看到的完全一致。
+              清空两项即解绑。
+            </p>
+          </div>
+          <div class="field">
+            <label class="label" for="e-ch-id">渠道用户 ID</label>
+            <input
+              id="e-ch-id"
+              v-model="editForm.externalId"
+              class="input mono"
+              placeholder="ou_xxxxxxxx"
+            />
+            <p class="field-note">
+              飞书里是 open_id。一个渠道账号只能绑一个人——重复绑定会被拒绝，不会覆盖。
+            </p>
           </div>
         </div>
         <p v-if="editError" class="note note-danger" role="alert">{{ editError }}</p>

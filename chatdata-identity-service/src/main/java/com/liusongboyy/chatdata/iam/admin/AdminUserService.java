@@ -146,7 +146,41 @@ public class AdminUserService {
         guardSuperuserStaysUsable(id, status);
         users.updateUser(id, blankToNull(input.displayName()), status);
         applyPrimaryOrg(id, input.orgId());
-        log.info("更新用户：id={} status={} orgId={}", id, status, input.orgId());
+        applyExternalIdentity(id, input.externalProvider(), input.externalId());
+        log.info("更新用户：id={} status={} orgId={} external={}",
+                id, status, input.orgId(), input.externalProvider());
+    }
+
+    /**
+     * 设置外部身份（渠道绑定）。
+     *
+     * <p><b>空白即解绑</b>，与 {@link #applyPrimaryOrg} 同样的权威值语义：
+     * 管理员要能把绑定清掉，而 null 表达不了"不改"与"清空"两件事。
+     *
+     * <p>两个字段必须**一起给或一起空**。只给一个会留下"来源是 feishu、
+     * id 是空"这种半截状态——{@code selectBoundToChannel} 恰好会忽略它，
+     * 但库里躺着一行自相矛盾的数据，下次排查要花时间想清楚它为什么存在。
+     *
+     * <p>冲突（同一个飞书号绑了两个人）由唯一索引
+     * {@code uk_iam_user_external} 拦下，这里翻译成能读懂的话。
+     * <b>不静默覆盖</b>：那等于把别人的绑定抢走，是数据事故不是便利。
+     */
+    private void applyExternalIdentity(long userId, String provider, String externalId) {
+        String p = blankToNull(provider);
+        String e = blankToNull(externalId);
+        if (p == null && e == null) {
+            users.updateExternalIdentity(userId, null, null);
+            return;
+        }
+        if (p == null || e == null) {
+            throw new IamAdminException("外部身份来源与外部 ID 必须同时填写或同时清空");
+        }
+        try {
+            users.updateExternalIdentity(userId, p.trim(), e.trim());
+        } catch (DuplicateKeyException ex) {
+            throw new IamAdminException(
+                    "该外部账号已绑定到其他用户（来源=" + p.trim() + "，ID=" + e.trim() + "）");
+        }
     }
 
     /**
@@ -356,14 +390,19 @@ public class AdminUserService {
 
     /** 列表/详情用的一行。{@code roles} 由 GROUP_CONCAT 的逗号串拆开。 */
     public record UserView(long id, String username, String displayName, String status,
-                           String createdAt, String orgName, Long orgId, List<String> roles) {
+                           String createdAt, String orgName, Long orgId, List<String> roles,
+                           /** 外部身份来源（feishu/dingtalk…），未绑定为 null。 */
+                           String externalProvider,
+                           /** 外部身份 id（如飞书 open_id），未绑定为 null。 */
+                           String externalId) {
         static UserView of(UserMapper.AdminUserRow row) {
             List<String> roleList = row.roleCodes() == null || row.roleCodes().isBlank()
                     ? List.of()
                     : List.of(row.roleCodes().split(","));
             return new UserView(row.id(), row.username(), row.displayName(), row.status(),
                     row.createdAt() == null ? null : row.createdAt().toString(),
-                    row.orgName(), row.orgId(), roleList);
+                    row.orgName(), row.orgId(), roleList,
+                    row.externalProvider(), row.externalId());
         }
     }
 }

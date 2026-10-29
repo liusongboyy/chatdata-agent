@@ -89,11 +89,35 @@ public interface UserMapper {
                      ORDER BY uo.is_primary DESC, uo.org_id LIMIT 1) AS orgId,
                    (SELECT GROUP_CONCAT(DISTINCT r.code ORDER BY r.code)
                       FROM iam_user_role ur JOIN iam_role r ON r.id = ur.role_id
-                     WHERE ur.user_id = u.id) AS roleCodes
+                     WHERE ur.user_id = u.id) AS roleCodes,
+                   u.external_provider AS externalProvider,
+                   u.external_id AS externalId
             FROM iam_user u
             WHERE u.id = #{id}
             """)
     AdminUserRow selectAdminById(@Param("id") long id);
+
+    /**
+     * 绑定/解绑外部身份（渠道用）。
+     *
+     * <p>{@code provider}/{@code externalId} 同时为 null 表示解绑。
+     * <strong>不做 upsert</strong>：绑定冲突要让调用方拿到
+     * {@code DuplicateKeyException} 并给出「该飞书账号已绑定到 xxx」，
+     * 静默覆盖会把别人的绑定抢走——那是数据事故，不是便利。
+     *
+     * <p>绑定变化要 {@code token_version + 1}：已经签发出去的渠道令牌
+     * 仍在 TTL 内，改绑后应尽快失效（与改密码同一取舍）。
+     */
+    @Update("""
+            UPDATE iam_user
+            SET external_provider = #{provider},
+                external_id = #{externalId},
+                token_version = token_version + 1
+            WHERE id = #{id}
+            """)
+    int updateExternalIdentity(@Param("id") long id,
+                               @Param("provider") String provider,
+                               @Param("externalId") String externalId);
 
     @Insert("""
             INSERT INTO iam_user (tenant_id, username, password_hash, display_name, status)
@@ -177,7 +201,11 @@ public interface UserMapper {
             LocalDateTime createdAt,
             String orgName,
             Long orgId,
-            String roleCodes
+            String roleCodes,
+            /** 外部身份来源（feishu/dingtalk/…），未绑定为 null。 */
+            String externalProvider,
+            /** 外部身份 id（如飞书 open_id），未绑定为 null。 */
+            String externalId
     ) {
     }
 
@@ -211,7 +239,9 @@ public interface UserMapper {
                      ORDER BY uo.is_primary DESC, uo.org_id LIMIT 1) AS orgId,
                    (SELECT GROUP_CONCAT(DISTINCT r.code ORDER BY r.code)
                       FROM iam_user_role ur JOIN iam_role r ON r.id = ur.role_id
-                     WHERE ur.user_id = u.id) AS roleCodes
+                     WHERE ur.user_id = u.id) AS roleCodes,
+                   u.external_provider AS externalProvider,
+                   u.external_id AS externalId
             FROM iam_user u
             WHERE u.tenant_id = #{tenant}
             <if test="status != null"> AND u.status = #{status} </if>

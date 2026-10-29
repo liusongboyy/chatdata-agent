@@ -17,6 +17,13 @@ export interface UserView {
   /** 主组织 id。编辑表单要用它预选；只给 orgName 的话，重名组织会选错。 */
   orgId: number | null
   roles: string[]
+  /**
+   * 外部身份（渠道绑定）。未绑定为 null。
+   *
+   * 两个字段要么都有值、要么都为空；只给其一会让后端拒绝（避免半截绑定）。
+   */
+  externalProvider: string | null
+  externalId: string | null
 }
 
 export interface UserCreateForm {
@@ -115,7 +122,13 @@ export async function createUser(form: UserCreateForm): Promise<number> {
 
 export async function updateUser(
   id: number,
-  form: { displayName: string; status: 'ACTIVE' | 'DISABLED'; orgId: number | null },
+  form: {
+    displayName: string
+    status: 'ACTIVE' | 'DISABLED'
+    orgId: number | null
+    externalProvider: string | null
+    externalId: string | null
+  },
 ): Promise<void> {
   await put<Envelope<void>>(`/iam/admin/users/${id}`, form)
 }

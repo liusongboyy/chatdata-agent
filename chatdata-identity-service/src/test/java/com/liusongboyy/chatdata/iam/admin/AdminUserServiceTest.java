@@ -221,4 +221,61 @@ class AdminUserServiceTest {
                 .isInstanceOf(IamAdminException.class)
                 .hasMessageContaining("状态只能是");
     }
+
+    // ── 外部身份（渠道绑定）──
+
+    /** update 走的是 requireUser → selectById，不是 selectAdminById。 */
+    private void stubUserExists() {
+        when(users.selectById(7L)).thenReturn(
+                new UserRow(7L, "zhangsan", null, "张三", "ACTIVE", 0));
+    }
+
+    @Test
+    @DisplayName("★ 未绑定用户可用渠道令牌？不——绑定为空时写 null，不解绑之外不做任何事")
+    void unbindClearsBothColumns() {
+        stubUserExists();
+
+        service.update(7L, new AdminInputs.UserUpdate("张三", "ACTIVE", null, null, null));
+
+        verify(users).updateExternalIdentity(7L, null, null);
+    }
+
+    @Test
+    @DisplayName("绑定写 provider 与 externalId")
+    void bindWritesBoth() {
+        stubUserExists();
+
+        service.update(7L, new AdminInputs.UserUpdate("张三", "ACTIVE", null, "feishu", "ou_abc"));
+
+        verify(users).updateExternalIdentity(7L, "feishu", "ou_abc");
+    }
+
+    @Test
+    @DisplayName("★ 只给其一 → 拒绝，不留半截绑定")
+    void partialBindingRejected() {
+        stubUserExists();
+
+        assertThatThrownBy(() -> service.update(7L,
+                new AdminInputs.UserUpdate("张三", "ACTIVE", null, "feishu", null)))
+                .isInstanceOf(IamAdminException.class)
+                .hasMessageContaining("同时");
+
+        assertThatThrownBy(() -> service.update(7L,
+                new AdminInputs.UserUpdate("张三", "ACTIVE", null, null, "ou_abc")))
+                .isInstanceOf(IamAdminException.class)
+                .hasMessageContaining("同时");
+    }
+
+    @Test
+    @DisplayName("★ 同一个外部账号绑第二个人 → 拒绝并说清原因，不静默覆盖")
+    void duplicateBindingRejected() {
+        stubUserExists();
+        when(users.updateExternalIdentity(7L, "feishu", "ou_taken"))
+                .thenThrow(new DuplicateKeyException("uk_iam_user_external"));
+
+        assertThatThrownBy(() -> service.update(7L,
+                new AdminInputs.UserUpdate("张三", "ACTIVE", null, "feishu", "ou_taken")))
+                .isInstanceOf(IamAdminException.class)
+                .hasMessageContaining("已绑定到其他用户");
+    }
 }

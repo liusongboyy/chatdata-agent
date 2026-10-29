@@ -35,8 +35,13 @@ public final class AdminInputs {
      *              局部合并语义刻意不同：组织要能被**清空**，而 null 表达不了
      *              "不改"和"清空"两件事。前端提交表单时总是带上当前值，
      *              所以"没动它"表现为"传回同一个 id"。null 表示不设组织。
+     * @param externalProvider 外部身份来源（feishu/dingtalk…）。空白表示解绑。
+     * @param externalId       外部身份 id（如飞书 open_id）。与 provider 一起给或一起空。
+     *                         不放进 {@code UserCreate}：刚建号时还没有对方的 open_id，
+     *                         绑定通常发生在建号之后（对方发一条消息才拿得到）。
      */
-    public record UserUpdate(String displayName, String status, Long orgId) {
+    public record UserUpdate(String displayName, String status, Long orgId,
+                             String externalProvider, String externalId) {
     }
 
     /** 重置密码。 */
