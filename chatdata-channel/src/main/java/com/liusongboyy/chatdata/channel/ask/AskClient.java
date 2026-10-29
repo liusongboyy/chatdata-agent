@@ -60,6 +60,9 @@ public class AskClient {
     /** 当前域能问哪些字段。**不需要登录**，但带上令牌才能按助理解析。 */
     static final String CAPABILITIES_PATH = "/api/ask/capabilities";
 
+    /** 反馈。提交后一律 PENDING，是否采纳由管理台审核。 */
+    static final String FEEDBACK_PATH = "/api/ask/feedback";
+
     private final ChannelProperties properties;
     private final RestClient client;
 
@@ -124,6 +127,25 @@ public class AskClient {
             log.warn("取助理列表失败：{}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 提交反馈。
+     *
+     * <p>用<b>提问者本人</b>的令牌调——不是 channel 自己的身份。否则审计里
+     * 所有渠道反馈都记在 bot 名下，"谁觉得这条答案不对"就查不出来了。
+     */
+    public void submitFeedback(String token, Map<String, Object> payload) {
+        client.post()
+                .uri(FEEDBACK_PATH)
+                .headers(h -> h.setBearerAuth(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve()
+                .onStatus(status -> status.isError(), (req, res) -> {
+                    throw new AskFailedException("反馈提交失败：" + res.getStatusCode().value());
+                })
+                .toBodilessEntity();
     }
 
     /**

@@ -87,6 +87,39 @@ class MessageHandlerCommandTest {
         assertThat(MessageHandler.isCapabilityQuestion("#你能问哪些数据")).isTrue();
     }
 
+    @ParameterizedTest(name = "{0} → {1}")
+    @DisplayName("★ #分析 前缀：取出真问题")
+    @CsvSource(delimiter = '|', value = {
+            "#分析 为什么华东销量下降 | 为什么华东销量下降",
+            "#深入分析 上个月的门店排行 | 上个月的门店排行",
+            "# 分析 库存周转慢的原因 | 库存周转慢的原因",
+            "分析 报废金额为什么涨了 | 报废金额为什么涨了",
+    })
+    void parsesAnalysisCommand(String input, String expected) {
+        assertThat(MessageHandler.parseAnalysisCommand(input)).contains(expected);
+    }
+
+    @Test
+    @DisplayName("★ 「分析」后面没内容 → 不是命令，别把用户的词吞掉")
+    void bareAnalysisIsNotCommand() {
+        assertThat(MessageHandler.parseAnalysisCommand("分析")).isEmpty();
+        assertThat(MessageHandler.parseAnalysisCommand("#分析")).isEmpty();
+        assertThat(MessageHandler.parseAnalysisCommand("#分析   ")).isEmpty();
+    }
+
+    @ParameterizedTest
+    @DisplayName("★ 含「分析」但不是前缀的句子不误判")
+    @ValueSource(strings = {
+            "帮我分析一下订单金额",
+            "分析报废",
+            "订单金额合计是多少",
+    })
+    void analysisOnlyAsPrefix(String input) {
+        // 「帮我分析一下订单金额」是普通提问——命令必须是**开头**的前缀。
+        // 否则用户的每一句"帮我分析…"都会被强制走多步编排，慢且贵
+        assertThat(MessageHandler.parseAnalysisCommand(input)).isEmpty();
+    }
+
     @Test
     @DisplayName("重置命令：只认精确的那几个词，不做模糊匹配")
     void resetCommands() {

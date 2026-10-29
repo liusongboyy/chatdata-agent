@@ -50,3 +50,25 @@ SET @ddl := IF(@has_col = 0,
 PREPARE stmt FROM @ddl;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- ── 已发送的答案（供分页与反馈引用）──
+-- 卡片里只放一页，翻页与「有用/答错」都靠回调带着 answer_id 回来查这张表。
+-- 不把行数据塞进卡片 JSON：1000 行会有几百 KB，飞书对卡片体积有限制，
+-- 而且回传的 value 也塞不下。
+CREATE TABLE IF NOT EXISTS `channel_answer` (
+  `id`             BIGINT       NOT NULL AUTO_INCREMENT,
+  `channel`        VARCHAR(32)  NOT NULL,
+  `chat_key`       VARCHAR(128) NOT NULL COMMENT '会话键；翻页时校验点击者确实在这个会话里',
+  `username`       VARCHAR(64)  NOT NULL COMMENT '提问者。回调时的点击者必须与它一致',
+  `assistant_id`   VARCHAR(32)  NULL,
+  `domain_id`      VARCHAR(32)  NULL,
+  `question`       VARCHAR(2000) NOT NULL,
+  `columns_json`   TEXT         NOT NULL COMMENT '列名（JSON 数组）',
+  `rows_json`      LONGTEXT     NOT NULL COMMENT '完整结果行（JSON 二维数组）；ask 最多返回 1000 行',
+  `row_count`      INT          NOT NULL,
+  `generated_sql`  TEXT         NULL     COMMENT '实际执行的 SQL，反馈时要带上',
+  `masked_columns` TEXT         NULL     COMMENT '脱敏列名，展示时要标注',
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_answer_chat` (`channel`, `chat_key`, `created_at`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '已发送的渠道答案（分页与反馈用）';

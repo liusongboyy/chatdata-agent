@@ -1,5 +1,6 @@
 package com.liusongboyy.chatdata.channel;
 
+import com.liusongboyy.chatdata.channel.answer.AnswerStore;
 import com.liusongboyy.chatdata.channel.ask.AskClient;
 import com.liusongboyy.chatdata.channel.ask.AskResult;
 import com.liusongboyy.chatdata.channel.identity.BindTicketIssuer;
@@ -35,6 +36,7 @@ public class MessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(MessageHandler.class);
 
+    private final AnswerStore answers;
     private final ChannelIdentityService identities;
     private final BindTicketIssuer bindTickets;
     private final ChannelTokenService tokens;
@@ -44,11 +46,13 @@ public class MessageHandler {
     private final FeishuSender sender;
     private final InboundQueue queue;
 
-    public MessageHandler(ChannelIdentityService identities, BindTicketIssuer bindTickets,
+    public MessageHandler(AnswerStore answers,
+                          ChannelIdentityService identities, BindTicketIssuer bindTickets,
                           ChannelTokenService tokens,
                           ChannelSessionService sessions, AskClient ask,
                           FeishuCardRenderer renderer, FeishuSender sender,
                           InboundQueue queue) {
+        this.answers = answers;
         this.identities = identities;
         this.bindTickets = bindTickets;
         this.tokens = tokens;
@@ -152,6 +156,15 @@ public class MessageHandler {
             return;
         }
 
+        // ③c 深入分析：「#分析 为什么华东销量下降」→ 走 ask 的分析编排
+        //     （拆成多次查询 + 确定性结论），而不是单次查询。
+        //     分析会多花几次查询与模型调用，所以**必须显式要求**，不由系统自动判定。
+        Optional<String> analysisQuestion = parseAnalysisCommand(question);
+        boolean wantsAnalysis = analysisQuestion.isPresent();
+        if (wantsAnalysis) {
+            question = analysisQuestion.get();
+        }
+
         // ④ 会话。群里按发言人隔离，chatKey 里已经带了 open_id
         String conversationId = sessions.resolve(msg.channel(), msg.chatKey(), username.get());
         // 换过助理就要换会话：多轮上下文绑在 conversationId 上，
@@ -172,11 +185,19 @@ public class MessageHandler {
         body.put("sessionId", conversationId);
         // 带上助理：它决定落哪个域，也决定审计里"这次走的是哪个助理"
         body.put("assistantId", assistantId);
+        if (wantsAnalysis) {
+            body.put("analyze", true);
+        }
 
         String card;
         try {
             AskResult result = ask.ask(token, body);
-            card = renderer.renderResult(question, result);
+            // 先落库再渲染：卡片里的翻页与反馈按钮要带 answerId。
+            // 存失败不阻断发送——用户先看到数据最重要，代价只是不能翻页/反馈
+            Long answerId = answers.save(msg.channel(), msg.chatKey(), username.get(),
+                            assistantId, result.domainId(), question, result)
+                    .orElse(null);
+            card = renderer.renderResult(question, result, answerId, 0);
         } catch (AskClient.AskFailedException e) {
             card = renderer.renderError(question, e.getMessage());
         } catch (RuntimeException e) {
@@ -227,11 +248,36 @@ public class MessageHandler {
      * <p>用编号而不是名字：名字是配置内容，用户记不住、也容易打错，
      * 而打错的表现是"没找到该助理"——又是一个本可避免的失败。
      */
+    /**
+     * 解析「#分析 xxx」前缀。
+     *
+     * @return 去掉前缀后的真问题；不是分析命令则为空
+     */
+    static Optional<String> parseAnalysisCommand(String text) {
+        if (text == null) {
+            return Optional.empty();
+        }
+        String t = text.trim().replaceFirst("^[#＃]\\s*", "").trim();
+        if (!t.startsWith("分析") && !t.startsWith("深入分析")) {
+            return Optional.empty();
+        }
+        String rest = t.startsWith("深入分析")
+                ? t.substring("深入分析".length())
+                : t.substring("分析".length());
+        rest = rest.trim();
+        // 太短的尾巴不当命令：「分析报废」更像"分析一下报废"的口语，
+        // 而分析编排会多花几次查询与模型调用——不该因为一个动词就触发。
+        // 真要走分析，用户会说得更完整（「#分析 报废金额为什么涨了」）。
+        return rest.length() < 4 ? Optional.empty() : Optional.of(rest);
+    }
+
     static Optional<Integer> parseAssistantPick(String text) {
         if (text == null) {
             return Optional.empty();
         }
-        String t = text.trim().replaceFirst("^[#＃]", "");
+        // 去掉前缀**连同空格**：用户会打成「# 助手 4」——只去 # 的话
+        // split 出来第一段是空串，匹配不上「助手」，命令被当成普通提问送去了 ask
+        String t = text.trim().replaceFirst("^[#＃]\\s*", "").trim();
         String[] parts = t.split("\\s+");
         if (parts.length == 0) {
             return Optional.empty();

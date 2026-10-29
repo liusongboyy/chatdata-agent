@@ -55,8 +55,8 @@ class FeishuEventControllerTest {
         when(dedup.claim(anyString(), anyString(), anyString())).thenReturn(true);
 
         FeishuCrypto crypto = new FeishuCrypto(properties);
-        mvc = MockMvcBuilders.standaloneSetup(
-                new FeishuEventController(crypto, properties, dedup, queue)).build();
+        mvc = MockMvcBuilders.standaloneSetup(new FeishuEventController(
+                crypto, properties, dedup, queue, mock(CardActionHandler.class))).build();
     }
 
     private static String sign(String ts, String nonce, byte[] body) throws Exception {

@@ -49,13 +49,16 @@ public class FeishuEventController {
     private final FeishuProperties properties;
     private final InboundDedup dedup;
     private final InboundQueue queue;
+    private final CardActionHandler cardActions;
 
     public FeishuEventController(FeishuCrypto crypto, FeishuProperties properties,
-                                 InboundDedup dedup, InboundQueue queue) {
+                                 InboundDedup dedup, InboundQueue queue,
+                                 CardActionHandler cardActions) {
         this.crypto = crypto;
         this.properties = properties;
         this.dedup = dedup;
         this.queue = queue;
+        this.cardActions = cardActions;
     }
 
     /**
@@ -164,8 +167,21 @@ public class FeishuEventController {
                     .body(Map.of("message", "签名校验失败"));
         }
 
-        // ④ 只处理接收消息事件，其余 200 忽略（订阅里可能有别的事件）
         String eventType = body.path("header").path("event_type").asText();
+
+        // ④ 卡片回调：翻页与反馈。
+        //
+        //    **必须同步处理**，不能入队：飞书的回调响应体决定客户端行为
+        //    （弹 toast / 原地更新卡片）。异步了就只能先弹 toast 再延时更新，
+        //    那要多一条链路和它的失败态。翻页是查库、反馈是一次 HTTP，够快。
+        //
+        //    另外它**不能走下面的去重**：翻页按钮被点多次是正常的
+        //    （翻过去再翻回来），按 message_id 去重会挡住这些合法操作。
+        if ("card.action.trigger".equals(eventType)) {
+            return ResponseEntity.ok(cardActions.handle(body));
+        }
+
+        // ⑤ 只处理接收消息事件，其余 200 忽略（订阅里可能有别的事件）
         if (!"im.message.receive_v1".equals(eventType)) {
             log.debug("忽略非消息事件：{}", eventType);
             return ResponseEntity.ok(Map.of("code", 0));

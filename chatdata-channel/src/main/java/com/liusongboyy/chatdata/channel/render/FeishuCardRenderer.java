@@ -35,8 +35,16 @@ public class FeishuCardRenderer {
     /** 卡片里最多放几列。超过就只说「共 N 列」并引导去看完整结果。 */
     static final int MAX_COLUMNS = 5;
 
-    /** 卡片里最多放几行。 */
-    static final int MAX_ROWS = 10;
+    /** 卡片里每页放几行。 */
+    static final int PAGE_SIZE = 10;
+
+    /**
+     * 最多翻到第几行。
+     *
+     * <p>ask 自身最多返回 1000 行（{@code SqlExecutor} 的 maxRows），
+     * 这里与它对齐——超过这个数的行根本不存在，翻页翻过去也只会是空的。
+     */
+    static final int MAX_ROWS_TOTAL = 1000;
 
     private static final ObjectWriter JSON = JsonMapper.builder().build().writerWithDefaultPrettyPrinter();
 
@@ -45,8 +53,42 @@ public class FeishuCardRenderer {
      *
      * @param question 用户原问题。放在标题里，让群里几个人同时问时不至于分不清
      */
-    public String renderResult(String question, AskResult result) {
+    /**
+     * 渲染结果卡片（第 1 页，或某一页）。
+     *
+     * @param answerId 已存答案的 id，翻页与反馈按钮都带上它；null 表示没存下来
+     *                 （存储失败时的兜底——数据照发，只是不能翻页/反馈）
+     * @param page     从 0 开始的页码
+     */
+    public String renderResult(String question, AskResult result, Long answerId, int page) {
         List<Map<String, Object>> elements = new ArrayList<>();
+
+        // 文字答复（直连模式、能力问题）：没有表格，答案就是这段话。
+        // 必须先于"空结果"判断——否则会把它显示成「没有符合条件的数据」，
+        // 而用户明明得到了答案。实测踩过。
+        if (result.answer() != null && !result.answer().isBlank()) {
+            elements.add(md(result.answer()));
+            return card(title(question), elements);
+        }
+
+        // 深入分析：结论 + 逐条发现 + 用了几个查询
+        if (result.analysis() != null) {
+            elements.add(analysisSection(result.analysis()));
+            // 步骤明细放折叠面板：主信息是结论，过程按需展开。
+            // **不能只报次数不给内容**——"执行了 3 次查询"如果看不到是哪 3 次，
+            // 那个数字就没有证据，用户只能选择信或不信
+            Map<String, Object> steps = stepsPanel(result.analysis().steps());
+            if (steps != null) {
+                elements.add(steps);
+            }
+            if (result.sql() != null && !result.sql().isBlank()) {
+                elements.add(sqlPanel(result.sql()));
+            }
+            if (answerId != null) {
+                elements.add(feedbackRow(answerId));
+            }
+            return card(title(question), elements);
+        }
 
         if (result.empty()) {
             // 空结果必须明说。发一张空表格会让人以为是渲染失败
@@ -60,10 +102,23 @@ public class FeishuCardRenderer {
             elements.add(md("**" + result.columns().get(0) + "：**"));
             elements.add(md("## " + result.rows().get(0).get(0)));
         } else {
-            elements.add(table(result));
-            if (result.rowCount() > result.rows().size()) {
-                elements.add(note("共 %d 行，仅展示前 %d 行".formatted(
-                        result.rowCount(), result.rows().size())));
+            int total = Math.min(result.rows().size(), MAX_ROWS_TOTAL);
+            int pages = Math.max(1, (total + PAGE_SIZE - 1) / PAGE_SIZE);
+            int safePage = Math.max(0, Math.min(page, pages - 1));
+            int from = safePage * PAGE_SIZE;
+            int to = Math.min(from + PAGE_SIZE, total);
+
+            elements.add(table(result, from, to));
+
+            if (pages > 1) {
+                elements.add(note("第 %d/%d 页 · 第 %d–%d 行%s".formatted(
+                        safePage + 1, pages, from + 1, to,
+                        result.rowCount() > total
+                                ? "（共 %d 行，最多展示前 %d 行）".formatted(result.rowCount(), total)
+                                : "（共 %d 行）".formatted(result.rowCount()))));
+                elements.add(pager(answerId, safePage, pages));
+            } else if (result.rowCount() > total) {
+                elements.add(note("共 %d 行，最多展示前 %d 行".formatted(result.rowCount(), total)));
             }
         }
 
@@ -76,7 +131,170 @@ public class FeishuCardRenderer {
             elements.add(sqlPanel(result.sql()));
         }
 
+        // 反馈按钮：只有存下来了才能关联上下文——没存就没有 answerId，
+        // 而反馈接口需要 question/sql/assistantId，那些都在库里
+        if (answerId != null) {
+            elements.add(feedbackRow(answerId));
+        }
+
         return card(title(question), elements);
+    }
+
+    /**
+     * 深入分析的结果。
+     *
+     * <p>重点是**结论**，不是过程。分析跑了几次查询、每步什么 SQL 都不进来——
+     * IM 里放不下，业务人员也不关心。只保留：结论 + 逐条发现 + "跑了几次查询"这一行元信息。
+     */
+    private Map<String, Object> analysisSection(AskResult.Analysis a) {
+        StringBuilder sb = new StringBuilder();
+        if (a.narrative() != null && !a.narrative().isBlank()) {
+            sb.append(a.narrative()).append("\n\n");
+        }
+        if (!a.findings().isEmpty()) {
+            sb.append("**发现：**\n");
+            for (String f : a.findings()) {
+                sb.append("· ").append(f).append('\n');
+            }
+            sb.append('\n');
+        }
+        // 只报次数不给内容等于没给信息——所以要指向下面的折叠面板，
+        // 让用户知道"那几次查询在哪能看"
+        if (a.queryCount() > 0) {
+            String where = (a.steps() != null && !a.steps().isEmpty())
+                    ? "（明细在下方「查看这 " + a.steps().size() + " 次查询」里）"
+                    : "";
+            sb.append("<font color='grey'>本次分析执行了 ")
+                    .append(a.queryCount()).append(" 次查询").append(where).append("</font>");
+        }
+        if (a.notice() != null && !a.notice().isBlank()) {
+            sb.append("\n<font color='orange'>").append(a.notice()).append("</font>");
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tag", "markdown");
+        m.put("content", sb.toString());
+        return m;
+    }
+
+    /**
+     * 分析步骤明细（折叠，默认收起）。
+     *
+     * <p>每一步给：做了什么、查出几行、SQL。**每步的结果表最多 5 行**——
+     * 单查询的结果已经在主卡片里说清了，步骤面板的作用是让人看到
+     * "系统到底分几步、每步查了什么"，不是再灌一遍数据。
+     */
+    private Map<String, Object> stepsPanel(List<AskResult.Step> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return null;
+        }
+        List<Map<String, Object>> inner = new ArrayList<>();
+        for (int i = 0; i < steps.size(); i++) {
+            AskResult.Step step = steps.get(i);
+            StringBuilder sb = new StringBuilder();
+            sb.append("**").append(i + 1).append(". ")
+                    .append(step.label().isBlank() ? "查询" : escapeMd(step.label()))
+                    .append("**");
+            if (step.error() != null) {
+                sb.append("\n<font color='red'>失败：").append(escapeMd(step.error())).append("</font>");
+            } else {
+                sb.append("\n<font color='grey'>").append(step.rowCount()).append(" 行</font>");
+            }
+            if (step.purpose() != null && !step.purpose().isBlank()) {
+                sb.append("\n<font color='grey'>").append(escapeMd(step.purpose())).append("</font>");
+            }
+            inner.add(md(sb.toString()));
+            if (step.sql() != null && !step.sql().isBlank()) {
+                inner.add(md("```sql\n" + step.sql() + "\n```"));
+            }
+            if (i < steps.size() - 1) {
+                inner.add(md("---"));
+            }
+        }
+
+        Map<String, Object> title = new LinkedHashMap<>();
+        title.put("tag", "markdown");
+        title.put("content", "查看这 " + steps.size() + " 次查询");
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("title", title);
+
+        Map<String, Object> panel = new LinkedHashMap<>();
+        panel.put("tag", "collapsible_panel");
+        panel.put("expanded", false);
+        panel.put("header", header);
+        panel.put("elements", inner);
+        return panel;
+    }
+
+    /**
+     * 翻页按钮。
+     *
+     * <p>用 {@code behaviors: {type: callback}} 而不是 url：翻页要带 answerId 与页码，
+     * 走链接就得拼 URL、还得解决"点了跳出去"的体验问题。回调是原生的。
+     *
+     * <p>第一页不给「上一页」，最后一页不给「下一页」——点了没反应的按钮
+     * 比没有按钮更让人困惑。
+     */
+    private Map<String, Object> pager(Long answerId, int page, int pages) {
+        List<Map<String, Object>> buttons = new ArrayList<>();
+        if (answerId != null) {
+            if (page > 0) {
+                buttons.add(navButton("上一页", "page", answerId, page - 1));
+            }
+            if (page < pages - 1) {
+                buttons.add(navButton("下一页", "page", answerId, page + 1));
+            }
+        }
+        Map<String, Object> col = new LinkedHashMap<>();
+        col.put("tag", "column_set");
+        col.put("flex_mode", "bisect");
+        // column_set 在 2.0 里用 columns；每列内嵌一个按钮
+        List<Map<String, Object>> cols = new ArrayList<>();
+        for (Map<String, Object> b : buttons) {
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("tag", "column");
+            c.put("width", "auto");
+            c.put("elements", List.of(b));
+            cols.add(c);
+        }
+        col.put("columns", cols);
+        return col;
+    }
+
+    private Map<String, Object> navButton(String text, String action, long answerId, int page) {
+        Map<String, Object> btn = new LinkedHashMap<>();
+        btn.put("tag", "button");
+        btn.put("text", Map.of("tag", "plain_text", "content", text));
+        btn.put("type", "default");
+        btn.put("behaviors", List.of(Map.of(
+                "type", "callback",
+                "value", Map.of("action", action, "answerId", answerId, "page", page))));
+        return btn;
+    }
+
+    /** 反馈按钮行。 */
+    private Map<String, Object> feedbackRow(long answerId) {
+        List<Map<String, Object>> cols = new ArrayList<>();
+        for (var spec : List.of(
+                Map.entry("👍 有用", "helpful"),
+                Map.entry("👎 答错了", "wrong"))) {
+            Map<String, Object> btn = new LinkedHashMap<>();
+            btn.put("tag", "button");
+            btn.put("text", Map.of("tag", "plain_text", "content", spec.getKey()));
+            btn.put("type", "default");
+            btn.put("behaviors", List.of(Map.of(
+                    "type", "callback",
+                    "value", Map.of("action", spec.getValue(), "answerId", answerId))));
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("tag", "column");
+            c.put("width", "auto");
+            c.put("elements", List.of(btn));
+            cols.add(c);
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("tag", "column_set");
+        row.put("flex_mode", "bisect");
+        row.put("columns", cols);
+        return row;
     }
 
     /** 错误卡片。原因要能读懂，不暴露内部细节。 */
@@ -243,22 +461,29 @@ public class FeishuCardRenderer {
      *
      * <p>单元格里的 {@code |} 必须转义，否则会把表格撑成多列。
      */
-    private Map<String, Object> table(AskResult result) {
+    /**
+     * 表格。用 **markdown 原生表格语法**。
+     *
+     * <p>不用 {@code column_set} 逐行拼：那套在 JSON 2.0 里结构也变了，
+     * 而 markdown 表格是 2.0 明确支持的标准语法（CommonMark），
+     * 少一层自己维护的布局逻辑。代价是列宽不能精细控制——在 IM 里不值得为此较真。
+     *
+     * <p>单元格里的 {@code |} 必须转义，否则会把表格撑成多列。
+     */
+    private Map<String, Object> table(AskResult result, int from, int to) {
         int cols = Math.min(result.columns().size(), MAX_COLUMNS);
         StringBuilder md = new StringBuilder();
 
-        // 表头
         List<String> head = new ArrayList<>();
         for (int i = 0; i < cols; i++) {
             head.add(escapeCell(result.columns().get(i)));
         }
         md.append("| ").append(String.join(" | ", head)).append(" |\n");
-        // 分隔行
         md.append("|").append(" --- |".repeat(cols)).append("\n");
 
-        // 数据行
-        int rows = Math.min(result.rows().size(), MAX_ROWS);
-        for (int r = 0; r < rows; r++) {
+        int end = Math.min(to, Math.min(result.rows().size(), MAX_ROWS_TOTAL));
+        int start = Math.max(0, Math.min(from, end));
+        for (int r = start; r < end; r++) {
             List<String> row = result.rows().get(r);
             List<String> cells = new ArrayList<>();
             for (int i = 0; i < cols; i++) {
