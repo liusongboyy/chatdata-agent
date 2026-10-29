@@ -104,14 +104,6 @@ public class FeishuEventController {
                     .body(Map.of("message", "渠道未启用"));
         }
 
-        // ① 验签。失败一律 401 且**不处理**——放行等于承认任何来源都能伪造事件
-        if (!crypto.verify(timestamp, nonce, signature, rawBody)) {
-            log.warn("飞书事件验签失败：remote={} ts={} nonce={}",
-                    request.getRemoteAddr(), timestamp, nonce);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "签名校验失败"));
-        }
-
         JsonNode envelope;
         try {
             envelope = JSON.readTree(rawBody);
@@ -121,23 +113,55 @@ public class FeishuEventController {
             return ResponseEntity.badRequest().body(Map.of("message", "非法 JSON"));
         }
 
-        // ② 解密（配置了 Encrypt Key 时，事件体会被包在 encrypt 字段里）
+        // ① 先解密。**必须在判 url_verification 之前**——配了 Encrypt Key 时
+        //    飞书连 challenge 探测都是加密的（body 是 {"encrypt":"..."}），
+        //    type 字段在密文里。解密前判 type 永远判不出来，
+        //    于是会掉进下面的验签分支——那正是"Challenge code 没有返回"的真因。
+        //
+        //    解密本身也是一道认证：能解出明文说明对端持有 Encrypt Key。
         JsonNode body = envelope;
         if (envelope.hasNonNull("encrypt")) {
             try {
                 byte[] plain = crypto.decrypt(envelope.get("encrypt").asText());
                 body = JSON.readTree(plain);
             } catch (RuntimeException e) {
-                // 解密失败是配置或传输问题，不是攻击——但同样不能当成"空事件"静默丢弃
-                log.error("飞书事件解密失败：{}", e.getMessage());
+                log.warn("飞书事件解密失败：remote={} {}", request.getRemoteAddr(), e.getMessage());
                 return ResponseEntity.badRequest().body(Map.of("message", "解密失败"));
             }
         }
 
-        // ③ 回调地址校验。必须在 **1 秒**内原样返回 challenge——
-        //    但它排在验签之后：不验签就回 challenge，等于谁的探测都照单全收
+        // ② 回调地址校验。飞书这个请求**不带签名头**——文档原话是
+        //    「接收到开放平台推送的事件时（**不包括请求网址校验**）」。
+        //    所以这一路用 Verification Token 校验来源，而不是签名。
         if ("url_verification".equals(body.path("type").asText())) {
-            return ResponseEntity.ok(Map.of("challenge", body.path("challenge").asText()));
+            String challenge = body.path("challenge").asString("");
+            if (challenge.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("message", "缺少 challenge"));
+            }
+            String expected = properties.getVerificationToken();
+            if (expected != null && !expected.isBlank()) {
+                String actual = body.path("token").asString("");
+                // Verification Token 不是密钥，比的是"是不是同一个应用"，
+                // 不是"有没有破解难度"——常量时间比较在这里没有意义
+                if (!expected.equals(actual)) {
+                    log.warn("回调地址校验失败：Verification Token 不匹配 remote={}",
+                            request.getRemoteAddr());
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(Map.of("message", "Verification Token 不匹配"));
+                }
+            } else {
+                log.debug("未配置 verification-token，跳过来源校验（建议配置）");
+            }
+            log.info("回调地址校验通过：remote={}", request.getRemoteAddr());
+            return ResponseEntity.ok(Map.of("challenge", challenge));
+        }
+
+        // ③ 普通事件才验签。签名算在**原始（加密后的）body** 上。
+        if (!crypto.verify(timestamp, nonce, signature, rawBody)) {
+            log.warn("飞书事件验签失败：remote={} ts={} nonce={}",
+                    request.getRemoteAddr(), timestamp, nonce);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "签名校验失败"));
         }
 
         // ④ 只处理接收消息事件，其余 200 忽略（订阅里可能有别的事件）

@@ -21,6 +21,18 @@ public class FeishuProperties {
     private String encryptKey;
 
     /**
+     * 加密策略里的 Verification Token。
+     *
+     * <p>只用于**回调地址校验**（{@code url_verification}）。飞书那个请求
+     * <b>不带签名头</b>——官方文档写的是「收到推送的事件时（不包括请求网址校验）」，
+     * 即 challenge 校验不在签名保护的范围内。所以那一步只能靠 token 比对。
+     *
+     * <p>不配也能跑：未配置时只做「body 里有 challenge」的结构检查。
+     * 配了则多一道来源校验——建议配。
+     */
+    private String verificationToken;
+
+    /**
      * 飞书 API 域名。留在配置里是为了将来接 Lark 国际版或测试网关。
      */
     private String baseUrl = "https://open.feishu.cn";
@@ -56,6 +68,14 @@ public class FeishuProperties {
 
     public void setAppSecret(String appSecret) {
         this.appSecret = appSecret;
+    }
+
+    public String getVerificationToken() {
+        return verificationToken;
+    }
+
+    public void setVerificationToken(String verificationToken) {
+        this.verificationToken = verificationToken;
     }
 
     public String getEncryptKey() {

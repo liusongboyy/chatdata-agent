@@ -28,6 +28,9 @@ channel:
     # 加密策略的 Encrypt Key。**必填**——不配则事件明文传输，
     # body 里有用户提问原文与 open_id。见 spec §3.3
     encrypt-key: ${FEISHU_ENCRYPT_KEY:}
+    # 回调地址校验用。url_verification 请求不带签名头（飞书文档明确排除了它），
+    # 所以那一步只能靠 token 比对来源
+    verification-token: ${FEISHU_VERIFICATION_TOKEN:}
     group-reply-mode: in-group
 
   # 用户在飞书里点「立即绑定」时打开的地址。
