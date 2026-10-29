@@ -66,6 +66,19 @@ public class ChannelProperties {
         private String clientSecret;
 
         /**
+         * IAM 的库名。
+         *
+         * <p>channel 直连 IAM 的 {@code iam_user} 查身份绑定，而它的主数据源是
+         * ask 的库（去重表与会话映射在那）。两个库在同一个 MySQL 实例上时，
+         * 用「库名.表名」跨库查询即可。
+         *
+         * <p><strong>IAM 若拆到独立实例，这里就不成立了</strong>——那时要改成
+         * 调 IAM 的 HTTP 接口。为这个场景在 IAM 侧加一个「按 open_id 查用户」的
+         * 端点时要注意：它会把「某个 open_id 是否已注册」变成一个可探测的接口。
+         */
+        private String database = "chatdata_iam";
+
+        /**
          * 令牌提前刷新量。
          *
          * <p>令牌 TTL 只有 5 分钟。卡在到期那一刻去换，会因为时钟偏差与网络往返
@@ -95,6 +108,14 @@ public class ChannelProperties {
 
         public void setClientSecret(String clientSecret) {
             this.clientSecret = clientSecret;
+        }
+
+        public String getDatabase() {
+            return database;
+        }
+
+        public void setDatabase(String database) {
+            this.database = database;
         }
 
         public Duration getRefreshAhead() {

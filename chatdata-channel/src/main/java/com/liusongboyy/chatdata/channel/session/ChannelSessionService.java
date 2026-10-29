@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -77,6 +78,35 @@ public class ChannelSessionService {
         log.info("新建渠道会话：channel={} chatKey={} user={} conv={}",
                 channel, chatKey, username, conversationId);
         return conversationId;
+    }
+
+    /**
+     * 当前会话选中的助理。
+     *
+     * @return 助理 id；没选过则为空——调用方据此决定是自动选还是提示用户选
+     */
+    public Optional<String> selectedAssistant(String channel, String chatKey, String username) {
+        List<String> found = jdbc.query("""
+                SELECT assistant_id FROM channel_session
+                WHERE channel = ? AND chat_key = ? AND username = ?
+                """, (rs, i) -> rs.getString(1), channel, chatKey, username);
+        return found.isEmpty() ? Optional.empty() : Optional.ofNullable(found.get(0));
+    }
+
+    /**
+     * 记下会话选中的助理。
+     *
+     * <p>换助理时**要换会话**：ask 的多轮上下文绑在 conversationId 上，
+     * 而两个助理的域不同，接上文的追问会落到错误的域里。
+     */
+    public void selectAssistant(String channel, String chatKey, String username,
+                                String assistantId, String newConversationId) {
+        jdbc.update("""
+                UPDATE channel_session
+                SET assistant_id = ?, conversation_id = ?, last_active_at = ?
+                WHERE channel = ? AND chat_key = ?
+                """, assistantId, newConversationId, Timestamp.from(Instant.now()),
+                channel, chatKey);
     }
 
     /**

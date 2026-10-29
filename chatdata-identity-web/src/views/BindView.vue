@@ -2,7 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { confirmBind, previewBind, type BindPreview } from '../api/channel'
+import { me } from '../api/auth'
 import { errorMessage } from '../api/http'
+import { session } from '../composables/useSession'
 
 /**
  * 渠道绑定页（`/bind?ticket=...`）。
@@ -37,13 +39,23 @@ const done = ref(false)
 
 onMounted(async () => {
   try {
-    const p = await previewBind(ticket.value)
-    // 未登录：先把人送去登录，登录后回到本页（带上 ticket），否则他会看到一个空页面
-    if (!p.authenticated) {
+    // **先单独确认登录态**，而不是靠 previewBind 的返回。
+    //
+    // previewBind 打的是 /iam/channel/bind，未登录时被过滤链拦成 401，
+    // 于是它抛异常、走 catch——根本走不到下面那个 `!p.authenticated` 分支。
+    // 结果就是未登录的用户看到「请求失败（HTTP 401）」而不是被送去登录。
+    //
+    // /iam/me 不同：未登录时它返回 200 + authenticated:false，是个可判定的状态。
+    const principal = await me()
+    if (!principal.authenticated) {
       await router.replace({ name: 'login', query: { returnTo: route.fullPath } })
       return
     }
-    preview.value = p
+    // 登录态来自 /iam/me，同步到全局 session，
+    // 让路由守卫与后续页面看到一致的身份
+    session.setUser(principal)
+
+    preview.value = await previewBind(ticket.value)
   } catch (e: unknown) {
     error.value = errorMessage(e)
   } finally {

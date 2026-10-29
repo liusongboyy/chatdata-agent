@@ -1,5 +1,6 @@
 package com.liusongboyy.chatdata.channel.render;
 
+import com.liusongboyy.chatdata.channel.ask.AskClient;
 import com.liusongboyy.chatdata.channel.ask.AskResult;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectWriter;
@@ -103,6 +104,112 @@ public class FeishuCardRenderer {
         return card(Map.of("tag", "plain_text", "content", "绑定问数账号"), elements);
     }
 
+    /**
+     * 助理选择卡片。
+     *
+     * <p>有多个可用助理时必须让用户选：不指定的话 ask 会落到第一个启用中的域，
+     * 而那一问会**被错误地答成别的指标**——比"请先选一下"糟糕得多。
+     *
+     * <p>不用下拉选择组件：那条路要走卡片回调（card.action.trigger），
+     * 多一条异步链路就多一处失败态。用按钮 + 文本命令（{@code #助理 门店分析}），
+     * 点按钮只是帮你把这条命令发出来而已——按钮的 url 做不到这件事，
+     * 所以这里给出可复制的命令 + 每个助理的编号。
+     */
+    public String renderAssistantPicker(String question, List<AskClient.AskAssistant> choices) {
+        List<Map<String, Object>> elements = new ArrayList<>();
+        elements.add(md("**你有多个问数助理，这一问要交给哪一个？**"));
+        elements.add(md("回复下面的命令即可（例如 `#助手 1`）："));
+        StringBuilder list = new StringBuilder();
+        for (int i = 0; i < choices.size(); i++) {
+            var c = choices.get(i);
+            list.append("**").append(i + 1).append(".** ").append(c.name()).append('\n');
+        }
+        elements.add(md(list.toString()));
+        if (question != null && !question.isBlank()) {
+            elements.add(md("<font color='grey'>选好后请重新发送你的问题："
+                    + escapeMd(question) + "</font>"));
+        }
+        return card(Map.of("tag", "plain_text", "content", "选择问数助理"), elements);
+    }
+
+    /**
+     * 能力清单卡片。
+     *
+     * <p>回答「你能问什么」时**不要**把字段名一股脑倒出来：用户要的是
+     * 「我能问这类问题」，不是一张字段表。所以顺序是：
+     * 助理名 + 欢迎语 → 示例问题（最能说明能力）→ 字段清单（放在最后，且折叠）。
+     *
+     * <p>字段放在折叠面板里：需要精确写法的人可以展开，其余人看完示例问题就够了。
+     */
+    public String renderCapabilities(AskClient.AskAssistant assistant,
+                                     AskClient.Capabilities caps) {
+        List<Map<String, Object>> elements = new ArrayList<>();
+
+        String domain = caps == null || caps.domainName() == null || caps.domainName().isBlank()
+                ? assistant.name()
+                : assistant.name() + "（" + caps.domainName() + "）";
+        elements.add(md("当前使用的是 **" + domain + "**。"));
+
+        if (assistant.welcome() != null && !assistant.welcome().isBlank()) {
+            elements.add(md(escapeMd(assistant.welcome())));
+        }
+
+        if (!assistant.questions().isEmpty()) {
+            elements.add(md("**你可以这样问：**"));
+            for (String q : assistant.questions()) {
+                elements.add(md("· " + q));
+            }
+        }
+
+        if (caps != null && !caps.fields().isEmpty()) {
+            // 字段多时只显示前 40 个：全列出来既读不完，也会把卡片撑得很长
+            List<String> fields = caps.fields();
+            StringBuilder sb = new StringBuilder();
+            int shown = Math.min(fields.size(), 40);
+            for (int i = 0; i < shown; i++) {
+                sb.append("· ").append(fields.get(i)).append('\n');
+            }
+            if (fields.size() > shown) {
+                sb.append("… 共 ").append(fields.size()).append(" 项");
+            }
+            Map<String, Object> title = new LinkedHashMap<>();
+            title.put("tag", "markdown");
+            title.put("content", "可问的字段（" + fields.size() + "）");
+            Map<String, Object> header = new LinkedHashMap<>();
+            header.put("title", title);
+            Map<String, Object> panel = new LinkedHashMap<>();
+            panel.put("tag", "collapsible_panel");
+            panel.put("expanded", false);
+            panel.put("header", header);
+            panel.put("elements", List.of(md(sb.toString())));
+            elements.add(panel);
+        }
+
+        elements.add(md("<font color='grey'>想看别的助理？发「#助手」查看列表。</font>"));
+        return card(Map.of("tag", "plain_text", "content", "我能问什么"), elements);
+    }
+
+    /** 当前使用哪个助理的提示。切换成功后回一张，让用户确认。 */
+    public String renderAssistantSwitched(AskClient.AskAssistant chosen) {
+        List<Map<String, Object>> elements = new ArrayList<>();
+        elements.add(md("已切换到 **" + chosen.name() + "**。"));
+        if (!chosen.welcome().isBlank()) {
+            elements.add(md("<font color='grey'>" + escapeMd(chosen.welcome()) + "</font>"));
+        }
+        if (!chosen.questions().isEmpty()) {
+            elements.add(md("**可以试试问：**"));
+            for (String q : chosen.questions()) {
+                elements.add(md("· " + q));
+            }
+        }
+        return card(Map.of("tag", "plain_text", "content", "已切换助理"), elements);
+    }
+
+    /** markdown 里要转义的字符。助理名/欢迎语是配置内容，可能含 * _ 等。 */
+    private static String escapeMd(String v) {
+        return v.replace("\\", "\\\\").replace("*", "\\*").replace("_", "\\_").replace("`", "\\`");
+    }
+
     /** 「正在查询」的占位卡片。 */
     public String renderPending(String question) {
         List<Map<String, Object>> elements = new ArrayList<>();
@@ -127,55 +234,49 @@ public class FeishuCardRenderer {
      * <p>飞书卡片的表格用 {@code column_set} 逐行拼——没有原生 table 组件。
      * 第一行当表头，加粗。
      */
+    /**
+     * 表格。用 **markdown 原生表格语法**。
+     *
+     * <p>不用 {@code column_set} 逐行拼：那套在 JSON 2.0 里结构也变了，
+     * 而 markdown 表格是 2.0 明确支持的标准语法（CommonMark），
+     * 少一层自己维护的布局逻辑。代价是列宽不能精细控制——在 IM 里不值得为此较真。
+     *
+     * <p>单元格里的 {@code |} 必须转义，否则会把表格撑成多列。
+     */
     private Map<String, Object> table(AskResult result) {
         int cols = Math.min(result.columns().size(), MAX_COLUMNS);
-        List<Map<String, Object>> rows = new ArrayList<>();
+        StringBuilder md = new StringBuilder();
 
-        List<Map<String, Object>> header = new ArrayList<>();
+        // 表头
+        List<String> head = new ArrayList<>();
         for (int i = 0; i < cols; i++) {
-            header.add(cell("**" + result.columns().get(i) + "**", true));
+            head.add(escapeCell(result.columns().get(i)));
         }
-        rows.add(columnSet(header));
+        md.append("| ").append(String.join(" | ", head)).append(" |\n");
+        // 分隔行
+        md.append("|").append(" --- |".repeat(cols)).append("\n");
 
-        for (int r = 0; r < Math.min(result.rows().size(), MAX_ROWS); r++) {
+        // 数据行
+        int rows = Math.min(result.rows().size(), MAX_ROWS);
+        for (int r = 0; r < rows; r++) {
             List<String> row = result.rows().get(r);
-            List<Map<String, Object>> cells = new ArrayList<>();
+            List<String> cells = new ArrayList<>();
             for (int i = 0; i < cols; i++) {
-                cells.add(cell(i < row.size() ? row.get(i) : "", false));
+                String v = i < row.size() ? row.get(i) : "";
+                cells.add(escapeCell(v == null || v.isEmpty() ? "—" : v));
             }
-            rows.add(columnSet(cells));
+            md.append("| ").append(String.join(" | ", cells)).append(" |\n");
         }
 
-        Map<String, Object> box = new LinkedHashMap<>();
-        box.put("tag", "column_set");
-        box.put("flex_mode", "none");
-        box.put("background_style", "default");
-        box.put("columns", rows);
-        return box;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tag", "markdown");
+        m.put("content", md.toString());
+        return m;
     }
 
-    private Map<String, Object> cell(String text, boolean header) {
-        Map<String, Object> md = new LinkedHashMap<>();
-        md.put("tag", "markdown");
-        md.put("content", text == null || text.isEmpty() ? "—" : text);
-        if (header) {
-            md.put("text_align", "left");
-        }
-        Map<String, Object> col = new LinkedHashMap<>();
-        col.put("tag", "column");
-        col.put("width", "weighted");
-        col.put("weight", 1);
-        col.put("vertical_align", "top");
-        col.put("elements", List.of(md));
-        return col;
-    }
-
-    private Map<String, Object> columnSet(List<Map<String, Object>> columns) {
-        Map<String, Object> set = new LinkedHashMap<>();
-        set.put("tag", "column_set");
-        set.put("flex_mode", "none");
-        set.put("columns", columns);
-        return set;
+    /** 表格单元格转义。竖线会把一列撑成两列；换行会把一行撑成两行。 */
+    private static String escapeCell(String v) {
+        return v.replace("|", "\\|").replace("\n", " ");
     }
 
     /**
@@ -220,14 +321,19 @@ public class FeishuCardRenderer {
         return m;
     }
 
+    /**
+     * 次要说明文字。
+     *
+     * <p><b>不能用 {@code note} 组件</b>：卡片 JSON 2.0 已废弃它
+     * （飞书报 {@code cards of schema V2 no longer support tag: note}）。
+     * 官方给的替代是「普通文本 + notation 字号 + grey 颜色」，这里就用 markdown 实现。
+     */
     private Map<String, Object> note(String content) {
-        Map<String, Object> text = new LinkedHashMap<>();
-        text.put("tag", "plain_text");
-        text.put("content", content);
-        Map<String, Object> n = new LinkedHashMap<>();
-        n.put("tag", "note");
-        n.put("elements", List.of(text));
-        return n;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tag", "markdown");
+        m.put("content", "<font color='grey'>" + content + "</font>");
+        m.put("text_size", "notation");
+        return m;
     }
 
     /**

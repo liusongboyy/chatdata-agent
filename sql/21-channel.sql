@@ -33,3 +33,20 @@ CREATE TABLE IF NOT EXISTS `channel_session` (
   UNIQUE KEY `uk_channel_chat` (`channel`, `chat_key`),
   KEY `idx_channel_last_active` (`last_active_at`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '渠道会话映射';
+
+-- ── 助理选择 ──
+-- 用户有多个可用助理时，channel 必须知道这一问该走哪个。
+-- 不指定的话 ask 会落到「第一个启用中的域」，而那往往是保险域——
+-- 问门店的问题会得到"没能理解"（或更糟：被保险域勉强答成别的指标）。
+SET @has_col := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channel_session'
+    AND COLUMN_NAME = 'assistant_id'
+);
+SET @ddl := IF(@has_col = 0,
+  'ALTER TABLE `channel_session` ADD COLUMN `assistant_id` VARCHAR(32) NULL
+     COMMENT ''当前会话选中的助理；空表示尚未选择'' AFTER `username`',
+  'DO 0');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
