@@ -30,6 +30,11 @@ channel:
     encrypt-key: ${FEISHU_ENCRYPT_KEY:}
     group-reply-mode: in-group
 
+  # 用户在飞书里点「立即绑定」时打开的地址。
+  # **必须是浏览器能访问到的网关地址**，不是渠道服务自己的内网地址——
+  # 后者在用户手机上打不开
+  bind-base-url: ${BIND_BASE_URL:http://127.0.0.1:8080}
+
   iam:
     base-url: ${IAM_ISSUER:http://127.0.0.1:9000}
     client-id: channel-bot

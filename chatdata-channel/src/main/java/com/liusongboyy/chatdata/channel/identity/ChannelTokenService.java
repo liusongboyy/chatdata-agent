@@ -105,7 +105,9 @@ public class ChannelTokenService {
         long expiresIn = body.get("expires_in") instanceof Number n ? n.longValue() : 300;
 
         cache.put(username, new CachedToken(token, Instant.now().plusSeconds(expiresIn)));
-        log.debug("换取渠道令牌成功：channel={} user={} ttl={}s", channel, username, expiresIn);
+        // info 而不是 debug：排障时「这个人到底有没有换到令牌」是第一要问的问题，
+        // 而默认日志级别下 debug 看不见——那会让人误以为是身份没绑上
+        log.info("换取渠道令牌成功：channel={} user={} ttl={}s", channel, username, expiresIn);
         return token;
     }
 
