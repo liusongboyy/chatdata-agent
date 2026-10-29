@@ -85,6 +85,24 @@ public class FeishuCardRenderer {
         return card(title(question), elements);
     }
 
+    /**
+     * 绑定引导卡片。
+     *
+     * <p>给一条<b>能点</b>的链接，而不是「请联系管理员」——
+     * 后者会让每一次新用户接入都变成一次人工工单。
+     *
+     * <p>链接指向网关的 {@code /iam/app/bind}：那里有用户的登录会话，
+     * 绑定到谁由那次会话决定，而不是由链接决定（见 BindTicketIssuer）。
+     */
+    public String renderBindGuide(String bindUrl) {
+        List<Map<String, Object>> elements = new ArrayList<>();
+        elements.add(md("**你还没有绑定问数账号。**"));
+        elements.add(md("点下面的按钮，用你的问数账号登录并确认绑定，之后就能直接在这里提问。"));
+        elements.add(button("立即绑定", bindUrl));
+        elements.add(note("链接 10 分钟内有效，且只能用一次。不是你本人操作的话请忽略这条消息。"));
+        return card(Map.of("tag", "plain_text", "content", "绑定问数账号"), elements);
+    }
+
     /** 「正在查询」的占位卡片。 */
     public String renderPending(String question) {
         List<Map<String, Object>> elements = new ArrayList<>();
@@ -184,6 +202,15 @@ public class FeishuCardRenderer {
         panel.put("header", header);
         panel.put("elements", List.of(code));
         return panel;
+    }
+
+    private Map<String, Object> button(String text, String url) {
+        Map<String, Object> btn = new LinkedHashMap<>();
+        btn.put("tag", "button");
+        btn.put("text", Map.of("tag", "plain_text", "content", text));
+        btn.put("type", "primary");
+        btn.put("url", url);
+        return btn;
     }
 
     private Map<String, Object> md(String content) {

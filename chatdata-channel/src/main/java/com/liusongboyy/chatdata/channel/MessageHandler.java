@@ -2,6 +2,7 @@ package com.liusongboyy.chatdata.channel;
 
 import com.liusongboyy.chatdata.channel.ask.AskClient;
 import com.liusongboyy.chatdata.channel.ask.AskResult;
+import com.liusongboyy.chatdata.channel.identity.BindTicketIssuer;
 import com.liusongboyy.chatdata.channel.identity.ChannelIdentityService;
 import com.liusongboyy.chatdata.channel.identity.ChannelTokenService;
 import com.liusongboyy.chatdata.channel.inbound.InboundMessage;
@@ -34,6 +35,7 @@ public class MessageHandler {
     private static final Logger log = LoggerFactory.getLogger(MessageHandler.class);
 
     private final ChannelIdentityService identities;
+    private final BindTicketIssuer bindTickets;
     private final ChannelTokenService tokens;
     private final ChannelSessionService sessions;
     private final AskClient ask;
@@ -41,11 +43,13 @@ public class MessageHandler {
     private final FeishuSender sender;
     private final InboundQueue queue;
 
-    public MessageHandler(ChannelIdentityService identities, ChannelTokenService tokens,
+    public MessageHandler(ChannelIdentityService identities, BindTicketIssuer bindTickets,
+                          ChannelTokenService tokens,
                           ChannelSessionService sessions, AskClient ask,
                           FeishuCardRenderer renderer, FeishuSender sender,
                           InboundQueue queue) {
         this.identities = identities;
+        this.bindTickets = bindTickets;
         this.tokens = tokens;
         this.sessions = sessions;
         this.ask = ask;
@@ -70,7 +74,8 @@ public class MessageHandler {
         if (isResetCommand(question)) {
             Optional<String> username = identities.resolveUsername(msg.channel(), msg.senderId());
             if (username.isEmpty()) {
-                reply(msg, renderer.renderError(question, unboundMessage()));
+                String ticket = bindTickets.issue(msg.channel(), msg.senderId(), question);
+                reply(msg, renderer.renderBindGuide(bindTickets.bindUrl(ticket)));
                 return;
             }
             sessions.startNew(msg.channel(), msg.chatKey(), username.get());
@@ -82,7 +87,10 @@ public class MessageHandler {
         // ① 身份。未绑定 → 给绑定引导，**不发 ask 请求**
         Optional<String> username = identities.resolveUsername(msg.channel(), msg.senderId());
         if (username.isEmpty()) {
-            reply(msg, renderer.renderError(question, unboundMessage()));
+            // 自助绑定：给一条能点的链接，而不是「请联系管理员」——
+            // 后者会让每一次新用户接入都变成一次人工工单
+            String ticket = bindTickets.issue(msg.channel(), msg.senderId(), msg.text());
+            reply(msg, renderer.renderBindGuide(bindTickets.bindUrl(ticket)));
             return;
         }
 
@@ -129,10 +137,6 @@ public class MessageHandler {
         String t = text == null ? "" : text.trim();
         return t.equals("新话题") || t.equals("重置") || t.equals("新的会话")
                 || t.equals("/new") || t.equals("/reset");
-    }
-
-    private static String unboundMessage() {
-        return "你还没有绑定问数账号。请在 Web 端「账号中心」让管理员为你绑定飞书身份后再试。";
     }
 
     /**

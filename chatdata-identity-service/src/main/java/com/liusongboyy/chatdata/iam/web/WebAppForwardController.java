@@ -28,6 +28,8 @@ public class WebAppForwardController {
             "/iam/app/admin/orgs",
             "/iam/app/admin/roles",
             "/iam/app/admin/policies",
+            // 渠道绑定页。不加这行，用户从飞书点进来后按刷新就是 404
+            "/iam/app/bind",
     })
     public String forwardToApp() {
         return "forward:/iam/app/index.html";

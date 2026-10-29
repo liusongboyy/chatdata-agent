@@ -119,6 +119,17 @@ public interface UserMapper {
                                @Param("provider") String provider,
                                @Param("externalId") String externalId);
 
+    /**
+     * 读当前用户的外部身份。「我的账号」页展示绑定状态用。
+     *
+     * @return 未绑定时返回 null 或两个值都为 null 的 map
+     */
+    @Select("""
+            SELECT external_provider AS provider, external_id AS externalId
+            FROM iam_user WHERE id = #{id}
+            """)
+    Map<String, Object> selectExternalIdentity(@Param("id") long id);
+
     @Insert("""
             INSERT INTO iam_user (tenant_id, username, password_hash, display_name, status)
             VALUES (#{tenant}, #{username}, #{passwordHash}, #{displayName}, #{status})

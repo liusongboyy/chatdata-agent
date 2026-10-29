@@ -7,6 +7,7 @@ import UserListView from './views/UserListView.vue'
 import OrgListView from './views/OrgListView.vue'
 import RoleListView from './views/RoleListView.vue'
 import NoAccessView from './views/NoAccessView.vue'
+import BindView from './views/BindView.vue'
 
 /**
  * 管理页清单：路径、名称、标题、以及**进入它需要的权限**。
@@ -35,6 +36,8 @@ export const router = createRouter({
     { path: '/', redirect: '/admin/users' },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/no-access', name: 'no-access', component: NoAccessView, meta: { requiresAuth: true } },
+    // 渠道绑定页。要求登录：绑定到谁由会话决定，未登录时页面自己会跳登录页
+    { path: '/bind', name: 'bind', component: BindView, meta: { requiresAuth: true } },
     {
       path: '/admin',
       component: AdminLayout,

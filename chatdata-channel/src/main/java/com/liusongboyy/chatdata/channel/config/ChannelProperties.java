@@ -19,6 +19,14 @@ public class ChannelProperties {
     private final Dedup dedup = new Dedup();
     private final Session session = new Session();
 
+    /**
+     * 绑定页的对外地址（浏览器访问的网关地址）。
+     *
+     * <p>用户在飞书里点「立即绑定」，链接要指向<b>浏览器能打开</b>的地址，
+     * 而不是渠道服务自己的内网地址——那在用户手机上打不开。
+     */
+    private String bindBaseUrl = "http://127.0.0.1:8080";
+
     public Iam getIam() {
         return iam;
     }
@@ -37,6 +45,14 @@ public class ChannelProperties {
 
     public Session getSession() {
         return session;
+    }
+
+    public String getBindBaseUrl() {
+        return bindBaseUrl;
+    }
+
+    public void setBindBaseUrl(String bindBaseUrl) {
+        this.bindBaseUrl = bindBaseUrl;
     }
 
     /** IAM：换「代表某用户」的令牌。 */
