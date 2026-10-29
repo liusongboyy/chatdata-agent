@@ -22,6 +22,7 @@
         <module>chatdata-identity-client</module>
         <module>chatdata-query-service</module>
         <module>chatdata-query-engine</module>
+        <module>chatdata-channel</module>
     </modules>
 
     <properties>

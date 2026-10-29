@@ -1,0 +1,67 @@
+server:
+  port: ${CHANNEL_PORT:20000}
+
+spring:
+  application:
+    name: chatdata-channel
+
+  # 去重与会话映射。**用 ask 的库**：它们都是"渠道侧状态"，
+  # 单独建库会让一次问数跨三个库，排查时要连三次
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:chatdata_ask}?characterEncoding=UTF-8&useUnicode=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
+channel:
+  feishu:
+    enabled: ${FEISHU_ENABLED:false}
+    app-id: ${FEISHU_APP_ID:}
+    app-secret: ${FEISHU_APP_SECRET:}
+    # 加密策略的 Encrypt Key。**必填**——不配则事件明文传输，
+    # body 里有用户提问原文与 open_id。见 spec §3.3
+    encrypt-key: ${FEISHU_ENCRYPT_KEY:}
+    group-reply-mode: in-group
+
+  iam:
+    base-url: ${IAM_ISSUER:http://127.0.0.1:9000}
+    client-id: channel-bot
+    # 与 IAM 里的 channel-bot 客户端密钥一致。不设默认值
+    client-secret: ${IAM_CHANNEL_SECRET:}
+    refresh-ahead: 30s
+
+  ask:
+    base-url: ${ASK_URI:http://127.0.0.1:8081}
+    timeout: 200s
+
+  queue:
+    capacity: 200
+    workers: 8
+
+  dedup:
+    # 必须 ≥ 6 小时：飞书最晚一次重推在 6 小时后（spec §3.4）
+    retention: 24h
+
+  session:
+    idle: 60m
+
+logging:
+  level:
+    root: INFO
+    com.liusongboyy.chatdata: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

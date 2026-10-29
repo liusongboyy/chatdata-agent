@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.liusongboyy.chatdata</groupId>
+        <artifactId>chatdata-agent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>chatdata-channel</artifactId>
+    <packaging>jar</packaging>
+
+    <name>chatdata-channel</name>
+    <description>
+        渠道接入：把问数接到飞书/钉钉/企业微信。
+        本期只做飞书 webhook。见 .scratch/feishu-channel/spec.md。
+
+        边界：**不依赖 query-engine 或 query-service 的任何代码**。
+        它只需要「把问题变成结果」，结果的结构由 HTTP 契约定义。
+        一旦依赖 engine，这里就会开始想要 PermissionContext、想要 DSL——那是错的。
+    </description>
+
+    <properties>
+        <!-- 飞书官方 Java SDK。2.5.3 是本地仓库已有版本；
+             升级只需改这里（2.8.x 起有 LarkChannel 高层封装，但当前镜像不可达） -->
+        <lark-sdk.version>2.5.3</lark-sdk.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- 发消息调用飞书 API；webhook 的验签/解密自己写（见 spec §3.3），
+             不依赖 SDK 的事件处理——那套是给长连接与 servlet 集成用的 -->
+        <dependency>
+            <groupId>com.larksuite.oapi</groupId>
+            <artifactId>oapi-sdk</artifactId>
+            <version>${lark-sdk.version}</version>
+        </dependency>
+
+        <!-- 幂等与令牌缓存 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
