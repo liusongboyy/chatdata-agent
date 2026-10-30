@@ -1,6 +1,8 @@
 package com.liusongboyy.chatdata.mesh.a2a;
 
 import com.liusongboyy.chatdata.mesh.config.MeshProperties;
+import com.liusongboyy.chatdata.mesh.identity.ProxyTargetResolver;
+import com.liusongboyy.chatdata.mesh.identity.ProxyTokenService;
 import io.agentscope.core.a2a.server.executor.runner.AgentRequestOptions;
 import io.agentscope.core.a2a.server.executor.runner.AgentRunner;
 import io.agentscope.core.event.AgentEvent;
@@ -40,9 +42,15 @@ public class AskAgentRunner implements AgentRunner {
     private static final Logger log = LoggerFactory.getLogger(AskAgentRunner.class);
 
     private final MeshProperties properties;
+    private final ProxyTargetResolver resolver;
+    private final ProxyTokenService tokens;
 
-    public AskAgentRunner(MeshProperties properties) {
+    public AskAgentRunner(MeshProperties properties,
+                          ProxyTargetResolver resolver,
+                          ProxyTokenService tokens) {
         this.properties = properties;
+        this.resolver = resolver;
+        this.tokens = tokens;
     }
 
     @Override
@@ -69,8 +77,27 @@ public class AskAgentRunner implements AgentRunner {
         log.info("A2A 调用：agent={} taskId={} userId={} q={}",
                 getAgentName(), options.getTaskId(), options.getUserId(), question);
 
-        // 第 2 步：先返回固定答复，验证协议链路。
-        // 第 4 步会换成「解析 userId → 换令牌 → 调 ask → 组装 artifact」
+        // 第 3 步：接上身份解析与换令牌，验证「代表谁」这条链路。
+        // 第 4 步再接 ask 的真实查询。
+        //
+        // 失败时返回一条明确的错误说明，而不是 Flux.error——A2A 的 error 事件
+        // 在客户端往往只显示成"任务失败"，调用方看不到原因。
+        // 授权问题是**调用方能处理的**（去走授权流程），必须让它看见
+        String clientId = "";   // 第 4 步会从请求头取，本期先留空走白名单留空的路径
+        var target = resolver.resolve(options.getUserId(), clientId);
+        if (target.isEmpty()) {
+            return errorReply("无法确定代表谁：" + options.getUserId()
+                    + "。userId 必须是 user:<username> 形式，且客户端在白名单内。");
+        }
+        String username = target.get();
+
+        String token;
+        try {
+            token = tokens.tokenFor(clientId.isEmpty() ? "report-bot" : clientId, username);
+        } catch (ProxyTokenService.TokenUnavailableException e) {
+            return errorReply(e.getMessage());
+        }
+        log.info("A2A 身份解析成功：user={} tokenLen={}", username, token.length());
         // 构造器签名：(sessionId, replyId, name)。
         // replyId 由 starter 用来把后续事件归到同一条回复上，这里给 null 表示由它生成
         AgentEvent start = new AgentStartEvent(
@@ -80,9 +107,10 @@ public class AskAgentRunner implements AgentRunner {
                 .role(MsgRole.ASSISTANT)
                 .name(getAgentName())
                 .content(List.<ContentBlock>of(TextBlock.builder()
-                        .text("【占位】A2A 链路已通。问数接入在第 4 步完成。\n"
+                        .text("【第 3 步】身份链路已通。问数接入在第 4 步完成。\n"
                                 + "收到的问题：" + question + "\n"
-                                + "被代理用户：" + options.getUserId())
+                                + "被代理用户：" + username + "\n"
+                                + "已换到令牌（" + token.length() + " 字符）")
                         .build()))
                 .build();
 
@@ -98,6 +126,17 @@ public class AskAgentRunner implements AgentRunner {
     @Override
     public void stop(String taskId) {
         log.info("收到 stop 请求（当前无长驻任务）：taskId={}", taskId);
+    }
+
+    /** 失败时也返回一条可读的说明，而不是 Flux.error。 */
+    private Flux<AgentEvent> errorReply(String message) {
+        Msg reply = Msg.builder()
+                .role(MsgRole.ASSISTANT)
+                .name(getAgentName())
+                .content(List.<ContentBlock>of(TextBlock.builder().text(message).build()))
+                .build();
+        return Flux.just(new AgentStartEvent(null, null, getAgentName()),
+                new AgentResultEvent(reply));
     }
 
     /** 取最后一条消息的纯文本。 */
