@@ -30,7 +30,7 @@ class ProxyTargetResolverTest {
     @DisplayName("★ 正常解析：user:zhangsan → zhangsan")
     void resolvesPrefixedUser() {
         assertThat(withAllowed("report-bot").resolve("user:zhangsan", "report-bot"))
-                .contains("zhangsan");
+                .map(ProxyTargetResolver.ProxyTarget::username).contains("zhangsan");
     }
 
     @Test
@@ -70,7 +70,7 @@ class ProxyTargetResolverTest {
     void emptyWhitelistSkipsCheck() {
         ProxyTargetResolver r = new ProxyTargetResolver(new MeshProperties());
 
-        assertThat(r.resolve("user:zhangsan", "anything")).contains("zhangsan");
+        assertThat(r.resolve("user:zhangsan", "anything")).map(ProxyTargetResolver.ProxyTarget::username).contains("zhangsan");
         // 但 userId 的格式仍然要校验——白名单留空不等于什么都放行
         assertThat(r.resolve("agent:xxx", "anything")).isEmpty();
     }
@@ -79,7 +79,7 @@ class ProxyTargetResolverTest {
     @DisplayName("前缀后带空格会被 trim")
     void trimsUsername() {
         assertThat(withAllowed("report-bot").resolve("user:  zhangsan  ", "report-bot"))
-                .contains("zhangsan");
+                .map(ProxyTargetResolver.ProxyTarget::username).contains("zhangsan");
     }
 
     /**
@@ -95,8 +95,9 @@ class ProxyTargetResolverTest {
     @DisplayName("★ 即使客户端在白名单、格式对，也不代表用户授权过（那是 IAM 的事）")
     void doesNotJudgeAuthorization() {
         // 这个"用户"从没授权过任何 agent，但解析层不拦
-        Optional<String> resolved = withAllowed("report-bot").resolve("user:never-granted", "report-bot");
+        Optional<ProxyTargetResolver.ProxyTarget> resolved =
+                withAllowed("report-bot").resolve("user:never-granted", "report-bot");
 
-        assertThat(resolved).contains("never-granted");
+        assertThat(resolved).map(ProxyTargetResolver.ProxyTarget::username).contains("never-granted");
     }
 }

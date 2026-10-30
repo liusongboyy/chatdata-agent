@@ -5,10 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -76,16 +76,28 @@ public class ProxyTokenService {
                     "mesh.iam.client-secret 未配置（环境变量 IAM_MESH_SECRET）");
         }
 
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", GRANT_TYPE);
-        form.add("agent_client", agentClient);
-        form.add("proxy_user", username);
+        // 用显式 URL 编码的表单串，不用 MultiValueMap：
+        // RestClient 对 MultiValueMap 的编码方式在某些配置下会多套一层，
+        // 表现为 IAM 返回 invalid_request（参数名对不上）。
+        // 手写编码虽然原始，但"发出去的到底是什么"一目了然。
+        String form = "grant_type=" + URLEncoder.encode(GRANT_TYPE, StandardCharsets.UTF_8)
+                + "&agent_client=" + URLEncoder.encode(agentClient, StandardCharsets.UTF_8)
+                + "&proxy_user=" + URLEncoder.encode(username, StandardCharsets.UTF_8);
+
+        // 把发出去的 body 原样打出来。IAM 的 invalid_request 只说"参数有问题"，
+        // 不说哪个参数——而这条链路上唯一可能出问题的就是这段字符串
+        log.info("换令牌请求：client={} body=[{}]", properties.getIam().getClientId(), form);
 
         Map<?, ?> body;
         try {
             body = client.post()
                     .uri("/oauth2/token")
-                    .headers(h -> h.setBasicAuth(properties.getIam().getClientId(), secret))
+                    // 用 header() 而不是 headers(h -> h.setBasicAuth(...))：
+                    // 后者会先清空已有头再设 Authorization，而之后的 contentType()
+                    // 又要写 Content-Type——两者在同一个 header 回调里设置时
+                    // 顺序不好控，出现过 Content-Type 把 Authorization 挤掉的情况。
+                    .header("Authorization", "Basic " + base64(
+                            properties.getIam().getClientId() + ":" + secret))
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(form)
                     .retrieve()
@@ -138,9 +150,25 @@ public class ProxyTokenService {
             if (text.contains("无权使用")) {
                 return "mesh 客户端的 grant 配置有误，请联系管理员";
             }
+            // 把 IAM 的原始响应带出来：这一支说明前面几个已知原因都没命中，
+            // 而"未知原因"最需要原始信息——否则只能瞎猜
+            log.warn("换令牌被 IAM 拒绝：status={} body={}", statusOf(res), text);
             return "无法为目标用户换取令牌（IAM 拒绝）";
         } catch (java.io.IOException e) {
             return "无法为目标用户换取令牌";
+        }
+    }
+
+    private static String base64(String v) {
+        return java.util.Base64.getEncoder()
+                .encodeToString(v.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private static int statusOf(org.springframework.http.client.ClientHttpResponse res) {
+        try {
+            return res.getStatusCode().value();
+        } catch (java.io.IOException e) {
+            return -1;
         }
     }
 
