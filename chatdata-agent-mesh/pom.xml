@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.liusongboyy.chatdata</groupId>
+        <artifactId>chatdata-agent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>chatdata-agent-mesh</artifactId>
+    <packaging>jar</packaging>
+
+    <name>chatdata-agent-mesh</name>
+    <description>
+        把问数暴露成一个 A2A agent：可被 agentscope service 编排、注册到 Nacos
+        被公司内其他 agent 发现。- 见 .scratch/agent-mesh/spec.md
+
+        边界：与 channel 一样，**不判断权限、不依赖 engine**。它只做三件事：
+          1. 把 A2A 请求翻译成一次 ask 调用（带被代理用户的令牌）
+          2. 把结果排成 A2A 的 artifact
+          3. 把 AgentCard 注册到 Nacos
+
+        为什么独立成模块而不是塞进 ask：ask 是资源服务器，鉴权靠 IAM 内省用户令牌；
+        A2A 来的是**其他 agent** 的调用，身份模型完全不同（服务 → 代理用户）。
+        混进去会破坏现有安全模型。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- A2A server：AgentRunner / AgentCard / JSON-RPC 端点 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-a2a-spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+
+        <!-- Nacos 注册：NacosAgentRegistry 是现成的（nacos-client 3.2.1，已实测兼容 3.2.3） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-nacos-a2a</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

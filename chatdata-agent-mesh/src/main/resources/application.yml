@@ -1,0 +1,92 @@
+server:
+  port: ${MESH_PORT:20001}
+  # starter 用 server.address + server.port 拼 AgentCard 的 url，
+  # 不配 address 时它会探测本机网卡 IP（如 10.40.x.x）。
+  # 那个地址在容器/多网卡环境里通常不通——必须显式指定对外可达的地址
+  address: ${MESH_ADVERTISED_HOST:127.0.0.1}
+
+spring:
+  application:
+    name: chatdata-agent-mesh
+
+mesh:
+  iam:
+    base-url: ${IAM_ISSUER:http://127.0.0.1:9000}
+    client-id: agent-mesh
+    # 与 IAM 里的 agent-mesh 客户端密钥一致。不设默认值
+    client-secret: ${IAM_MESH_SECRET:}
+    refresh-ahead: 30s
+
+  ask:
+    base-url: ${ASK_URI:http://127.0.0.1:8081}
+    timeout: 200s
+
+  identity:
+    # 允许调用本 agent 的客户端。**不是安全边界**——X-Agent-Client 头可伪造。
+    # 真正的边界是 IAM 的 iam_agent_grant（用户授权了哪个 agent）
+    allowed-clients: ${MESH_ALLOWED_CLIENTS:}
+    # 这两个值必须与授权表里的 agent_client 一致
+
+  a2a:
+    # AgentCard 里写出去的地址（仅用于**注册到 Nacos** 的那份）。
+    # A2A 端点自己返回的 card 由下面 agentscope.a2a.server.* 决定——
+    # 两处都要配，否则会出现"Nacos 里的地址"与"端点自报的地址"不一致
+    advertised-host: ${MESH_ADVERTISED_HOST:127.0.0.1}
+    advertised-port: ${MESH_PORT:20001}
+    path: /a2a
+    agent-name: chatdata-ask
+    agent-description: 语义层问数：把业务问题翻译成受权限约束的查询
+    version: 1.0.0
+
+  nacos:
+    # 本地没起 Nacos 时保持 false——A2A 端点照样能按地址直接调
+    enabled: ${MESH_NACOS_ENABLED:false}
+    # 3.x 的 SERVER_ADDR 写映射后的主端口，客户端自动 +1000 连 gRPC
+    server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:18848}
+    namespace: ${NACOS_NAMESPACE:public}
+
+# agentscope A2A starter 的配置。**这是 A2A 端点真正读的那份**，
+# 前缀是 agentscope.a2a.server.*（见 starter 的 Constants.A2A_SERVER_CARD_PREFIX）。
+# 之前只配了 mesh.a2a，所以端点返回的 card 里 skills 是空的——
+# 那次只验证了"Nacos 注册"那一份，没验证端点自报的那份。
+agentscope:
+  a2a:
+    server:
+      card:
+        name: chatdata-ask
+        description: 语义层问数：把业务问题翻译成受权限约束的查询
+        version: 1.0.0
+        # 留空则由 starter 用 server.port/server.address 自动拼
+        url: http://${MESH_ADVERTISED_HOST:127.0.0.1}:${MESH_PORT:20001}
+        default-input-modes:
+          - text
+        default-output-modes:
+          - data
+          - text
+        skills:
+          - id: domain-2300
+            name: 门店分析
+            description: 回答门店经营问题：销售额、订单数、库存、报废、员工打卡。支持按组织、时间、商品维度聚合，结果受调用方被代理人的数据权限约束。
+            tags:
+              - retail
+              - store
+              - sales
+              - 门店
+            examples:
+              - 上周各门店的订单金额
+              - 库存周转天数是多少
+              - 报废金额最高的门店
+
+logging:
+  level:
+    root: INFO
+    com.liusongboyy.chatdata: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

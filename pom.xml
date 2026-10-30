@@ -23,6 +23,7 @@
         <module>chatdata-query-service</module>
         <module>chatdata-query-engine</module>
         <module>chatdata-channel</module>
+        <module>chatdata-agent-mesh</module>
     </modules>
 
     <properties>
