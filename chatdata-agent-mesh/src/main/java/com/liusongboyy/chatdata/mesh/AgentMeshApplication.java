@@ -24,6 +24,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 public class AgentMeshApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(AgentMeshApplication.class, args);
+        var ctx = SpringApplication.run(AgentMeshApplication.class, args);
+        // 启动时校验「AgentCard 声明的技能」与「实际查询用的域」一致。
+        // 不一致时是不报错的答非所问，越早发现越好
+        ctx.getBean(com.liusongboyy.chatdata.mesh.a2a.AgentCardFactory.class).verifyConsistency();
     }
 }

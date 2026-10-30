@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * AgentCard 的内容。
@@ -20,6 +21,7 @@ class AgentCardFactoryTest {
         props.getA2a().setAgentName("chatdata-ask");
         props.getA2a().setAdvertisedHost("10.0.0.5");
         props.getA2a().setAdvertisedPort(20001);
+        props.getA2a().setDomainId("2300");
         return new AgentCardFactory(props).build();
     }
 
@@ -71,6 +73,37 @@ class AgentCardFactoryTest {
         // data：结构化表格，给能解析 JSON 的调用方
         // text：可读摘要，给只读文本的调用方
         assertThat(card().defaultOutputModes()).containsExactlyInAnyOrder("data", "text");
+    }
+
+    @Test
+    @DisplayName("★ 域与技能一致时校验通过")
+    void consistencyOkWhenDomainMatchesSkill() {
+        MeshProperties props = new MeshProperties();
+        props.getA2a().setDomainId("2300");
+
+        new AgentCardFactory(props).verifyConsistency();   // 不抛即通过
+    }
+
+    @Test
+    @DisplayName("★ 域与技能不一致 → 启动失败（否则是答非所问且不报错）")
+    void consistencyFailsOnMismatch() {
+        MeshProperties props = new MeshProperties();
+        props.getA2a().setDomainId("1");   // 保险域，但 AgentCard 声明的是门店分析
+
+        assertThatThrownBy(() -> new AgentCardFactory(props).verifyConsistency())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("不一致");
+    }
+
+    @Test
+    @DisplayName("★ 未配域 → 启动失败（不指定时 ask 会落到第一个启用中的域）")
+    void consistencyFailsWhenDomainMissing() {
+        MeshProperties props = new MeshProperties();
+        props.getA2a().setDomainId("");
+
+        assertThatThrownBy(() -> new AgentCardFactory(props).verifyConsistency())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("未配置");
     }
 
     @Test

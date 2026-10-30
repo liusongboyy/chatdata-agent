@@ -70,18 +70,27 @@ public class AskClient {
     public AskResult ask(String token, String question, String sessionId, boolean analyze) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("question", question);
+
+        // **必须显式指定域。**
+        //
+        // 不传的话 ask 用「第一个启用中的域」——通常是保险域。
+        // 于是 AgentCard 声明「门店分析」，调用方问门店问题，拿到的是保费数字。
+        // 这类错误不报错：SQL 合法、数据真实，只是答的不是问的那个问题。
+        String domainId = properties.getA2a().getDomainId();
+        if (domainId == null || domainId.isBlank()) {
+            // 没配域就不发请求——宁可报错，也不要悄悄落到错误的域上
+            throw new AskFailedException(
+                    "mesh.a2a.domain-id 未配置。不指定域时 ask 会落到第一个启用中的域，"
+                            + "而那通常不是 AgentCard 声明的那个");
+        }
+        body.put("domainId", domainId);
+
         if (sessionId != null && !sessionId.isBlank()) {
             body.put("sessionId", sessionId);
         }
         if (analyze) {
             body.put("analyze", true);
         }
-        // 不指定 domainId / assistantId：让 ask 按默认域解析。
-        // mesh 的 AgentCard 只声明了「门店分析」一个技能，但技能描述是给人看的，
-        // 不构成路由约束——真正的域选择仍在 ask 侧。
-        //
-        // 这里留了个已知缺口：如果用户在 ask 里有多个域，默认域可能不是
-        // AgentCard 承诺的那个。第 5 步之后要考虑把 skill id 映射成 domainId。
 
         try {
             return client.post()

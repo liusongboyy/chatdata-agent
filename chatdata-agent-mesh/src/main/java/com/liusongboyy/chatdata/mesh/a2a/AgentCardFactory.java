@@ -35,6 +35,29 @@ public class AgentCardFactory {
     /** 门店分析域。与 ask 里的 {@code ask_domain.id} 一致。 */
     static final String DOMAIN_STORE_ANALYSIS = "2300";
 
+    /**
+     * 校验「AgentCard 声明的技能」与「实际查询用的域」一致。
+     *
+     * <p>两者不一致时的表现是**答非所问但不报错**：AgentCard 说能问门店，
+     * 实际查的是保险库，SQL 合法、数字真实，调用方无从察觉。
+     *
+     * <p>放在启动时检查——那时配置还没生效多久，改配置重启的成本最低。
+     */
+    public void verifyConsistency() {
+        String configured = properties.getA2a().getDomainId();
+        if (configured == null || configured.isBlank()) {
+            throw new IllegalStateException(
+                    "mesh.a2a.domain-id 未配置。不指定域时 ask 会落到第一个启用中的域，"
+                            + "而那通常不是 AgentCard 声明的那个——结果是答非所问且不报错");
+        }
+        if (!DOMAIN_STORE_ANALYSIS.equals(configured.trim())) {
+            throw new IllegalStateException(
+                    "mesh.a2a.domain-id=" + configured + " 与 AgentCard 声明的技能不一致："
+                            + "卡片里只有 domain-" + DOMAIN_STORE_ANALYSIS + "（门店分析）。"
+                            + "要么改 domain-id，要么在 skills() 里补上对应的技能声明");
+        }
+    }
+
     private final MeshProperties properties;
 
     public AgentCardFactory(MeshProperties properties) {

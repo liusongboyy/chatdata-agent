@@ -40,6 +40,10 @@ mesh:
     agent-name: chatdata-ask
     agent-description: 语义层问数：把业务问题翻译成受权限约束的查询
     version: 1.0.0
+    # **必须显式指定**。不传的话 ask 用「第一个启用中的域」（通常保险域），
+    # 于是 AgentCard 声明门店分析、实际查保险库——答非所问且不报错。
+    # 必须与 AgentCard 的 skills 对应，启动时会校验
+    domain-id: ${MESH_DOMAIN_ID:2300}
 
   nacos:
     # 本地没起 Nacos 时保持 false——A2A 端点照样能按地址直接调

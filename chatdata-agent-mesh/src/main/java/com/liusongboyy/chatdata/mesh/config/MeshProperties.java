@@ -164,6 +164,21 @@ public class MeshProperties {
 
         private String version = "1.0.0";
 
+        /**
+         * 这个 agent 背后的数据域 id。
+         *
+         * <h2>为什么必须显式配</h2>
+         *
+         * <p>不指定 domainId 时，ask 会用「第一个启用中的域」——那通常是保险域。
+         * 于是 AgentCard 声明「门店分析」，调用方问门店问题，拿到的却是保费数字。
+         *
+         * <p>这类错误的可怕之处在于它**不报错**：SQL 合法、数据真实、数字合理，
+         * 只是回答的不是问的那个问题。调用方无从察觉。
+         *
+         * <p>与 AgentCard 的 skill 必须对应——{@link #skills} 里只声明这一个域的能力。
+         */
+        private String domainId = "2300";
+
         public String getAdvertisedHost() {
             return advertisedHost;
         }
@@ -210,6 +225,14 @@ public class MeshProperties {
 
         public void setVersion(String version) {
             this.version = version;
+        }
+
+        public String getDomainId() {
+            return domainId;
+        }
+
+        public void setDomainId(String domainId) {
+            this.domainId = domainId;
         }
     }
 
