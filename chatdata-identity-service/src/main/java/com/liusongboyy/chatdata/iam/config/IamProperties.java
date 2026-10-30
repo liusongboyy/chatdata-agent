@@ -104,6 +104,16 @@ public class IamProperties {
         private String channelId = "channel-bot";
         private String channelSecret;
 
+        /**
+         * Agent mesh 客户端（A2A 入口）。
+         *
+         * <p>与 channel 分开注册而不是复用：两者的信任边界不同——
+         * channel 面向「飞书推送的人」，mesh 面向「公司内其他 agent」。
+         * 共用一个客户端，出问题时分不清是谁在冒充。
+         */
+        private String agentMeshId = "agent-mesh";
+        private String agentMeshSecret;
+
         public String getBffId() {
             return bffId;
         }
@@ -154,6 +164,22 @@ public class IamProperties {
 
         public String getChannelSecret() {
             return channelSecret;
+        }
+
+        public String getAgentMeshId() {
+            return agentMeshId;
+        }
+
+        public void setAgentMeshId(String agentMeshId) {
+            this.agentMeshId = agentMeshId;
+        }
+
+        public String getAgentMeshSecret() {
+            return agentMeshSecret;
+        }
+
+        public void setAgentMeshSecret(String agentMeshSecret) {
+            this.agentMeshSecret = agentMeshSecret;
         }
 
         public void setChannelSecret(String channelSecret) {

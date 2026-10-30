@@ -1,5 +1,7 @@
 package com.liusongboyy.chatdata.iam.config;
 
+import com.liusongboyy.chatdata.iam.agentproxy.AgentProxyAuthenticationProvider;
+import com.liusongboyy.chatdata.iam.agentproxy.AgentProxyGrantAuthenticationConverter;
 import com.liusongboyy.chatdata.iam.channel.ChannelGrantAuthenticationConverter;
 import com.liusongboyy.chatdata.iam.channel.ChannelGrantAuthenticationProvider;
 import com.nimbusds.jose.jwk.source.JWKSource;
@@ -75,7 +77,13 @@ public class AuthorizationServerSecurityConfig {
                         // 渠道换令牌（飞书等）。自定义 grant，理由见 ChannelGrantType
                         .tokenEndpoint(t -> t
                                 .accessTokenRequestConverter(new ChannelGrantAuthenticationConverter())
+                                .accessTokenRequestConverter(
+                                        new AgentProxyGrantAuthenticationConverter())
                                 .authenticationProvider(new ChannelGrantAuthenticationProvider(
+                                        authorizations, tokenGenerator, userMapper, iamProperties))
+                                // Agent 代理：判据是 iam_agent_grant（用户授权某个 agent），
+                                // 与渠道的 external_id 绑定是两回事，所以两个 provider
+                                .authenticationProvider(new AgentProxyAuthenticationProvider(
                                         authorizations, tokenGenerator, userMapper, iamProperties))))
                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                 .securityContext(context -> context

@@ -61,6 +61,37 @@ public interface UserMapper {
                                  @Param("username") String username,
                                  @Param("provider") String provider);
 
+    /**
+     * 按「用户 + agent」查用户，**同时要求存在未撤销的代理授权**。
+     *
+     * <p>这是 agent 代理的准入判据，与 {@link #selectBoundToChannel} 的
+     * 「渠道绑定」是两回事：
+     *
+     * <ul>
+     *   <li>渠道绑定回答「这个飞书号是谁」——事实关系，建成后长期不变</li>
+     *   <li>代理授权回答「这个人同意哪个 agent 代表他」——用户的决定，可随时撤销</li>
+     * </ul>
+     *
+     * <p>查不到返回 null（未授权），不抛异常——"未授权"是正常状态。
+     *
+     * <p><b>不区分「用户不存在」与「没授权」</b>：区分了就等于给攻击者一个
+     * 探测账号是否存在的接口。
+     */
+    @Select("""
+            SELECT u.id, u.username, u.password_hash AS passwordHash,
+                   u.display_name AS displayName, u.status, u.token_version AS tokenVersion
+            FROM iam_user u
+            JOIN iam_agent_grant g ON g.username = u.username
+            WHERE u.tenant_id = #{tenant}
+              AND u.username = #{username}
+              AND g.agent_client = #{agentClient}
+              AND g.revoked_at IS NULL
+            LIMIT 1
+            """)
+    UserRow selectAgentProxiedUser(@Param("tenant") String tenant,
+                                   @Param("username") String username,
+                                   @Param("agentClient") String agentClient);
+
     /** 启用中的角色码。停用角色不参与鉴权。 */
     @Select("""
             SELECT r.code

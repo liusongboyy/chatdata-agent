@@ -41,6 +41,9 @@ iam:
     # 不设默认值——共用默认密钥等于谁都能冒充渠道
     channel-id: channel-bot
     channel-secret: ${IAM_CHANNEL_SECRET:}
+    # Agent mesh（A2A 入口）的客户端。与 channel 分开：信任边界不同
+    agent-mesh-id: agent-mesh
+    agent-mesh-secret: ${IAM_MESH_SECRET:}
 
 logging:
   level:

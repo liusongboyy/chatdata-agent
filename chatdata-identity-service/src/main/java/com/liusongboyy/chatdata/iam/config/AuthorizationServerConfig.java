@@ -117,6 +117,7 @@ public class AuthorizationServerConfig {
             seedBff(clients, props, passwordEncoder);
             seedResource(clients, props, passwordEncoder);
             seedChannel(clients, props, passwordEncoder);
+            seedAgentMesh(clients, props, passwordEncoder);
         };
     }
 
@@ -208,6 +209,44 @@ public class AuthorizationServerConfig {
                 .tokenSettings(TokenSettings.builder()
                         .accessTokenFormat(OAuth2TokenFormat.REFERENCE)
                         // 5 分钟。渠道拿到就立刻用，不需要长命；短 TTL 削弱泄露影响面
+                        .accessTokenTimeToLive(Duration.ofMinutes(5))
+                        .build())
+                .build();
+        clients.save(client);
+        log.info("已注册 OAuth 客户端：{}", client.getClientId());
+    }
+
+    /**
+     * Agent mesh（A2A 入口）。
+     *
+     * <p>它能换的是「被代理用户」的令牌——边界在
+     * {@code AgentProxyAuthenticationProvider}：用户必须在
+     * {@code iam_agent_grant} 里授权过这个 agent。
+     *
+     * <p>scope 与 BFF / channel 相同：agent 不该比人能看到更多。
+     */
+    private static void seedAgentMesh(RegisteredClientRepository clients, IamProperties props,
+                                      PasswordEncoder encoder) {
+        if (clients.findByClientId(props.getClients().getAgentMeshId()) != null) {
+            return;
+        }
+        String secret = props.getClients().getAgentMeshSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "缺少 iam.clients.agent-mesh-secret（环境变量 IAM_MESH_SECRET）。"
+                            + "不设默认值——共用默认值等于谁都能冒充 mesh 为任意已授权用户签发令牌。");
+        }
+        RegisteredClient client = RegisteredClient.withId(UUID.randomUUID().toString())
+                .clientId(props.getClients().getAgentMeshId())
+                .clientSecret(encoder.encode(secret))
+                .clientName("Agent Mesh（A2A）")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .authorizationGrantType(com.liusongboyy.chatdata.iam.agentproxy.AgentProxyGrantType.AGENT_PROXY)
+                .scope("ask.read")
+                .scope("ask.feedback")
+                .tokenSettings(TokenSettings.builder()
+                        .accessTokenFormat(OAuth2TokenFormat.REFERENCE)
+                        // 5 分钟：mesh 拿到就立刻用，短 TTL 削弱泄露影响面
                         .accessTokenTimeToLive(Duration.ofMinutes(5))
                         .build())
                 .build();
