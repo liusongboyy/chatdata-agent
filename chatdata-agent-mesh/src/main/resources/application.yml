@@ -33,7 +33,10 @@ mesh:
     # 两处都要配，否则会出现"Nacos 里的地址"与"端点自报的地址"不一致
     advertised-host: ${MESH_ADVERTISED_HOST:127.0.0.1}
     advertised-port: ${MESH_PORT:20001}
-    path: /a2a
+    # **必须是 `/`**：agentscope 的 A2aJsonRpcController 是 @RequestMapping("/")，
+    # 路径写死在注解里、不可配。这里填别的值会让 Nacos 里注册的地址 404——
+    # 表现为"发现得到但调不通"，而那是最难查的一类问题
+    path: /
     agent-name: chatdata-ask
     agent-description: 语义层问数：把业务问题翻译成受权限约束的查询
     version: 1.0.0

@@ -57,6 +57,15 @@ public class NacosRegistrationConfig {
                     "JSONRPC", a2a.getAdvertisedHost(), a2a.getAdvertisedPort(),
                     a2a.getPath(), false, Map.of("protocol", "http"));
 
+            // 注册前先自检：注册出去的地址必须真的能调通。
+            //
+            // 为什么要有这一步：agentscope 的 A2A 端点是 @RequestMapping("/")，
+            // 路径写死在注解里不可配；而 AgentCard 的 url 由我们自己拼。
+            // 两者不一致时的表现是「Nacos 里能发现、按地址调 404」——
+            // 发现方会以为自己拼错了，而真实原因是注册方写了错的路径。
+            // 在这里拦住，比让别人在几十个 agent 里排查便宜得多。
+            verifySelfReachable(card.url());
+
             try {
                 AgentRegistry registry = NacosAgentRegistry.builder(p).build();
                 registry.register(card, List.of(tp));
@@ -68,5 +77,40 @@ public class NacosRegistrationConfig {
                         e.getMessage(), e);
             }
         };
+    }
+
+    /**
+     * 自检：注册出去的 A2A 地址真能调通吗。
+     *
+     * <p>用 {@code GET} 探测是不够的（端点只接受 POST），所以发一个
+     * JSON-RPC 的 {@code message/get} 之类无副作用的请求太难构造——
+     * 退一步：只要**不是 404** 就说明路径对了。405/400 都算通。
+     *
+     * <p>失败只记 WARN 不阻断：可能是注册时端口还没完全就绪（启动顺序问题），
+     * 也可能是这张卡是给别人手工填的。真正的判断留给调用方。
+     */
+    private void verifySelfReachable(String url) {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .timeout(java.time.Duration.ofSeconds(3))
+                    .header("Content-Type", "application/json")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                            "{\"jsonrpc\":\"2.0\",\"id\":\"self-check\","
+                                    + "\"method\":\"ping\",\"params\":{}}"))
+                    .build();
+            int code = java.net.http.HttpClient.newHttpClient()
+                    .send(req, java.net.http.HttpResponse.BodyHandlers.discarding())
+                    .statusCode();
+            if (code == 404) {
+                log.error("自检失败：注册的地址 {} 返回 404。"
+                        + "多半是 mesh.a2a.path 与 agentscope starter 的端点路径不一致"
+                        + "（端点是 @RequestMapping(\"/\")，path 必须配 /）", url);
+            } else {
+                log.info("自检通过：{} 返回 {}（非 404 即可）", url, code);
+            }
+        } catch (Exception e) {
+            log.warn("自检探测失败（可能是启动顺序问题，不影响注册）：{} {}", url, e.getMessage());
+        }
     }
 }
