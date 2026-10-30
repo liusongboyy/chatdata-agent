@@ -16,13 +16,30 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class AgentCardFactoryTest {
 
-    private static AgentCard card() {
+    /** 与 application.yml 里的 agentscope.a2a.server.card 对齐。 */
+    private static io.agentscope.spring.boot.a2a.properties.A2aAgentCardProperties starterCard() {
+        var c = new io.agentscope.spring.boot.a2a.properties.A2aAgentCardProperties();
+        c.setSkills(java.util.List.of(new io.a2a.spec.AgentSkill.Builder()
+                .id("domain-2300")
+                .name("门店分析")
+                .description("回答门店经营问题：销售额、订单数、库存、报废、员工打卡")
+                .tags(java.util.List.of("retail", "store", "sales", "门店"))
+                .examples(java.util.List.of("上周各门店的订单金额", "库存周转天数是多少"))
+                .build()));
+        return c;
+    }
+
+    private static MeshProperties props(String domainId) {
         MeshProperties props = new MeshProperties();
         props.getA2a().setAgentName("chatdata-ask");
         props.getA2a().setAdvertisedHost("10.0.0.5");
         props.getA2a().setAdvertisedPort(20001);
-        props.getA2a().setDomainId("2300");
-        return new AgentCardFactory(props).build();
+        props.getA2a().setDomainId(domainId);
+        return props;
+    }
+
+    private static AgentCard card() {
+        return new AgentCardFactory(props("2300"), starterCard()).build();
     }
 
     @Test
@@ -78,30 +95,22 @@ class AgentCardFactoryTest {
     @Test
     @DisplayName("★ 域与技能一致时校验通过")
     void consistencyOkWhenDomainMatchesSkill() {
-        MeshProperties props = new MeshProperties();
-        props.getA2a().setDomainId("2300");
-
-        new AgentCardFactory(props).verifyConsistency();   // 不抛即通过
+        new AgentCardFactory(props("2300"), starterCard()).verifyConsistency();
     }
 
     @Test
     @DisplayName("★ 域与技能不一致 → 启动失败（否则是答非所问且不报错）")
     void consistencyFailsOnMismatch() {
-        MeshProperties props = new MeshProperties();
-        props.getA2a().setDomainId("1");   // 保险域，但 AgentCard 声明的是门店分析
-
-        assertThatThrownBy(() -> new AgentCardFactory(props).verifyConsistency())
+        // 保险域，但 AgentCard 声明的是门店分析
+        assertThatThrownBy(() -> new AgentCardFactory(props("1"), starterCard()).verifyConsistency())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("不一致");
+                .hasMessageContaining("不在 AgentCard 声明的技能里");
     }
 
     @Test
     @DisplayName("★ 未配域 → 启动失败（不指定时 ask 会落到第一个启用中的域）")
     void consistencyFailsWhenDomainMissing() {
-        MeshProperties props = new MeshProperties();
-        props.getA2a().setDomainId("");
-
-        assertThatThrownBy(() -> new AgentCardFactory(props).verifyConsistency())
+        assertThatThrownBy(() -> new AgentCardFactory(props(""), starterCard()).verifyConsistency())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("未配置");
     }
