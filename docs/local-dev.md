@@ -132,6 +132,7 @@ set -a; . ~/.chatdata-agent.env; set +a
 | ask | 8081 | 只被网关代理，不直接对外 |
 | IAM | 9000 | 账号中心 |
 | channel | 20000 | IM 渠道。**不经过网关**——它的入站是飞书 webhook，不是浏览器 |
+| mesh | 20001 | A2A agent。给其他 agent 调用；契约端点另占 18090 |
 
 ```bash
 cd /Users/liusongbo/selfProjects/chatdata-agent
@@ -146,7 +147,14 @@ nohup java -jar chatdata-gateway/target/chatdata-gateway-1.0.0-SNAPSHOT.jar > /t
 
 # 可选：飞书渠道。不接飞书就不用起它
 nohup java -jar chatdata-channel/target/chatdata-channel-1.0.0-SNAPSHOT.jar > /tmp/ch.log 2>&1 &
+
+# 可选：A2A agent（Nacos 发现 + aistio 管理台）
+nohup java -jar chatdata-agent-mesh/target/chatdata-agent-mesh-1.0.0-SNAPSHOT.jar > /tmp/mesh.log 2>&1 &
 ```
+
+mesh 需要 `.env` 里有 `IAM_MESH_SECRET`（换代理令牌用）和 Nacos 地址。
+它注册的地址来自 `MESH_ADVERTISED_HOST`/`MESH_ADVERTISED_PORT`——写 `127.0.0.1` 的话
+别的机器上的 agent 拿到地址连的是它自己，表现为「注册成功但调用超时」。
 
 顺序无所谓，但 IAM 要能连上 Redis，ask 要能连上 MySQL。
 
@@ -167,6 +175,44 @@ nohup java -jar chatdata-channel/target/chatdata-channel-1.0.0-SNAPSHOT.jar > /t
 ```
 
 **必须先 build 再 `mvn install`**，否则打进 jar 的是旧产物。
+
+### 接入 agentscope service 管理台（aistio）
+
+管理台要另起 agentscope service（它自带 `aistiod` 控制面）。关键映射：
+
+```yaml
+control:
+  ports:
+    - "18081:8081"    # REST + 控制台
+    - "15010:15010"   # ASDP gRPC，数据面长连接
+```
+
+**`15010` 最容易被漏掉**——只映射 8081 的话，agent 能完成 HTTP 自注册、管理台能看到它，
+但发对话报 `503 asdp: instance not connected`，因为 gRPC 长连接从没建立。
+
+`.env` 对应的三项：
+
+```bash
+MESH_AISTIO_ENABLED=true
+AISTIO_CONTROL_PLANE=127.0.0.1:15010        # 只填 host:port，带 http:// 会让 gRPC 报错
+AISTIO_CONTROL_PLANE_HTTP=http://127.0.0.1:18081
+AISTIO_INTERNAL_TOKEN=...                    # = control 的 BUILDER_INTERNAL_TOKEN
+AISTIO_CONTRACT_PORT=18090
+AISTIO_PUBLIC_BASE_URL=http://host.docker.internal:18090   # control 在容器里时必须这么写
+```
+
+验证：
+
+```bash
+JWT=$(curl -s -X POST http://127.0.0.1:18081/api/auth/login \
+  -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}' | jq -r .token)
+
+# 数据面注册上了吗（空数组 = gRPC 没连上）
+curl -s -H "Authorization: Bearer $JWT" \
+  "http://127.0.0.1:18081/api/v1/dataplanes?tenant=default&namespace=default"
+```
+
+管理台默认账号 `admin` / `admin`。
 
 ## 验证
 

@@ -19,6 +19,7 @@ public class MeshProperties {
     private final Identity identity = new Identity();
     private final A2a a2a = new A2a();
     private final Nacos nacos = new Nacos();
+    private final Aistio aistio = new Aistio();
 
     public Iam getIam() {
         return iam;
@@ -38,6 +39,10 @@ public class MeshProperties {
 
     public Nacos getNacos() {
         return nacos;
+    }
+
+    public Aistio getAistio() {
+        return aistio;
     }
 
     /** 换令牌用。与 IAM 里注册的 {@code agent-mesh} 客户端一致。 */
@@ -233,6 +238,171 @@ public class MeshProperties {
 
         public void setDomainId(String domainId) {
             this.domainId = domainId;
+        }
+    }
+
+    /**
+     * aistio：接入 agentscope service 的控制面。
+     *
+     * <p>与 Nacos 是**两条独立通道**：Nacos 给其他 agent 发现用，
+     * aistio 给 agentscope service 管理台看/编排用。
+     */
+    public static class Aistio {
+
+        /** 本地没起 agentscope service 时保持 false。 */
+        private boolean enabled = false;
+
+        /** Agent 标识。控制面用它区分不同 agent。 */
+        private String agentKey = "chatdata-ask";
+
+        /**
+         * gRPC（ASDP 数据面）地址，只填 host:port。
+         *
+         * <p>和下面的 HTTP 地址<b>不是同一个端口</b>：control 是 Go 服务，
+         * REST/控制台在 8081，ASDP gRPC 在 15010。写成同一个端口的表现是
+         * HTTP 自注册成功、管理台能看到 agent，但发对话报
+         * "asdp: instance not connected"——因为 gRPC 长连接从没建起来。
+         *
+         * <p><b>不能带 scheme。</b>带 {@code http://} 会让 gRPC 的
+         * NameResolver 直接报错。
+         */
+        private String controlPlane = "127.0.0.1:15010";
+
+        /** 自注册用的 HTTP 地址（带 scheme）。 */
+        private String controlPlaneHttp = "http://127.0.0.1:8081";
+
+        /** 控制面的内部令牌，来自 agentscope service 的 BUILDER_INTERNAL_TOKEN。 */
+        private String internalToken;
+
+        private String tenant = "default";
+
+        private String namespace = "default";
+
+        /** 是否上报事件流。本期没有 agent 循环可观测，保持 false。 */
+        private boolean enableEvents = false;
+
+        /** 控制面回调 agent 的端口（查上下文/消息）。要一个没被占用的本地端口。 */
+        private int contractHttpPort = 18090;
+
+        /**
+         * 契约端点对外的地址。
+         *
+         * <p><b>control 在容器里时不能用 127.0.0.1</b>——那会指向容器自己。
+         * 必须写 {@code http://host.docker.internal:<contract-port>}。
+         * 写在容器外跑 control 的场合才用 127.0.0.1。
+         *
+         * <p>配错的症状：Dashboard 里能看到 agent，但 Sessions 页永远是空的——
+         * 因为 control 的回调打不到我们。
+         */
+        private String publicBaseUrl = "http://host.docker.internal:18090";
+
+        /**
+         * 管理台对话时「代表谁」。
+         *
+         * <p>aistio 的 runConversationTurn 只有 sessionId 与文本，没有用户身份。
+         * 所以用这两个配置项约定一个默认的被代理用户——管理员在看这个 agent 时，
+         * 看到的是这个用户权限范围内的数据。
+         *
+         * <p>必须仍然走「换令牌 → 调 ask」的完整链路，不能绕过权限。
+         * 否则管理台就成了能看全部数据的后门，而我们建授权表正是为了防这个。
+         */
+        private String defaultAgentClient = "report-bot";
+        private String defaultUser = "admin";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getAgentKey() {
+            return agentKey;
+        }
+
+        public void setAgentKey(String agentKey) {
+            this.agentKey = agentKey;
+        }
+
+        public String getControlPlane() {
+            return controlPlane;
+        }
+
+        public void setControlPlane(String controlPlane) {
+            this.controlPlane = controlPlane;
+        }
+
+        public String getControlPlaneHttp() {
+            return controlPlaneHttp;
+        }
+
+        public void setControlPlaneHttp(String controlPlaneHttp) {
+            this.controlPlaneHttp = controlPlaneHttp;
+        }
+
+        public String getInternalToken() {
+            return internalToken;
+        }
+
+        public void setInternalToken(String internalToken) {
+            this.internalToken = internalToken;
+        }
+
+        public String getTenant() {
+            return tenant;
+        }
+
+        public void setTenant(String tenant) {
+            this.tenant = tenant;
+        }
+
+        public String getNamespace() {
+            return namespace;
+        }
+
+        public void setNamespace(String namespace) {
+            this.namespace = namespace;
+        }
+
+        public boolean isEnableEvents() {
+            return enableEvents;
+        }
+
+        public void setEnableEvents(boolean enableEvents) {
+            this.enableEvents = enableEvents;
+        }
+
+        public int getContractHttpPort() {
+            return contractHttpPort;
+        }
+
+        public void setContractHttpPort(int contractHttpPort) {
+            this.contractHttpPort = contractHttpPort;
+        }
+
+        public String getPublicBaseUrl() {
+            return publicBaseUrl;
+        }
+
+        public void setPublicBaseUrl(String publicBaseUrl) {
+            this.publicBaseUrl = publicBaseUrl;
+        }
+
+        public String getDefaultAgentClient() {
+            return defaultAgentClient;
+        }
+
+        public void setDefaultAgentClient(String defaultAgentClient) {
+            this.defaultAgentClient = defaultAgentClient;
+        }
+
+        public String getDefaultUser() {
+            return defaultUser;
+        }
+
+        public void setDefaultUser(String defaultUser) {
+            this.defaultUser = defaultUser;
         }
     }
 

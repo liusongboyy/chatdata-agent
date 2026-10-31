@@ -56,6 +56,35 @@ mesh:
 # 前缀是 agentscope.a2a.server.*（见 starter 的 Constants.A2A_SERVER_CARD_PREFIX）。
 # 之前只配了 mesh.a2a，所以端点返回的 card 里 skills 是空的——
 # 那次只验证了"Nacos 注册"那一份，没验证端点自报的那份。
+
+  # aistio：接入 agentscope service 控制面。
+  # 与 Nacos 是两条独立通道——Nacos 给其他 agent 发现用，aistio 给管理台看/编排用
+  aistio:
+    enabled: ${MESH_AISTIO_ENABLED:false}
+    agent-key: chatdata-ask
+    # **两个不同的端口，别写成同一个。**
+    # control 是 Go 服务：REST/控制台在 8081，ASDP gRPC 在 15010。
+    # control-plane 只填 host:port（带 http:// 会让 gRPC 的 NameResolver 报错），
+    # control-plane-http 才是带 scheme 的 HTTP 地址。
+    # 写成同一个端口的表现：HTTP 自注册成功、管理台能看到 agent，
+    # 但 gRPC 数据面从没连上，发对话报 "asdp: instance not connected"
+    control-plane: ${AISTIO_CONTROL_PLANE:127.0.0.1:15010}
+    control-plane-http: ${AISTIO_CONTROL_PLANE_HTTP:http://127.0.0.1:18081}
+    internal-token: ${AISTIO_INTERNAL_TOKEN:}
+    tenant: default
+    namespace: default
+    # 本期没有 agent 循环可观测，事件流关着
+    enable-events: false
+    # 控制面回调 agent 用（查上下文/消息）。要一个没被占用的本地端口
+    contract-http-port: ${AISTIO_CONTRACT_PORT:18090}
+    # control 在容器里，回调地址要用 host.docker.internal；
+    # 写 127.0.0.1 会让它回调到自己，Sessions 页永远是空的
+    public-base-url: ${AISTIO_PUBLIC_BASE_URL:http://host.docker.internal:18090}
+    # 管理台对话时「代表谁」。aistio 的 runConversationTurn 没有用户身份，
+    # 用这两个约定一个默认被代理用户；仍然走完整的换令牌链路，不绕权限
+    default-agent-client: report-bot
+    default-user: admin
+
 agentscope:
   a2a:
     server:

@@ -50,6 +50,18 @@
             <artifactId>agentscope-extensions-nacos-a2a</artifactId>
         </dependency>
 
+        <!--
+          aistio：把 agent 接入 agentscope service 的控制面（gRPC 长连接）。
+          与 Nacos 那条是**两条独立的通道**：
+            · Nacos + A2A  → 其他 agent 发现并调用
+            · aistio       → agentscope service 管理台可见、可编排
+          互不替代。见 .scratch/agent-mesh/spec.md
+        -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-aistio</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
