@@ -133,7 +133,7 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 | `chatdata-identity-service` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
 | `chatdata-identity-client` | 服务间读取身份与目录的客户端 |
 | `chatdata-channel` | IM 渠道：飞书 webhook 接入、卡片渲染、翻页与反馈 |
-| `chatdata-agent-mesh` | A2A agent：把问数暴露给其他 agent 调用，并接入 agentscope 管理台 |
+| `chatdata-mesh` | A2A agent：把问数暴露给其他 agent 调用，并接入 agentscope 管理台 |
 | `chatdata-web` | 问数前端（Vue 3，产物打进 `chatdata-query-service`） |
 | `chatdata-identity-web` | 账号中心前端（Vue 3，产物打进 `chatdata-identity-service`） |
 | `chatdata-common` | 公共基础件：core / mybatis / redis（聚合 pom） |

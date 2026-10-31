@@ -149,7 +149,7 @@ nohup java -jar chatdata-gateway/target/chatdata-gateway-1.0.0-SNAPSHOT.jar > /t
 nohup java -jar chatdata-channel/target/chatdata-channel-1.0.0-SNAPSHOT.jar > /tmp/ch.log 2>&1 &
 
 # 可选：A2A agent（Nacos 发现 + aistio 管理台）
-nohup java -jar chatdata-agent-mesh/target/chatdata-agent-mesh-1.0.0-SNAPSHOT.jar > /tmp/mesh.log 2>&1 &
+nohup java -jar chatdata-mesh/target/chatdata-mesh-1.0.0-SNAPSHOT.jar > /tmp/mesh.log 2>&1 &
 ```
 
 mesh 需要 `.env` 里有 `IAM_MESH_SECRET`（换代理令牌用）和 Nacos 地址。

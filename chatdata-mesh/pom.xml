@@ -10,10 +10,10 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>chatdata-agent-mesh</artifactId>
+    <artifactId>chatdata-mesh</artifactId>
     <packaging>jar</packaging>
 
-    <name>chatdata-agent-mesh</name>
+    <name>chatdata-mesh</name>
     <description>
         把问数暴露成一个 A2A agent：可被 agentscope service 编排、注册到 Nacos
         被公司内其他 agent 发现。- 见 .scratch/agent-mesh/spec.md

@@ -7,7 +7,7 @@ server:
 
 spring:
   application:
-    name: chatdata-agent-mesh
+    name: chatdata-mesh
 
 mesh:
   iam:
