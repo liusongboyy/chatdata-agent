@@ -11,9 +11,9 @@
     <artifactId>chatdata-common</artifactId>
     <packaging>pom</packaging>
 
-    <name>chat-data-agent-common</name>
+    <name>chatdata-common</name>
     <url>http://maven.apache.org</url>
-    <description>chatdata-agent Common Aggregator</description>
+    <description>公共聚合模块：core / mybatis / redis 三个基础件</description>
     <modules>
         <module>chatdata-common-core</module>
         <module>chatdata-common-mybatis</module>

@@ -106,14 +106,24 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
    (webhook)      │                   │ 内省令牌
                   └──换代表用户的令牌──┴──→ iam (9000)
                                             身份 / 角色 / 功能权限
+
+  其他 agent ──A2A──────┐
+                        ├──→ mesh (20001) ──换代表用户的令牌──→ ask
+  agentscope 管理台 ──aistio──┘                 （mesh 自己不做权限判断）
 ```
 
-浏览器与飞书是**两个入口、两条鉴权路径**：浏览器走会话 Cookie + 网关 BFF；
-飞书走事件验签 + 换一张"代表该用户"的令牌。两条最后都汇到 ask，由它统一判权限。
+三个入口，三条鉴权路径，最后都汇到 ask 由它统一判权限：
 
-**渠道不判断权限。** 它只做「哪个用户问了什么 → 拿他的令牌去问 → 把结果排版回去」。
-行级规则、列脱敏、角色判定全在 ask 里——渠道看不到也不该看到。
-这是刻意的：一旦渠道开始判断"这个人能不能查"，就出现了第二个权限判定点。
+| 入口 | 怎么证明「我是谁」 |
+|---|---|
+| 浏览器 | 会话 Cookie + 网关 BFF |
+| 飞书 | 事件验签，再换一张"代表该用户"的令牌 |
+| 其他 agent / 管理台 | A2A 请求里的 `userId`，再按授权表换一张"代表该用户"的令牌 |
+
+**渠道和 mesh 都不判断权限。** 渠道只做「哪个用户问了什么 → 拿他的令牌去问 → 把结果排版回去」；
+mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
+行级规则、列脱敏、角色判定全在 ask 里——它们看不到也不该看到。
+这是刻意的：一旦它们开始判断"这个人能不能查"，就出现了第二个权限判定点。
 
 | 模块 | 说明 |
 |---|---|
@@ -123,8 +133,10 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 | `chatdata-identity-service` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
 | `chatdata-identity-client` | 服务间读取身份与目录的客户端 |
 | `chatdata-channel` | IM 渠道：飞书 webhook 接入、卡片渲染、翻页与反馈 |
-| `chatdata-web` | 问数前端（Vue 3） |
-| `chatdata-identity-web` | 账号中心前端（Vue 3） |
+| `chatdata-agent-mesh` | A2A agent：把问数暴露给其他 agent 调用，并接入 agentscope 管理台 |
+| `chatdata-web` | 问数前端（Vue 3，产物打进 `chatdata-query-service`） |
+| `chatdata-identity-web` | 账号中心前端（Vue 3，产物打进 `chatdata-identity-service`） |
+| `chatdata-common` | 公共基础件：core / mybatis / redis（聚合 pom） |
 
 ## 文档
 
