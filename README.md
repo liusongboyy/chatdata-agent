@@ -134,6 +134,7 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 | [docs/local-dev.md](docs/local-dev.md) | 本地启动：依赖、建库、环境变量、常见问题 |
 | [docs/modeling-coverage.md](docs/modeling-coverage.md) | **建模覆盖度**：准确率最大的杠杆、新建域检查清单 |
 | [docs/feishu-channel-setup.md](docs/feishu-channel-setup.md) | **飞书渠道接入**：建应用、配权限与回调、排障 |
+| [docs/agentscope-local-build.md](docs/agentscope-local-build.md) | **本地构建 agentscope 管理台**：patch 用法、端口、排障 |
 | [docs/adr/](docs/adr/) | 架构决策记录——每个决定的**为什么** |
 | [sql/README.md](sql/README.md) | 库的划分与建表顺序 |
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |

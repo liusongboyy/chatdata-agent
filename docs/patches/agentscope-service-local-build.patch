@@ -1,0 +1,98 @@
+# 让 agentscope-service 2.0.4 能在国内网络 + 无 gcr.io 的环境下本地构建
+#
+# 适用：agentscope-java tag 2.0.4（未改动的源码树）
+# 用法：cd <agentscope-java-2.0.4>
+#       git apply --verbose <此文件>     # 若不是 git 仓库：patch -p1 < <此文件>
+#
+# 背景见 docs/agentscope-local-build.md 与 .scratch/agent-mesh/spec.md §13.8
+#
+# 三个文件：
+#   docker/Dockerfile.control   容器内三阶段构建 → 只 COPY 宿主机产物
+#   docker-compose.yml          control 补 15010（ASDP gRPC）端口映射
+#   .dockerignore               放行 aistio/ui（宿主机构建产物要进上下文）
+#
+--- a/agentscope-service/docker/Dockerfile.control
++++ b/agentscope-service/docker/Dockerfile.control
+@@ -1,26 +1,34 @@
+-# Build from the monorepo root; no generated console files are required in Git.
+-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS console
+-WORKDIR /src/frontend
+-COPY agentscope-service/frontend/package*.json ./
+-RUN npm ci
+-COPY agentscope-service/frontend/ ./
+-RUN npm run build
++# 本地构建版：Go 二进制与前端产物都在宿主机上产出，这里只做 COPY。
++#
++# 为什么不再在容器里编译：
++#   · npm 在本机慢网络下会跑 20 分钟后以 "Exit handler never called" 自崩，
++#     容器里更糟（还要重下一遍依赖）
++#   · pnpm 装同样的依赖只要 2 秒
++#   · go.mod 要求 go 1.26，宿主机的 go 1.21 靠 GOTOOLCHAIN=auto 自动拉到了
++#     1.26.0，交叉编译出 linux/arm64 二进制完全可用
++#
++# 复现步骤（在 agentscope-java-2.0.4 根目录）：
++#   1) 前端
++#      cd agentscope-service/frontend
++#      pnpm install && pnpm rebuild esbuild && pnpm run build
++#      # 产物直接落在 agentscope-service/aistio/ui/
++#   2) 控制面二进制
++#      cd agentscope-service/aistio
++#      export GOPROXY=https://goproxy.cn,direct GOTOOLCHAIN=auto
++#      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
++#        go build -trimpath -ldflags="-s -w" -o ../../.build/aistiod ./cmd/aistiod
++#   3) 镜像
++#      docker compose build control
++#
++# 需要重新在容器里完整构建时，用 /tmp/Dockerfile.control.dockerbuild.bak
+ 
+-FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+-ARG VERSION=dev
+-ARG TARGETOS=linux
+-ARG TARGETARCH
+-WORKDIR /src
+-COPY agentscope-service/aistio/go.mod agentscope-service/aistio/go.sum ./
+-RUN go mod download
+-COPY agentscope-service/aistio/ ./
+-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/spring-ai-alibaba/aistio/internal/version.Version=$VERSION" -o /out/aistiod ./cmd/aistiod
+-RUN mkdir -p /out/data/workspaces /out/data/artifacts
+-
+-FROM gcr.io/distroless/static:nonroot
+-COPY --from=build /out/aistiod /aistiod
+-COPY --from=console /src/aistio/ui /ui
+-COPY --from=build --chown=65532:65532 /out/data /data
++FROM alpine:3.20
++# aistiod 是 CGO_ENABLED=0 的静态二进制，alpine 足够。
++# 原版用 gcr.io/distroless/static:nonroot，本机访问不到 gcr.io
++COPY .build/aistiod /aistiod
++COPY agentscope-service/aistio/ui /ui
++RUN mkdir -p /data/workspaces /data/artifacts \
++    && chown -R 65532:65532 /data /ui
+ ENV AISTIO_STATIC_DIR=/ui AISTIO_WORKSPACE_ROOT=/data/workspaces
+ USER 65532:65532
+ EXPOSE 8081
+--- a/agentscope-service/docker-compose.yml
++++ b/agentscope-service/docker-compose.yml
+@@ -69,6 +69,10 @@
+       BUILDER_ALLOW_LOCAL_ENVIRONMENT: "true"
+     ports:
+       - "18081:8081"
++      # ASDP gRPC（数据面长连接）。它和 HTTP 8081 是两个独立监听，
++      # 不映射的话 agent 只能完成 HTTP 自注册、连不上 data plane，
++      # 表现为控制面里能看到 agent 但发对话报 instance not connected
++      - "15010:15010"
+     healthcheck:
+       test: ["CMD", "/aistiod", "--healthcheck"]
+       interval: 5s
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -27,7 +27,9 @@
+ agentscope-service/docs/test-reports
+ agentscope-service/release/dist
+ agentscope-service/aistio/bin
+-agentscope-service/aistio/ui
++# 本地构建版改这里：ui 是宿主机 pnpm build 的产物，要进构建上下文。
++# 原版在容器内 npm run build，所以把它排除了
++# agentscope-service/aistio/ui
+ docs/_build
+ **/*.ppt
+ **/*.pptx
