@@ -19,7 +19,10 @@ mesh:
 
   ask:
     base-url: ${ASK_URI:http://127.0.0.1:8081}
+    # 必须大于 ask 的 SSE 超时（180s），否则会在 ask 还在算的时候先断开
     timeout: 200s
+    # 连不上 ask 时要几秒内失败，不是挂满 200 秒
+    connect-timeout: 10s
 
   identity:
     # 允许调用本 agent 的客户端。**不是安全边界**——X-Agent-Client 头可伪造。

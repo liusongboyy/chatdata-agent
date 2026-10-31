@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -12,6 +13,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -51,11 +53,29 @@ public class AskClient {
     private final MeshProperties properties;
     private final RestClient client;
 
+    /**
+     * 读超时必须显式配。
+     *
+     * <p><b>不配的后果不是「慢」，是「卡到别人的超时」。</b>RestClient 默认无限等待，
+     * 于是 ask 卡住时我们一直挂着，直到控制面的 conversation deadline（5 分钟）
+     * 到点，用户看到的是 {@code conversation_timeout} 而不是我们的错误。
+     *
+     * <p>而 {@code mesh.ask.timeout} 早就定了 200 秒（比 ask 自己的 180 秒长），
+     * 但从来没被使用过——配置写了不生效比没写更糟，因为看配置的人会以为它是准的。
+     *
+     * <p>连接超时也得设：不设的话 ask 挂掉时连接会挂在那里，
+     * 而那是「服务不可用」，我们应该几秒内就告诉调用方。
+     */
     public AskClient(MeshProperties properties) {
         this.properties = properties;
         String base = properties.getAsk().getBaseUrl();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        Duration connect = properties.getAsk().getConnectTimeout();
+        factory.setConnectTimeout(connect);
+        factory.setReadTimeout(properties.getAsk().getTimeout());
         this.client = RestClient.builder()
                 .baseUrl(base.endsWith("/") ? base.substring(0, base.length() - 1) : base)
+                .requestFactory(factory)
                 .build();
     }
 

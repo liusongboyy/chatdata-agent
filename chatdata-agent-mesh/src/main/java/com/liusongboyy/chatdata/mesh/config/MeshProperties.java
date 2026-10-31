@@ -106,6 +106,16 @@ public class MeshProperties {
          */
         private Duration timeout = Duration.ofSeconds(200);
 
+        /**
+         * 建连超时。
+         *
+         * <p>和上面的读超时是两回事：读超时管「连上了但没回」，建连超时管
+         * 「根本连不上」。ask 挂掉时如果不设这个，请求会挂在 TCP 握手上，
+         * 而那种情况下我们应该几秒内就告诉调用方「服务不可用」，
+         * 不该让它等满 200 秒。
+         */
+        private Duration connectTimeout = Duration.ofSeconds(10);
+
         public String getBaseUrl() {
             return baseUrl;
         }
@@ -120,6 +130,14 @@ public class MeshProperties {
 
         public void setTimeout(Duration timeout) {
             this.timeout = timeout;
+        }
+
+        public Duration getConnectTimeout() {
+            return connectTimeout;
+        }
+
+        public void setConnectTimeout(Duration connectTimeout) {
+            this.connectTimeout = connectTimeout;
         }
     }
 
