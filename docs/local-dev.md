@@ -214,6 +214,29 @@ curl -s -H "Authorization: Bearer $JWT" \
 
 管理台默认账号 `admin` / `admin`。
 
+**不要在容器里 build control。** `npm ci` 在这类慢网络环境下会跑 8–20 分钟后
+以 `Exit handler never called!` 自崩（npm 自身的问题，不是依赖坏）。改成宿主机产出：
+
+```bash
+cd ~/selfProjects/agentscope-java-2.0.4
+
+# ① 前端：pnpm 2 秒，npm 20 分钟且会崩
+cd agentscope-service/frontend
+pnpm install && pnpm rebuild esbuild && pnpm run build   # → aistio/ui/
+
+# ② aistiod：go.mod 要 1.26，本机 1.21 靠 GOTOOLCHAIN 自动拉
+cd ../aistio
+export GOPROXY=https://goproxy.cn,direct GOTOOLCHAIN=auto
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+  go build -trimpath -ldflags="-s -w" -o ../../.build/aistiod ./cmd/aistiod
+
+# ③ 镜像（此时 Dockerfile 只做 COPY，秒级完成）
+cd ../../agentscope-service && docker compose build control
+```
+
+配套两点：根 `.dockerignore` 要注释掉 `agentscope-service/aistio/ui`（原设计在容器内构建，
+产物不进上下文）；`COPY` 路径相对构建上下文（repo 根）。
+
 ## 验证
 
 ```bash
