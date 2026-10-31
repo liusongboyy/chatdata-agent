@@ -6,7 +6,6 @@ import com.liusongboyy.chatdata.mesh.ask.AskResult;
 import com.liusongboyy.chatdata.mesh.config.MeshProperties;
 import com.liusongboyy.chatdata.mesh.identity.ProxyTargetResolver;
 import com.liusongboyy.chatdata.mesh.identity.ProxyTokenService;
-import io.agentscope.extensions.aistio.Aistio;
 import io.agentscope.extensions.aistio.AistioConfig;
 import io.agentscope.extensions.aistio.SessionBridge;
 import jakarta.annotation.PreDestroy;
@@ -14,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
 
@@ -47,11 +47,16 @@ public class AistioRegistration {
 
     private static final Logger log = LoggerFactory.getLogger(AistioRegistration.class);
 
+    /** 重试次数与间隔：约 5 分钟，够控制面容器启动。 */
+    private static final int MAX_ATTEMPTS = 60;
+    private static final int RETRY_INTERVAL_SECONDS = 5;
+
     private final MeshProperties properties;
     private final ProxyTargetResolver resolver;
     private final ProxyTokenService tokens;
     private final AskClient ask;
 
+    private volatile boolean stopping;
     private SessionBridge bridge;
     private MeshTarget target;
 
@@ -69,6 +74,28 @@ public class AistioRegistration {
      * <p>用 {@code ApplicationRunner} 而不是 {@code @PostConstruct}：
      * 契约 HTTP 端口要能绑定，而那时 Web 容器应已就绪。
      */
+    /**
+     * 启动时接入，失败则重试。
+     *
+     * <h2>为什么必须重试</h2>
+     *
+     * <p>SDK 的行为是：<b>HTTP 自注册失败就整个放弃</b>——
+     * {@code Aistio.instrument} 直接抛 {@code ASDP requires a successful
+     * registration or an explicit stable identity}，gRPC 长连接根本不会建立。
+     *
+     * <p>而它之后只重试 HTTP 自注册（{@code HttpSelfRegistration} 有自己的循环），
+     * <b>不会回头重建 gRPC</b>。所以控制面比 mesh 晚启动时，后果是：
+     * 数据面列表里能看到这个 agent（{@code healthy: true}，因为 HTTP 注册补上了），
+     * 但发对话报 {@code asdp: instance not connected}——看起来"注册成功了"，
+     * 实际数据面里没有连接。这个组合最难查。
+     *
+     * <p>本地开发经常是「先起 mesh、后起 agentscope service」，所以这里自己重试，
+     * 直到成功或放弃。重试间隔固定 5 秒，共计约 5 分钟——够控制面容器启动。
+     *
+     * <h2>仍然不阻断启动</h2>
+     *
+     * <p>重试放在后台线程里，A2A 端点立刻可用。管理台看不到不代表服务不可用。
+     */
     @org.springframework.context.annotation.Bean
     org.springframework.boot.ApplicationRunner aistioRunner() {
         return args -> {
@@ -76,14 +103,36 @@ public class AistioRegistration {
                 log.info("aistio 未启用（mesh.aistio.enabled=false）");
                 return;
             }
+            Thread worker = new Thread(this::startWithRetry, "aistio-connect");
+            worker.setDaemon(true);
+            worker.start();
+        };
+    }
+
+    private void startWithRetry() {
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS && !stopping; attempt++) {
             try {
                 start();
+                return;
             } catch (RuntimeException e) {
-                // 不阻断：A2A 端点照样能用，只是管理台看不到
-                log.error("接入 aistio 控制面失败（A2A 端点仍可用，但管理台看不到）："
-                        + "{}", e.getMessage(), e);
+                if (attempt == MAX_ATTEMPTS) {
+                    // 不阻断：A2A 端点照样能用，只是管理台看不到
+                    log.error("接入 aistio 控制面失败，已重试 {} 次，放弃。"
+                            + "A2A 端点仍可用，但管理台看不到：{}",
+                            MAX_ATTEMPTS, e.getMessage(), e);
+                    return;
+                }
+                log.warn("接入 aistio 控制面失败（第 {}/{} 次），{} 秒后重试。"
+                                + "常见原因是控制面还没起来：{}",
+                        attempt, MAX_ATTEMPTS, RETRY_INTERVAL_SECONDS, e.getMessage());
+                try {
+                    Thread.sleep(RETRY_INTERVAL_SECONDS * 1000L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
             }
-        };
+        }
     }
 
     private void start() {
@@ -96,7 +145,7 @@ public class AistioRegistration {
         MeshFrameworkAdapter adapter = new MeshFrameworkAdapter(this::conversationTurn);
 
         AistioConfig aistioConfig = AistioConfig.builder(cfg.getAgentKey())
-                // 同一个地址：control 是 Go 服务，HTTP 与 gRPC 同端口
+                // gRPC 与 HTTP 是**两个不同的端口**（15010 / 8081），别写成同一个
                 .controlPlane(cfg.getControlPlane())
                 .controlPlaneHttp(cfg.getControlPlaneHttp())
                 .internalToken(cfg.getInternalToken())
@@ -118,11 +167,62 @@ public class AistioRegistration {
                 .startHttpRegister(true)
                 .build();
 
-        bridge = Aistio.instrument(target, aistioConfig, adapter);
+        // **不用 Aistio.instrument。**
+        //
+        // 它在 start() 抛异常时把已经建好的 bridge 丢掉，我们拿不到引用去 close，
+        // 而 ContractHttpServer 已经绑上了 18090——下次重试必然 failed to bind。
+        // 实测：第一次失败后，后面 59 次全是 failed to bind，永远连不上。
+        //
+        // 所以自己持有引用，失败时自己关。
+        SessionBridge candidate = new SessionBridge(aistioConfig);
+        try {
+            candidate.attach(target, adapter).start();
+        } catch (RuntimeException e) {
+            releaseQuietly(candidate);
+            throw e;
+        }
+        bridge = candidate;
         // 把两个地址都打出来：它们端口不同，出问题时第一个要确认的就是这个
         log.info("已接入 aistio 控制面：agentKey={} grpc={} http={} 回调={}",
                 cfg.getAgentKey(), cfg.getControlPlane(), cfg.getControlPlaneHttp(),
                 cfg.getPublicBaseUrl());
+    }
+
+    /**
+     * 失败时释放已占用的资源。
+     *
+     * <h2>为什么不能直接 {@code bridge.close()}</h2>
+     *
+     * <p>SDK 在 {@code start()} 里发现注册失败时，<b>先把 {@code started} 置成
+     * false 再抛异常</b>：
+     *
+     * <pre>{@code
+     * started = false;
+     * throw new IllegalStateException("aistio: ASDP requires ...");
+     * }</pre>
+     *
+     * <p>而 {@code close()} 的第一行是 {@code if (!started) return;}——
+     * 于是 close 什么都不做，<b>已经绑上的契约端口 18090 不会被释放</b>。
+     * 下一次重试必然 {@code contract HTTP server failed to bind}，
+     * 而且此后每次都是这个错，真正的原因被彻底盖住。
+     *
+     * <h2>所以用反射把 started 改回 true 再 close</h2>
+     *
+     * <p>不优雅，但这是唯一能在外面做到的——那三个字段（started/http/httpRegister）
+     * 都是私有的，SDK 也没暴露"放弃这次启动"的公开入口。
+     * 熟悉 SDK 后应该给上游提 issue，而不是长期靠这段。
+     */
+    private static void releaseQuietly(SessionBridge bridge) {
+        try {
+            Field started = SessionBridge.class.getDeclaredField("started");
+            started.setAccessible(true);
+            started.setBoolean(bridge, true);
+            bridge.close();
+        } catch (NoSuchFieldException | IllegalAccessException | RuntimeException e) {
+            // 释放失败不该盖住真正的原因。端口泄漏的话下次重试会报
+            // failed to bind，那时再按这个顺序查：started 字段是否为 false
+            log.debug("释放 aistio 资源失败：{}", e.getMessage());
+        }
     }
 
     /**
@@ -184,6 +284,7 @@ public class AistioRegistration {
 
     @PreDestroy
     void stop() {
+        stopping = true;
         if (bridge != null) {
             try {
                 bridge.close();
