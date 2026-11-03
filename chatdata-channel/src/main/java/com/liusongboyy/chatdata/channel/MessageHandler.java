@@ -381,11 +381,15 @@ public class MessageHandler {
      */
     private void sendCardUpdate(InboundMessage msg, String pendingId, String cardJson) {
         if (pendingId != null && !pendingId.isBlank() && sender.updateCard(pendingId, cardJson)) {
-            log.debug("占位卡片已原地更新：messageId={}", pendingId);
+            // 用 info 而不是 debug：这条日志是**判断"卡片是否原地更新"的唯一依据**。
+            // 飞书里两条消息和一张卡片变化的视觉差异有时不明显（尤其在群里刷得快时），
+            // 而 debug 在默认级别下不输出，等于没有证据。
+            log.info("占位卡片已原地更新：messageId={}", pendingId);
             return;
         }
         // 更新不可用（未启用 / 消息过期 / 接口失败）——退回到"再发一条"
-        log.debug("原地更新不可用，改为发送新消息：pendingId={}", pendingId);
+        log.info("原地更新不可用，改为发送新消息：pendingId={} reason={}",
+                pendingId, pendingId == null || pendingId.isBlank() ? "占位消息未发出" : "更新接口失败");
         reply(msg, cardJson);
     }
 }

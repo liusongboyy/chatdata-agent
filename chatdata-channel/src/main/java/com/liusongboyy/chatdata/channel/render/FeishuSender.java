@@ -135,21 +135,26 @@ public class FeishuSender {
             UpdateMessageResp resp = client.im().v1().message().update(
                     UpdateMessageReq.newBuilder()
                             .messageId(messageId)
+                            // **不能设 msgType。** 更新接口只接受 content，
+                            // 带上 msgType 会返回 230001 invalid msg_type。
+                            // 这与创建消息不同（create 必须给 msg_type），
+                            // 照着 create 的参数抄就会踩到（已实测）。
                             .updateMessageReqBody(UpdateMessageReqBody.newBuilder()
-                                    .msgType("interactive")
                                     .content(cardJson)
                                     .build())
                             .build());
             if (!resp.success()) {
-                // 不记 error：更新失败是预期内的（消息太旧、权限不足），
-                // 调用方会回退成再发一条，那是正常工作路径
-                log.debug("卡片原地更新失败，将回退为发送新消息：code={} msg={}",
+                // 用 info 而不是 error：更新失败是**预期内**的（消息太旧、
+                // 是别人发的），调用方会回退成再发一条，那是正常工作路径。
+                // 但也不能用 debug——否则「卡片为什么没原地更新」永远查不到，
+                // 而这正是验证这个功能时最需要的信息
+                log.info("卡片原地更新失败，将回退为发送新消息：code={} msg={}",
                         resp.getCode(), resp.getMsg());
                 return false;
             }
             return true;
         } catch (Exception e) {
-            log.debug("卡片原地更新异常，将回退为发送新消息：{}", e.getMessage());
+            log.info("卡片原地更新异常，将回退为发送新消息：{}", e.getMessage());
             return false;
         }
     }

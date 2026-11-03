@@ -629,6 +629,11 @@ public class FeishuCardRenderer {
         card.put("header", header);
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("wide_screen_mode", true);
+        // **必须显式声明 update_multi。**
+        // 飞书的"更新已发送消息卡片"接口要求：更新前后卡片的 config 里
+        // 都要有 "update_multi": true，否则更新被拒（实测 99992402
+        // field validation failed，而这个错误文案完全看不出是这个原因）。
+        config.put("update_multi", true);
         card.put("config", config);
         card.put("body", Map.of("elements", elements));
         return JSON.writeValueAsString(card);
