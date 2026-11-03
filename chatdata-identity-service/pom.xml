@@ -76,6 +76,40 @@
 
     <build>
         <plugins>
+            <!--
+              每次构建前重建 target 里的前端静态资源，避免旧 hash 文件堆积。
+
+              Vite 的 emptyOutDir 会清空源目录，但 Maven 拷 resources 进
+              target/classes 是增量的——旧 hash 的 js 永远留在那里并被打进 jar。
+              实测这里积了 4 个。浏览器缓存到旧版本的表现是
+              「代码改了但页面没变」，排查方向会被引向"是不是没构建"。
+
+              自己「删 + 拷」而不是只删：与 Maven 资源拷贝同处
+              process-resources 阶段，先后不写进契约；只删不拷可能导致
+              jar 里**完全没有前端**，那比带着旧版本更糟。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>clean-stale-frontend-assets</id>
+                        <phase>process-resources</phase>
+                        <configuration>
+                            <target>
+                                <delete dir="${project.build.outputDirectory}/static/iam/app"/>
+                                <copy todir="${project.build.outputDirectory}/static/iam/app">
+                                    <fileset dir="${project.basedir}/src/main/resources/static/iam/app"/>
+                                </copy>
+                            </target>
+                        </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
