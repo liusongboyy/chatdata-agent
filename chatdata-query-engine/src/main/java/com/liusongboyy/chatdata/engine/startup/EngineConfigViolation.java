@@ -8,13 +8,40 @@ package com.liusongboyy.chatdata.engine.startup;
  * @param domainId 域 id，加载失败时可能为空
  * @param domainName 域名称，用于人工定位
  * @param message 具体说明，必须能直接指导怎么改
+ * @param location 可定位到"改哪张表的哪一列"。**可能为空**——不是所有类别都能定位
+ *                 （授权的问题定位到角色名，关联的问题定位到表 id，各不相同）
  */
 public record EngineConfigViolation(
         Category category,
         String domainId,
         String domainName,
-        String message
+        String message,
+        Location location
 ) {
+
+    /**
+     * 兼容旧调用方（不带定位）。
+     *
+     * <p>只有 {@code THIN_MODELING} 类会带 location：那一类的问题是
+     * 「补哪一列的聚合登记」，说出来管理员才能动手。
+     * 其余类别要么定位到的东西不同（角色名、表 id），要么本身就没有单一位置。
+     */
+    public EngineConfigViolation(Category category, String domainId,
+                                 String domainName, String message) {
+        this(category, domainId, domainName, message, null);
+    }
+
+    /**
+     * 改哪张表的哪一列。
+     *
+     * @param table  表名
+     * @param column 列名。为空表示问题在表级（如整表没配任何聚合）
+     * @param hint   一句话的动作建议，如「补一条 AVG 指标」。
+     *               **与 {@code message} 职责不同**：message 说"缺了会怎样"，
+     *               hint 说"你要做什么"
+     */
+    public record Location(String table, String column, String hint) {
+    }
 
     /**
      * 违规类别。

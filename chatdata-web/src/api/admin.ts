@@ -366,6 +366,44 @@ export function parsePerm(json: string | null): Record<string, unknown> {
 
 export { ApiError }
 
+// ── 建模覆盖度 ──
+
+/** 违规的严重度。红色是真正的错误，黄色是建模建议。 */
+export type ViolationSeverity = 'ERROR' | 'WARNING'
+
+/**
+ * 可定位到「改哪张表的哪一列」。
+ *
+ * 只有建模建议类会带——那一类的问题就是"补某列的聚合登记"，
+ * 说出来管理员才能动手。
+ */
+export interface ViolationLocation {
+  table: string
+  column: string | null
+  hint: string
+}
+
+/** 一条配置违规。 */
+export interface ConfigViolation {
+  category: string
+  domainId: string | null
+  domainName: string | null
+  message: string
+  location?: ViolationLocation | null
+}
+
+/**
+ * 检查一个域的配置覆盖度。
+ *
+ * 回答"这个域配得够不够用"——不是"能不能用"（那是启动校验管的）。
+ * 缺 AVG 或去重计数不会报错，模型会拿 SUM/COUNT 凑一个形态不对的答案。
+ */
+export async function modelingCheck(domainId: number): Promise<ConfigViolation[]> {
+  return (await get<Envelope<ConfigViolation[]>>(
+    `/api/engine/admin/domains/${domainId}/modeling-check`,
+  )).data
+}
+
 /** 保存表关联。 */
 export async function saveJoins(domainId: number, joinsJson: string): Promise<void> {
   await put<Envelope<void>>(`/api/engine/admin/domains/${domainId}/joins`, { joinsJson })

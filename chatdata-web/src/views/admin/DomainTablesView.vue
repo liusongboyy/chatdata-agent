@@ -39,6 +39,7 @@ import { usePermissions } from '../../composables/usePermissions'
 import { P } from '../../permissions'
 
 import SqlExamplePanel from '../../components/admin/SqlExamplePanel.vue'
+import DomainCoveragePanel from './DomainCoveragePanel.vue'
 
 /**
  * 域内注册表。
@@ -55,6 +56,14 @@ import SqlExamplePanel from '../../components/admin/SqlExamplePanel.vue'
 const { can } = usePermissions()
 const route = useRoute()
 const domainId = Number(route.params['id'])
+
+/**
+ * 当前标签页。
+ *
+ * 「覆盖度」不另开一个路由：一个域的配置都该在一个地方看完，
+ * 而且从注册表改完可以立刻切过去看还缺什么。
+ */
+const activeTab = ref<'tables' | 'coverage'>('tables')
 
 const domainName = ref('')
 /**
@@ -775,6 +784,33 @@ async function remove(t: DomainTable): Promise<void> {
       <button v-if="can(P.ASK_ADMIN_DOMAINS_TABLES)" class="btn btn-primary" type="button" @click="startCreate">新增表</button>
     </header>
 
+    <nav class="tabs">
+      <button
+        type="button"
+        class="tab"
+        :class="{ active: activeTab === 'tables' }"
+        @click="activeTab = 'tables'"
+      >
+        注册表
+      </button>
+      <button
+        type="button"
+        class="tab"
+        :class="{ active: activeTab === 'coverage' }"
+        @click="activeTab = 'coverage'"
+      >
+        覆盖度
+      </button>
+    </nav>
+
+    <DomainCoveragePanel
+      v-if="activeTab === 'coverage'"
+      :domain-id="domainId"
+      :datasource-id="domainDatasourceId"
+      :mode="domainMode"
+    />
+
+    <template v-else>
     <p v-if="listError" class="note note-danger" role="alert">{{ listError }}</p>
     <div v-else-if="loading" class="note">加载中…</div>
     <div v-else-if="tables.length === 0" class="note">
@@ -1329,6 +1365,7 @@ async function remove(t: DomainTable): Promise<void> {
         </div>
       </div>
     </div>
+    </template>
   </section>
 
   <!-- SQL 范例只给直连模式：建模模式的模型产出 DSL，SQL 由我们渲染，
@@ -1338,6 +1375,29 @@ async function remove(t: DomainTable): Promise<void> {
 </template>
 
 <style scoped>
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  color: #64748b;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--ink); }
+.tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
 .back {
   display: inline-block;
   margin-bottom: var(--space-2);

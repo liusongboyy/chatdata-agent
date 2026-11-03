@@ -112,18 +112,22 @@ public final class ModelingCoverageCheck {
         }
 
         if (!anyAvg && !numericWithoutAvg.isEmpty()) {
+            // 定位到**第一个**候选：给全部候选没有意义（人一次只能改一处），
+            // 而 candidate 列表已经在 message 里了
             out.add(violation(EngineConfigViolation.Category.THIN_MODELING, domain,
                     "域内有数值列，但没有任何 AVG 指标（例如 %s）。"
                             .formatted(sample(numericWithoutAvg))
                             + "缺了它，「平均每张…是多少」这类问题只能被凑成 SUM + COUNT，"
-                            + "用户得自己相除。建议为其中一列补一条 AVG 指标"));
+                            + "用户得自己相除。建议为其中一列补一条 AVG 指标",
+                    firstLocation(domain, numericWithoutAvg, "补一条 AVG 指标")));
         }
         if (!anyDistinct && !textWithoutDistinct.isEmpty()) {
             out.add(violation(EngineConfigViolation.Category.THIN_MODELING, domain,
                     "域内有分类列，但没有任何 COUNT_DISTINCT 指标（例如 %s）。"
                             .formatted(sample(textWithoutDistinct))
                             + "缺了它，「一共涉及多少种/多少个」这类问题只能被凑成逐项列出。"
-                            + "建议为其中一列补一条去重计数指标"));
+                            + "建议为其中一列补一条去重计数指标",
+                    firstLocation(domain, textWithoutDistinct, "补一条去重计数指标")));
         }
         return out;
     }
@@ -351,6 +355,26 @@ public final class ModelingCoverageCheck {
         return t.displayName() + "." + c.displayName();
     }
 
+    /**
+     * 把 {@code label} 形式的「表.列」还原成可定位的 Location。
+     *
+     * <p>label 用的是**显示名**（{@code displayName}），管理员在管理台看到的就是它，
+     * 所以定位也用显示名而不是物理名——两者在界面上是同一个东西。
+     */
+    private static EngineConfigViolation.Location firstLocation(
+            Domain domain, List<String> labels, String hint) {
+        if (labels.isEmpty()) {
+            return null;
+        }
+        String first = labels.get(0);
+        int dot = first.indexOf('.');
+        if (dot <= 0) {
+            return new EngineConfigViolation.Location(first, null, hint);
+        }
+        return new EngineConfigViolation.Location(
+                first.substring(0, dot), first.substring(dot + 1), hint);
+    }
+
     /** 提示里最多列三个，多了反而看不清。 */
     private static String sample(List<String> items) {
         if (items.size() <= 3) {
@@ -362,5 +386,18 @@ public final class ModelingCoverageCheck {
     private static EngineConfigViolation violation(
             EngineConfigViolation.Category category, Domain domain, String message) {
         return new EngineConfigViolation(category, domain.id(), domain.displayName(), message);
+    }
+
+    /**
+     * 带定位的违规。
+     *
+     * <p>只说「这个域缺 AVG」等于没说——管理员需要知道**改哪一列**。
+     * 而 {@code THIN_MODELING} 这类问题恰好总能定位到具体列。
+     */
+    private static EngineConfigViolation violation(
+            EngineConfigViolation.Category category, Domain domain, String message,
+            EngineConfigViolation.Location location) {
+        return new EngineConfigViolation(category, domain.id(), domain.displayName(),
+                message, location);
     }
 }
