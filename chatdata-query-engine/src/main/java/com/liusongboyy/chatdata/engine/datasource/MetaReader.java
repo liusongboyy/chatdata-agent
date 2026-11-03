@@ -105,16 +105,28 @@ public class MetaReader {
                 var extras = readTableExtras(c, c.getCatalog(), c.getSchema());
                 List<TableMeta> enriched = new ArrayList<>(tables.size());
                 for (TableMeta t : tables) {
-                    String key = ((t.schema() == null ? "" : t.schema())
-                            + "\u0000" + t.name()).toLowerCase(java.util.Locale.ROOT);
-                    TableExtras e = extras.get(key);
+                    TableExtras e = extras.get(t.name().toLowerCase(java.util.Locale.ROOT));
                     String comment = (t.comment() != null && !t.comment().isBlank())
                             ? t.comment()
                             : (e == null ? "" : e.comment());
-                    enriched.add(new TableMeta(t.name(), comment, t.type(), t.schema()));
+                    // 库名优先用 JDBC 给的；Doris 的 JDBC 不给（全是 null），
+                    // 从 information_schema 反查出来补上
+                    String schema = (t.schema() != null && !t.schema().isBlank())
+                            ? t.schema()
+                            : (e == null ? null : e.schema());
+                    enriched.add(
+                            new TableMeta(t.name(), comment, t.type(),
+                                    (schema == null || schema.isBlank()) ? null : schema));
                 }
                 tables = enriched;
             }
+
+            // 过滤系统库。Doris/StarRocks 的 getTables 会把 __internal_schema、
+            // information_schema、mysql 一起返回，这些表对建模毫无意义，
+            // 却会占掉列表的一半以上（实测 525 张里有 60 多张是内部表）
+            tables = tables.stream()
+                    .filter(t -> !isSystemSchema(t.schema()))
+                    .toList();
 
             log.debug("数据源 {} 读到 {} 张表", datasourceId, tables.size());
             return tables;
@@ -163,35 +175,99 @@ public class MetaReader {
         java.util.Map<String, TableExtras> out = new java.util.HashMap<>();
         // information_schema.table_schema 在 MySQL 体系里就是库名；
         // Doris 的 catalog 概念不同，schema（库）才是有效的那个
+        // **不能以"有没有默认库"为前提。**
+        //
+        // 数据源的 URL 常见是不带库名的（jdbc:mysql://host:9030），
+        // 此时 getCatalog()/getSchema() 都是 null——旧代码在这里直接 return，
+        // 于是整段注释补全被跳过，500 张表全显示"无注释"。
+        //
+        // 没有默认库时查全部：Doris 的 information_schema 里，
+        // 每行自带 table_schema，取到它就是表所属的库。
         String db = schema != null && !schema.isBlank() ? schema : catalog;
-        if (db == null || db.isBlank()) {
-            return out;
-        }
-        String sql = "SELECT table_name, table_comment, table_rows "
-                + "FROM information_schema.tables WHERE table_schema = ?";
+        // 带库名时只查那个库（快）；不带时查全部（否则注释取不到）
+        String sql = (db != null && !db.isBlank())
+                ? "SELECT table_schema, table_name, table_comment, table_rows "
+                        + "FROM information_schema.tables WHERE table_schema = ?"
+                : "SELECT table_schema, table_name, table_comment, table_rows "
+                        + "FROM information_schema.tables";
         try (java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, db);
+            if (db != null && !db.isBlank()) {
+                ps.setString(1, db);
+            }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String name = rs.getString("table_name");
                     if (name == null) {
                         continue;
                     }
-                    // 键带库名：多库实例里同名表很常见，只按表名会让注释串库
-                    String key = (db + "\u0000" + name).toLowerCase(java.util.Locale.ROOT);
-                    out.put(key, new TableExtras(
-                            nullToEmpty(rs.getString("table_comment")),
-                            rs.getLong("table_rows")));
+                    String rowSchema = nullToEmpty(rs.getString("table_schema"));
+                    // **键只用表名。** Doris/StarRocks 的 JDBC getTables 连
+                    // TABLE_SCHEM 都不返回（实测全是 null），按"库\0表"拼键
+                    // 永远匹配不上——注释就一直是空的。
+                    // 库名放在值里，回填时顺便补上表所属的库。
+                    out.put(name.toLowerCase(java.util.Locale.ROOT),
+                            new TableExtras(nullToEmpty(rs.getString("table_comment")),
+                                    rs.getLong("table_rows"), rowSchema));
                 }
             }
         } catch (Exception e) {
-            log.debug("读取 information_schema 表注释失败（不影响主流程）：{}", e.getMessage());
+            // Doris 的 information_schema 列名可能与 MySQL 有差异。
+            // 失败时退一步：只要 (table_name, table_comment) 两列，
+            // 这是各版本都有的最小集合
+            log.debug("读取 information_schema 全量失败，退化为最小列集：{}", e.getMessage());
+            return readTableExtrasMinimal(c);
         }
         return out;
     }
 
+    /**
+     * 最小列集兜底。
+     *
+     * <p>Doris / StarRocks / TiDB 的 {@code information_schema} 在列名上有差异
+     * （{@code table_comment} vs {@code table_commentary}，有无 {@code table_rows}）。
+     * 带 {@code table_rows} 的查询失败时不能就此放弃注释——
+     * <b>注释是挑表时最需要的那个信息</b>。
+     */
+    private static java.util.Map<String, TableExtras> readTableExtrasMinimal(Connection c) {
+        java.util.Map<String, TableExtras> out = new java.util.HashMap<>();
+        String sql = "SELECT table_schema, table_name, table_comment FROM information_schema.tables";
+        try (java.sql.Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                String name = rs.getString("table_name");
+                if (name == null) {
+                    continue;
+                }
+                String rowSchema = nullToEmpty(rs.getString("table_schema"));
+                out.put(name.toLowerCase(java.util.Locale.ROOT),
+                        new TableExtras(nullToEmpty(rs.getString("table_comment")), -1, rowSchema));
+            }
+        } catch (Exception e) {
+            log.debug("最小列集也取不到表注释：{}", e.getMessage());
+        }
+        return out;
+    }
+
+    /**
+     * 系统库。这些库里的表不该出现在挑表列表里。
+     *
+     * <p>不同引擎的系统库不同，这里列的是 MySQL 体系（含 Doris/StarRocks/TiDB）
+     * 会遇到的那些。用精确匹配而不是 startsWith：
+     * 用户自己的库可能叫 {@code mysql_analysis}，那是有意义的。
+     */
+    private static boolean isSystemSchema(String schema) {
+        if (schema == null || schema.isBlank()) {
+            return false;
+        }
+        return switch (schema.toLowerCase(java.util.Locale.ROOT)) {
+            case "__internal_schema", "information_schema", "mysql",
+                 "performance_schema", "sys", "pg_catalog", "pg_toast" -> true;
+            default -> false;
+        };
+    }
+
     /** {@code information_schema} 里的补充信息。 */
-    private record TableExtras(String comment, long rowCount) {
+    private record TableExtras(String comment, long rowCount, String schema) {
     }
 
     /** 列出某张表的列。表不存在时返回空列表。 */
