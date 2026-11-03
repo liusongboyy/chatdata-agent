@@ -273,6 +273,77 @@ export async function listDatasourceColumns(
   ).data
 }
 
+// ── 建模草稿 ──
+
+/**
+ * 一列的推断结果。
+ *
+ * `aliasConfirmed` 是关键：false 表示业务名是机器生成的，**必须人工确认**。
+ * 业务名不确认就上线，用户会照着一个不准确的名字提问。
+ */
+export interface DraftColumn {
+  col: string
+  type: string
+  agg: string[]
+  alias: string
+  aliasConfirmed: boolean
+  enabled: boolean
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+  reason: string
+}
+
+export interface DraftTable {
+  name: string
+  label: string
+  mode: string
+  columns: DraftColumn[]
+}
+
+export interface DraftJoin {
+  left: string
+  leftColumn: string
+  right: string
+  rightColumn: string
+  confidence: 'FOREIGN_KEY' | 'NAMING'
+  reason: string
+}
+
+/**
+ * 一份域草稿。**它没有落库**——确认后才走 createDomain / createTable。
+ */
+export interface ModelingDraft {
+  tables: DraftTable[]
+  joins: DraftJoin[]
+  warnings: string[]
+  stats: {
+    tables: number
+    columns: number
+    joins: number
+    elapsedMs: number
+  }
+}
+
+/**
+ * 从数据源生成域草稿。
+ *
+ * <p>**不落库。** 推断必然有错，而推断错的东西直接生效是这个项目最怕的
+ * 那种失败——不报错、只是数字不对。所以流程是：生成 → 人看 → 确认 → 落库。
+ *
+ * @param datasourceId 数据源
+ * @param tables 要建模的表；省略表示全部
+ */
+export async function generateModelingDraft(
+  datasourceId: number,
+  tables?: string[],
+): Promise<ModelingDraft> {
+  return (
+    await post<Envelope<ModelingDraft>>(
+      `/api/engine/admin/datasources/${datasourceId}/modeling-draft`,
+      { tables: tables ?? null },
+    )
+  ).data
+}
+
 /** 把后端返回的 perm_json 解析成对象，供表单回显。 */
 export function parsePerm(json: string | null): Record<string, unknown> {
   if (!json) return {}

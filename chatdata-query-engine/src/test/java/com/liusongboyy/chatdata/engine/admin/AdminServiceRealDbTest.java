@@ -81,7 +81,9 @@ class AdminServiceRealDbTest {
         SemanticAdminMapper write = session.getMapper(SemanticAdminMapper.class);
 
         datasources = new AdminDatasourceService(read, write,
-                new PasswordCipher("admin-test-secret"));
+                new PasswordCipher("admin-test-secret"),
+                // 这个测试不验证清池行为，registry 传 null 即可
+                null);
 
         // MetaReader 需要能拿到连接——直接给一个指向本地库的 DataSource。
         // 保存注册表时会用它核对列名是否真实存在（那是本测试要覆盖的行为之一）

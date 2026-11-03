@@ -1,0 +1,450 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  createDomain,
+  createTable,
+  generateModelingDraft,
+  listDatasourceTables,
+  listDatasources,
+  saveJoins,
+  type Datasource,
+  type DomainForm,
+  type DraftColumn,
+  type DraftTable,
+  type ModelingDraft,
+  type TableMeta,
+} from '../../api/admin'
+import { errorMessage } from '../../api/http'
+
+/**
+ * 建模助手：从数据源生成域草稿。
+ *
+ * ## 为什么这一页存在
+ *
+ * 评测证明建模覆盖度是准确率最大的杠杆（保险域补三条聚合登记就从 74.2%
+ * 升到 83.3%，代码一行未改），但手工建模极贵——AdventureWorks 28 表花了
+ * 大半天。这一页把那部分机械劳动压掉，管理员只做业务判断。
+ *
+ * ## 为什么不自动落库
+ *
+ * 推断必然有错。**推断错的东西直接生效是这个项目最怕的那种失败**：
+ * 不报错、只是数字不对。所以草稿里每一条都带理由和置信度，人看过、
+ * 改过、点了「确认」才写进语义域。
+ */
+const router = useRouter()
+
+const datasources = ref<Datasource[]>([])
+const selectedDs = ref<number | null>(null)
+const availableTables = ref<TableMeta[]>([])
+const selectedTables = ref<string[]>([])
+
+const draft = ref<ModelingDraft | null>(null)
+const loading = ref(false)
+const generating = ref(false)
+const error = ref('')
+const message = ref('')
+
+/** 确认落库时填的域信息 */
+const domainName = ref('')
+const domainMode = ref<'MODELED' | 'RAW'>('MODELED')
+
+/** 编辑中的业务名。键 = `表名.列名`，用户改过才写回 draft */
+const aliasEdits = ref<Record<string, string>>({})
+
+const allChecked = computed(
+  () => availableTables.value.length > 0
+    && selectedTables.value.length === availableTables.value.length,
+)
+
+onMounted(load)
+
+async function load(): Promise<void> {
+  try {
+    datasources.value = await listDatasources()
+    const first = datasources.value[0]
+    if (first) {
+      selectedDs.value = first.id
+      await loadTables()
+    }
+  } catch (e) {
+    error.value = errorMessage(e)
+  }
+}
+
+async function loadTables(): Promise<void> {
+  if (selectedDs.value == null) return
+  availableTables.value = []
+  selectedTables.value = []
+  draft.value = null
+  try {
+    availableTables.value = await listDatasourceTables(selectedDs.value)
+  } catch (e) {
+    error.value = `读取表清单失败：${errorMessage(e)}`
+  }
+}
+
+function toggleAll(): void {
+  selectedTables.value = allChecked.value
+    ? []
+    : availableTables.value.map((t) => t.name)
+}
+
+async function generate(): Promise<void> {
+  if (selectedDs.value == null) return
+  generating.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    draft.value = await generateModelingDraft(
+      selectedDs.value,
+      selectedTables.value.length ? selectedTables.value : undefined,
+    )
+    aliasEdits.value = {}
+    const ds = datasources.value.find((d) => d.id === selectedDs.value)
+    if (!domainName.value && ds) domainName.value = `${ds.name}分析域`
+  } catch (e) {
+    error.value = `生成草稿失败：${errorMessage(e)}`
+  } finally {
+    generating.value = false
+  }
+}
+
+/** 某列的当前业务名（用户改过就用改的）。 */
+function aliasOf(table: DraftTable, col: DraftColumn): string {
+  return aliasEdits.value[`${table.name}.${col.col}`] ?? col.alias
+}
+
+function setAlias(table: DraftTable, col: DraftColumn, value: string): void {
+  aliasEdits.value = { ...aliasEdits.value, [`${table.name}.${col.col}`]: value }
+}
+
+/**
+ * 业务名是否还是机器生成的。
+ *
+ * 改过就算确认——用户看过并认可了这个名字，那是我们要的。
+ */
+function aliasConfirmed(table: DraftTable, col: DraftColumn): boolean {
+  const edited = aliasEdits.value[`${table.name}.${col.col}`]
+  return col.aliasConfirmed || (edited != null && edited.trim() !== '')
+}
+
+/** 还没确认的业务名数量。落库前要拦住。 */
+const unconfirmedCount = computed(() => {
+  if (!draft.value) return 0
+  let n = 0
+  for (const t of draft.value.tables) {
+    for (const c of t.columns) {
+      if (c.enabled && !aliasConfirmed(t, c)) n++
+    }
+  }
+  return n
+})
+
+const enabledColumnCount = computed(() => {
+  if (!draft.value) return 0
+  return draft.value.tables.reduce(
+    (n, t) => n + t.columns.filter((c) => c.enabled).length,
+    0,
+  )
+})
+
+/**
+ * 落库。
+ *
+ * 复用现有的 createDomain / createTable / saveJoins——**不新增写接口**。
+ * 草稿路径若自带一套写入逻辑，早晚与手工路径分叉。
+ */
+async function confirmAndSave(): Promise<void> {
+  if (!draft.value) return
+  if (unconfirmedCount.value > 0) {
+    error.value = `还有 ${unconfirmedCount.value} 个业务名没有确认。业务名不确认就上线，`
+      + '用户会照着一个不准确的名字提问。'
+    return
+  }
+  loading.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    const domainId = await createDomain({
+      name: domainName.value.trim(),
+      description: '',
+      datasourceId: selectedDs.value!,
+      status: 'ENABLED',
+      mode: domainMode.value,
+    } as DomainForm)
+
+    for (const table of draft.value.tables) {
+      await createTable(domainId, {
+        name: table.name,
+        label: table.label,
+        mode: 'TABLE',
+        sqlText: null,
+        columns: table.columns.map((c) => ({
+          col: c.col,
+          type: c.type,
+          agg: c.agg[0] ?? '',
+          alias: aliasOf(table, c),
+          enabled: c.enabled,
+        })),
+        enabled: true,
+        sortNo: 0,
+      } as Parameters<typeof createTable>[1])
+    }
+
+    if (draft.value.joins.length > 0) {
+      await saveJoins(domainId, JSON.stringify(draft.value.joins.map((j) => ({
+        left: j.left,
+        leftCol: j.leftColumn,
+        right: j.right,
+        rightCol: j.rightColumn,
+        type: 'LEFT JOIN',
+      }))))
+    }
+
+    message.value = `已创建域「${domainName.value}」（${draft.value.tables.length} 张表）`
+    setTimeout(() => router.push('/admin/domains'), 1200)
+  } catch (e) {
+    error.value = `保存失败：${errorMessage(e)}`
+  } finally {
+    loading.value = false
+  }
+}
+
+function confidenceClass(c: DraftColumn['confidence']): string {
+  return c === 'HIGH' ? 'conf-high' : c === 'MEDIUM' ? 'conf-mid' : 'conf-low'
+}
+
+function aggText(c: DraftColumn): string {
+  return c.agg.length ? c.agg.join(' + ') : '—'
+}
+</script>
+
+<template>
+  <section class="modeling">
+    <header class="page-head">
+      <div>
+        <h1>建模助手</h1>
+        <p class="sub">
+          选几张表，自动推断列角色、聚合方式与表间关联，生成一份<strong>可编辑的域草稿</strong>。
+          确认后才写进语义域——推断错的东西直接生效，是这个项目最怕的那种失败。
+        </p>
+      </div>
+    </header>
+
+    <!-- 第一步：选数据源与表 -->
+    <div class="panel">
+      <div class="row">
+        <label class="field">
+          <span>数据源</span>
+          <select v-model.number="selectedDs" @change="loadTables">
+            <option v-for="d in datasources" :key="d.id" :value="d.id">
+              {{ d.name }}（{{ d.dbType }}）
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span>域名称</span>
+          <input v-model="domainName" placeholder="如：销售分析域" />
+        </label>
+        <label class="field">
+          <span>模式</span>
+          <select v-model="domainMode">
+            <option value="MODELED">建模（推荐）</option>
+            <option value="RAW">直连</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="tables">
+        <div class="tables-head">
+          <label class="check">
+            <input
+              type="checkbox"
+              :checked="allChecked"
+              :indeterminate="selectedTables.length > 0 && !allChecked"
+              @change="toggleAll"
+            />
+            <span>全选（{{ availableTables.length }} 张表）</span>
+          </label>
+          <span class="hint">不选则用数据源里的全部表</span>
+        </div>
+        <div class="table-grid">
+          <label v-for="t in availableTables" :key="t.name" class="table-item">
+            <input v-model="selectedTables" type="checkbox" :value="t.name" />
+            <span class="name">{{ t.name }}</span>
+            <span v-if="t.comment" class="comment">{{ t.comment }}</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" :disabled="generating || selectedDs == null" @click="generate">
+          {{ generating ? '推断中…' : '生成草稿' }}
+        </button>
+      </div>
+    </div>
+
+    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="message" class="ok">{{ message }}</p>
+
+    <!-- 第二步：草稿 -->
+    <template v-if="draft">
+      <div class="stats">
+        <div class="stat"><b>{{ draft.stats.tables }}</b><span>张表</span></div>
+        <div class="stat"><b>{{ draft.stats.columns }}</b><span>个列</span></div>
+        <div class="stat"><b>{{ draft.stats.joins }}</b><span>条关联</span></div>
+        <div class="stat"><b>{{ draft.stats.elapsedMs }}ms</b><span>耗时</span></div>
+        <div class="stat accent"><b>{{ enabledColumnCount }}</b><span>启用列</span></div>
+      </div>
+
+      <div v-if="draft.warnings.length" class="warnings">
+        <strong>需要人工确认</strong>
+        <ul>
+          <li v-for="w in draft.warnings" :key="w">{{ w }}</li>
+        </ul>
+      </div>
+
+      <div v-for="table in draft.tables" :key="table.name" class="panel table-panel">
+        <h2>
+          {{ table.name }}
+          <span v-if="table.label && table.label !== table.name" class="label">{{ table.label }}</span>
+        </h2>
+        <table class="draft-table">
+          <thead>
+            <tr>
+              <th class="w-on">启用</th>
+              <th>列</th>
+              <th>类型</th>
+              <th>建议聚合</th>
+              <th>业务名（可改）</th>
+              <th>置信度</th>
+              <th class="reason-col">理由</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="col in table.columns" :key="col.col" :class="{ off: !col.enabled }">
+              <td class="w-on">
+                <input v-model="col.enabled" type="checkbox" />
+              </td>
+              <td class="mono">{{ col.col }}</td>
+              <td class="mono dim">{{ col.type }}</td>
+              <td>
+                <span v-if="col.agg.length" class="agg">{{ aggText(col) }}</span>
+                <span v-else class="dim">—</span>
+              </td>
+              <td>
+                <input
+                  class="alias"
+                  :class="{ need: !aliasConfirmed(table, col) }"
+                  :value="aliasOf(table, col)"
+                  @input="setAlias(table, col, ($event.target as HTMLInputElement).value)"
+                />
+              </td>
+              <td>
+                <span class="conf" :class="confidenceClass(col.confidence)">
+                  {{ col.confidence }}
+                </span>
+              </td>
+              <td class="reason-col reason">{{ col.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-if="draft.joins.length" class="panel">
+        <h2>推断出的表间关联</h2>
+        <table class="draft-table">
+          <thead>
+            <tr>
+              <th>左表.列</th>
+              <th>右表.列</th>
+              <th>置信度</th>
+              <th class="reason-col">理由</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="j in draft.joins" :key="`${j.left}.${j.leftColumn}-${j.right}`">
+              <td class="mono">{{ j.left }}.{{ j.leftColumn }}</td>
+              <td class="mono">{{ j.right }}.{{ j.rightColumn }}</td>
+              <td>
+                <span class="conf" :class="j.confidence === 'FOREIGN_KEY' ? 'conf-high' : 'conf-mid'">
+                  {{ j.confidence === 'FOREIGN_KEY' ? '外键' : '按命名' }}
+                </span>
+              </td>
+              <td class="reason-col reason">{{ j.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          按命名推断的关联<strong>需要确认</strong>。挑错会 JOIN 到错的表——
+          SQL 合法、行数看着也正常，只是数字不对。
+        </p>
+      </div>
+
+      <div class="footer-bar">
+        <span v-if="unconfirmedCount > 0" class="warn-inline">
+          还有 {{ unconfirmedCount }} 个业务名未确认
+        </span>
+        <span v-else class="ok-inline">所有业务名已确认</span>
+        <button class="primary" :disabled="loading" @click="confirmAndSave">
+          {{ loading ? '保存中…' : '确认并创建语义域' }}
+        </button>
+      </div>
+    </template>
+  </section>
+</template>
+
+<style scoped>
+.modeling { padding: 24px; max-width: 1400px; }
+.page-head h1 { font-size: 1.35rem; margin: 0 0 6px; }
+.sub { color: #64748b; font-size: 0.85rem; margin: 0 0 18px; max-width: 78ch; line-height: 1.6; }
+.panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.field span { font-size: 0.78rem; color: #475569; font-weight: 500; }
+.field select, .field input { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.85rem; }
+.tables-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 500; cursor: pointer; }
+.hint { color: #94a3b8; font-size: 0.78rem; }
+.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; }
+.table-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px; font-size: 0.82rem; cursor: pointer; }
+.table-item:hover { background: #f8fafc; }
+.table-item .name { font-family: ui-monospace, monospace; }
+.table-item .comment { color: #94a3b8; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actions { margin-top: 14px; }
+button.primary { background: #0f172a; color: #fff; border: none; border-radius: 9px; padding: 9px 18px; font-size: 0.86rem; cursor: pointer; }
+button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 9px; padding: 10px 14px; font-size: 0.84rem; }
+.ok { color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9px; padding: 10px 14px; font-size: 0.84rem; }
+.stats { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 18px; min-width: 92px; }
+.stat b { display: block; font-size: 1.3rem; }
+.stat span { color: #64748b; font-size: 0.76rem; }
+.stat.accent b { color: #4f46e5; }
+.warnings { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.83rem; }
+.warnings ul { margin: 6px 0 0; padding-left: 18px; }
+.warnings li { margin: 3px 0; }
+.table-panel h2 { font-size: 0.98rem; margin: 0 0 10px; font-family: ui-monospace, monospace; }
+.table-panel h2 .label { font-family: inherit; color: #64748b; font-weight: 400; font-size: 0.82rem; margin-left: 8px; }
+.draft-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.draft-table th { text-align: left; padding: 7px 8px; background: #f8fafc; color: #475569; font-weight: 600; font-size: 0.78rem; }
+.draft-table td { padding: 6px 8px; border-top: 1px solid #f1f5f9; vertical-align: middle; }
+.draft-table tr.off { opacity: 0.45; }
+.w-on { width: 42px; text-align: center; }
+.mono { font-family: ui-monospace, monospace; }
+.dim { color: #94a3b8; }
+.agg { background: #eef2ff; color: #3730a3; border-radius: 5px; padding: 1px 7px; font-size: 0.74rem; font-weight: 600; }
+.alias { width: 100%; min-width: 130px; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.82rem; }
+.alias:focus { outline: none; border-color: #6366f1; }
+.alias.need { border-color: #fbbf24; background: #fffdf5; }
+.conf { font-size: 0.72rem; font-weight: 600; border-radius: 5px; padding: 1px 6px; }
+.conf-high { color: #047857; background: #d1fae5; }
+.conf-mid { color: #b45309; background: #fef3c7; }
+.conf-low { color: #b91c1c; background: #fee2e2; }
+.reason-col { width: 34%; }
+.reason { color: #64748b; font-size: 0.76rem; line-height: 1.45; }
+.footer-bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 12px 16px; background: #fffffff2; backdrop-filter: blur(4px); border-top: 1px solid #e2e8f0; }
+.warn-inline { color: #b45309; font-size: 0.83rem; }
+.ok-inline { color: #047857; font-size: 0.83rem; }
+</style>

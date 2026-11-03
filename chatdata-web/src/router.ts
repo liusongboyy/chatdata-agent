@@ -9,6 +9,7 @@ import DomainListView from './views/admin/DomainListView.vue'
 import DomainTablesView from './views/admin/DomainTablesView.vue'
 import AssistantListView from './views/admin/AssistantListView.vue'
 import FeedbackReviewView from './views/admin/FeedbackReviewView.vue'
+import ModelingDraftView from './views/admin/ModelingDraftView.vue'
 
 /**
  * 管理页清单：路径、名称、标题、以及**进入它需要的权限**。
@@ -23,6 +24,15 @@ export const ADMIN_PAGES = [
     permission: P.ASK_ADMIN_DATASOURCES,
   },
   { name: 'admin-domains', path: '/admin/domains', label: '语义域', permission: P.ASK_ADMIN_DOMAINS },
+  {
+    name: 'admin-modeling',
+    path: '/admin/modeling',
+    label: '建模助手',
+    // 用**页面码**而不是操作码：ASK_ADMIN_DOMAINS_TABLES 是"能改注册表"的
+    // 操作权限，不在 ASK_ADMIN_PAGE_CODES 里，用它会让 canConfig 判不到，
+    // 表现是「点菜单被弹回问数页」（实测踩到）
+    permission: P.ASK_ADMIN_DOMAINS,
+  },
   {
     name: 'admin-assistants',
     path: '/admin/assistants',
@@ -80,6 +90,12 @@ export const router = createRouter({
           name: 'admin-domain-tables',
           component: DomainTablesView,
           meta: { permission: P.ASK_ADMIN_DOMAINS_TABLES },
+        },
+        {
+          path: 'modeling',
+          name: 'admin-modeling',
+          component: ModelingDraftView,
+          meta: { permission: P.ASK_ADMIN_DOMAINS },
         },
         {
           path: 'assistants',

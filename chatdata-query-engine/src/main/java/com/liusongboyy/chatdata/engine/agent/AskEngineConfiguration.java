@@ -122,8 +122,10 @@ public class AskEngineConfiguration {
     @Bean
     public AdminDatasourceService adminDatasourceService(SemanticConfigMapper readMapper,
                                                          SemanticAdminMapper writeMapper,
-                                                         PasswordCipher enginePasswordCipher) {
-        return new AdminDatasourceService(readMapper, writeMapper, enginePasswordCipher);
+                                                         PasswordCipher enginePasswordCipher,
+                                                         DatasourceRegistry engineDatasourceRegistry) {
+        return new AdminDatasourceService(readMapper, writeMapper, enginePasswordCipher,
+                engineDatasourceRegistry);
     }
 
     /**

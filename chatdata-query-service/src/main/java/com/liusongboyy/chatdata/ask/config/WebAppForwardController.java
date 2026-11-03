@@ -35,6 +35,7 @@ public class WebAppForwardController {
             "/app/admin",
             "/app/admin/datasources",
             "/app/admin/domains",
+            "/app/admin/modeling",
             "/app/admin/assistants",
             "/app/admin/feedback",
             "/app/admin/domains/{id}/tables",

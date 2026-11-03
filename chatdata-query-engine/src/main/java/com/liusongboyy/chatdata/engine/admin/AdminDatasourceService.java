@@ -2,6 +2,7 @@ package com.liusongboyy.chatdata.engine.admin;
 
 import com.liusongboyy.chatdata.engine.datasource.DatasourceConnectionTester;
 import com.liusongboyy.chatdata.engine.datasource.DatasourceDef;
+import com.liusongboyy.chatdata.engine.datasource.DatasourceRegistry;
 import com.liusongboyy.chatdata.engine.datasource.PasswordCipher;
 import com.liusongboyy.chatdata.engine.admin.mapper.SemanticAdminMapper;
 import com.liusongboyy.chatdata.engine.semantic.mapper.SemanticConfigMapper;
@@ -34,12 +35,45 @@ public class AdminDatasourceService {
     private final SemanticAdminMapper writeMapper;
     private final PasswordCipher cipher;
 
+    /**
+     * 用来在配置变更后丢弃连接池。
+     *
+     * <p><b>不清池的后果实测过：</b>改了数据源密码，界面上「测试连接」是通的
+     * （测试用表单里填的凭证现连一次），但正式查询一直 {@code Access denied}——
+     * 因为 HikariCP 里还留着用旧密码建的连接，池没满就一直复用。
+     *
+     * <p>更糟的是错误信息被包成 {@code Connection is not available, request timed out}，
+     * 把真正的 {@code Access denied} 盖掉了，排查方向会被引到"驱动缺失"上。
+     */
+    private final DatasourceRegistry registry;
+
     public AdminDatasourceService(SemanticConfigMapper readMapper,
                                   SemanticAdminMapper writeMapper,
-                                  PasswordCipher cipher) {
+                                  PasswordCipher cipher,
+                                  DatasourceRegistry registry) {
         this.readMapper = readMapper;
         this.writeMapper = writeMapper;
         this.cipher = cipher;
+        this.registry = registry;
+    }
+
+    /**
+     * 配置变了就丢掉旧池。
+     *
+     * <p>下次使用时按新配置重建——那是一次几十毫秒的代价，
+     * 比"用旧凭证一直连不上"好得多。
+     */
+    private void evictPool(long id) {
+        if (registry == null) {
+            return;   // 单元测试里不接池
+        }
+        try {
+            registry.evict(String.valueOf(id));
+        } catch (RuntimeException e) {
+            // 清池失败不该让保存本身失败：配置已经落库了，
+            // 最坏情况是这次请求还走旧池，重启后自然恢复
+            log.warn("数据源 {} 的连接池清理失败：{}", id, e.getMessage());
+        }
     }
 
     /** 全部数据源（含未启用的）。**不含密码**。 */
@@ -82,6 +116,8 @@ public class AdminDatasourceService {
 
         writeMapper.updateDatasource(id, v.name(), v.dbType(), v.driverClass(), v.url(),
                 v.username(), v.enabled(), operator);
+        // URL / 用户名 / 驱动都可能变了——旧池里的连接全部作废
+        evictPool(id);
         log.info("数据源已更新：id={} name={} by={}", id, v.name(), operator);
     }
 
@@ -92,6 +128,9 @@ public class AdminDatasourceService {
                 ? null
                 : cipher.encrypt(plainPassword);
         writeMapper.updateDatasourcePassword(id, enc, operator);
+        // **必须清池**：不清的话池里还留着用旧密码建立的连接，
+        // 表现为「测试连接成功但查询一直 Access denied」
+        evictPool(id);
         // 绝不记录密码本身，连长度都不记
         log.info("数据源密码已更新：id={} by={}", id, operator);
     }
@@ -108,6 +147,7 @@ public class AdminDatasourceService {
         }
 
         writeMapper.deleteDatasource(id);
+        evictPool(id);
         log.info("数据源已删除：id={} name={} by={}", id, def.name(), operator);
     }
 
