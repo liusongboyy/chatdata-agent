@@ -367,15 +367,25 @@ public class MessageHandler {
     /**
      * 把占位卡片换成结果。
      *
-     * <p>当前实现是**再发一条**，而不是 PATCH 占位消息。
-     * 理由：飞书的「更新卡片」接口（{@code PATCH /im/v1/messages/:id}）只对
-     * 卡片消息生效，且对「发送后多久内可更新」有限制；失败时的失败态
-     * （占位卡片永远停在"正在查询"）比多发一条更糟。
+     * <h2>先尝试原地更新，失败才再发一条</h2>
      *
-     * <p>发两条的代价是可接受的：用户看到"正在查询…"然后看到结果，
-     * 语义清晰。等链路稳定后再改成真正的更新。
+     * <p>原地更新（{@code PATCH /im/v1/messages/:id}）是用户能感知到的差别：
+     * 卡片"变了"而不是聊天记录被撑开。问数要几秒到十几秒，这个差别很明显。
+     *
+     * <p><b>但不能只依赖更新。</b>飞书的更新接口有限制（卡片消息才支持、
+     * 发送后有时间窗），失败时如果什么都不做，占位卡片会永远停在
+     * "正在查询…"——那个失败态比多发一条糟得多。
+     *
+     * <p>所以是"尽力更新 + 失败兜底发送"：更新成功是最好，失败退回到
+     * 原来的行为，最多是刷屏。两个方向的失败代价都不致命。
      */
     private void sendCardUpdate(InboundMessage msg, String pendingId, String cardJson) {
+        if (pendingId != null && !pendingId.isBlank() && sender.updateCard(pendingId, cardJson)) {
+            log.debug("占位卡片已原地更新：messageId={}", pendingId);
+            return;
+        }
+        // 更新不可用（未启用 / 消息过期 / 接口失败）——退回到"再发一条"
+        log.debug("原地更新不可用，改为发送新消息：pendingId={}", pendingId);
         reply(msg, cardJson);
     }
 }
