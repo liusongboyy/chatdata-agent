@@ -146,6 +146,22 @@ public class AskEngineConfiguration {
     }
 
     /**
+     * 从数据源生成域草稿。
+     *
+     * <p>这个 bean 存在的理由：建模覆盖度是准确率最大的杠杆（保险域补三条聚合登记
+     * 就从 74.2% 升到 83.3%，代码一行未改），但手工建模极贵——AdventureWorks 28 表
+     * 花了大半天。<b>最大的杠杆挂着最高的使用成本</b>，这个服务就是为了削掉那部分成本。
+     *
+     * <p>它<b>不写库</b>：只产出草稿，管理员确认后才走现有写入接口。
+     */
+    @Bean
+    public com.liusongboyy.chatdata.engine.modeling.ModelingDraftService modelingDraftService(
+            MetaReader engineMetaReader, DatasourceRegistry engineDatasourceRegistry) {
+        return new com.liusongboyy.chatdata.engine.modeling.ModelingDraftService(
+                engineMetaReader, engineDatasourceRegistry);
+    }
+
+    /**
      * 列画像：给已注册的列生成描述与取值样例。
      *
      * <p>画像结果进 prompt，是提升准确率最高性价比的一环（BIRD 实测 +7.3 个百分点）。

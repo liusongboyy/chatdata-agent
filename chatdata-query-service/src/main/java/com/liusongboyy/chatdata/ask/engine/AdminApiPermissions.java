@@ -75,6 +75,9 @@ public final class AdminApiPermissions {
             new Rule("POST", "/datasources/*/test", DS_TEST),
             new Rule("GET", "/datasources/*/tables", DS, DM_TABLES),
             new Rule("GET", "/datasources/*/tables/*/columns", DS, DM_TABLES),
+            // 生成建模草稿：读数据源元数据 + 返回可编辑草稿，**不落库**。
+            // 与 tables 同档——它做的事等价于"把表结构导进注册表"，只是多了一层推断
+            new Rule("POST", "/datasources/*/modeling-draft", DS, DM_TABLES),
 
             // ── 语义域 ──
             new Rule("POST", "/domains", DM_WRITE),

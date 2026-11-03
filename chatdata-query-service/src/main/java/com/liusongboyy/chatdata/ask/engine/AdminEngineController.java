@@ -17,6 +17,7 @@ import com.liusongboyy.chatdata.engine.admin.TopicInput;
 import com.liusongboyy.chatdata.engine.datasource.DatasourceConnectionTester;
 import com.liusongboyy.chatdata.engine.datasource.DatasourceDef;
 import com.liusongboyy.chatdata.engine.datasource.MetaReader;
+import com.liusongboyy.chatdata.engine.modeling.ModelingDraftService;
 import com.liusongboyy.chatdata.engine.feedback.FeedbackException;
 import com.liusongboyy.chatdata.engine.feedback.FeedbackRow;
 import com.liusongboyy.chatdata.engine.feedback.FeedbackService;
@@ -76,6 +77,7 @@ public class AdminEngineController {
     private final AdminDomainService domainService;
     private final AdminAssistantService assistantService;
     private final MetaReader metaReader;
+    private final ModelingDraftService modelingDrafts;
     /** 身份与角色来自 IAM 令牌；不再从本地表解析。 */
     private final com.liusongboyy.chatdata.ask.identity.CurrentUser currentUser;
     /**
@@ -102,6 +104,7 @@ public class AdminEngineController {
                                  AdminDomainService domainService,
                                  AdminAssistantService assistantService,
                                  MetaReader metaReader,
+                                 ModelingDraftService modelingDrafts,
                                  com.liusongboyy.chatdata.ask.identity.CurrentUser currentUser,
                                  IamRoleDirectoryClient roleDirectory,
                                  IamUserDirectoryClient userDirectory,
@@ -117,6 +120,7 @@ public class AdminEngineController {
         this.domainService = domainService;
         this.assistantService = assistantService;
         this.metaReader = metaReader;
+        this.modelingDrafts = modelingDrafts;
         this.currentUser = currentUser;
         this.roleDirectory = roleDirectory;
         this.userDirectory = userDirectory;
@@ -378,6 +382,43 @@ public class AdminEngineController {
             log.warn("读取数据源 {} 表 {} 的字段失败：{}", id, table, e.getMessage());
             throw new AdminException("读取字段清单失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 从数据源生成域草稿。
+     *
+     * <h2>为什么是 draft</h2>
+     *
+     * <p>推断必然有错，而<b>推断错的东西直接生效是这个项目最怕的失败</b>——
+     * 不报错、只是数字不对。所以这个接口<b>不落库</b>：生成草稿，管理员逐项确认后
+     * 走现有的 {@code POST /domains} 与 {@code PUT /domains/{id}/tables} 落库。
+     *
+     * <h2>为什么不加写接口</h2>
+     *
+     * <p>草稿路径若自带一套写入逻辑，早晚与手工路径分叉。确认后复用现有接口，
+     * 两条路径就只有一条真相。
+     *
+     * @param tables 要建模的表名。省略则取数据源里的全部表
+     */
+    @PostMapping("/datasources/{id}/modeling-draft")
+    public ResponseEntity<Result<ModelingDraftService.Draft>> generateModelingDraft(
+            @PathVariable long id,
+            @RequestBody(required = false) ModelingDraftRequest body,
+            HttpServletRequest request) {
+        ResponseEntity<Result<ModelingDraftService.Draft>> denied = requireAdmin(request);
+        if (denied != null) return denied;
+        try {
+            List<String> tables = body == null ? null : body.tables();
+            return ok(modelingDrafts.generate(String.valueOf(id), tables));
+        } catch (Exception e) {
+            // 连不上数据源是常态（密码改过、库停了），返回 400 让人看得懂
+            log.warn("为数据源 {} 生成建模草稿失败：{}", id, e.getMessage());
+            throw new AdminException("生成建模草稿失败：" + e.getMessage());
+        }
+    }
+
+    /** 生成草稿的入参。 */
+    public record ModelingDraftRequest(List<String> tables) {
     }
 
     // ── 语义域 ──
