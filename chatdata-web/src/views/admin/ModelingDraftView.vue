@@ -53,6 +53,23 @@ const selectedTables = ref<string[]>([])
  * 搜索 / 翻页把范围收窄到能一次看完的数量。
  */
 const tableKeyword = ref('')
+/**
+ * 当前选中的库。
+ *
+ * 多库实例里，500 张表通常分散在几个库里。不按库收窄的话，
+ * 搜索和翻页都还是在全局范围里找——先把范围缩到"我现在要建模的那个库"
+ * 才是主要路径，搜索是它的补充。
+ */
+const tableSchema = ref('')
+
+/** 全部可选库，按字母序。 */
+const schemas = computed(() => {
+  const set = new Set<string>()
+  for (const t of availableTables.value) {
+    if (t.schema?.trim()) set.add(t.schema)
+  }
+  return Array.from(set).sort()
+})
 /** 只看带注释的表——没注释的通常是中间表或临时表 */
 const onlyDocumented = ref(false)
 const tablePage = ref(0)
@@ -62,10 +79,13 @@ const TABLE_PAGE_SIZE = 60
 const filteredTables = computed(() => {
   const kw = tableKeyword.value.trim().toLowerCase()
   return availableTables.value.filter((t) => {
+    if (tableSchema.value && t.schema !== tableSchema.value) return false
     if (onlyDocumented.value && !t.comment?.trim()) return false
     if (!kw) return true
     // 同时搜表名和注释：用户往往记得"那张订单表"而不是它的英文名
-    return t.name.toLowerCase().includes(kw) || (t.comment ?? '').toLowerCase().includes(kw)
+    return t.name.toLowerCase().includes(kw)
+      || (t.comment ?? '').toLowerCase().includes(kw)
+      || (t.schema ?? '').toLowerCase().includes(kw)
   })
 })
 
@@ -92,10 +112,20 @@ function nextPage(): void {
   if (tablePage.value < tablePageCount.value - 1) tablePage.value++
 }
 
+/**
+ * 选中项的键：带库名。
+ *
+ * <p>多库实例里两个库都可能有 `orders`，只按表名做键会让勾一个把另一个也勾上——
+ * 而错的表现是"建模建到了别的库的表"，不报错。
+ */
+function tableKey(t: TableMeta): string {
+  return t.schema ? `${t.schema}.${t.name}` : t.name
+}
+
 /** 当前筛选结果是否全被选中（"全选"作用在筛选结果上，不是全部表）。 */
 const allFilteredSelected = computed(
   () => filteredTables.value.length > 0
-    && filteredTables.value.every((t) => selectedTables.value.includes(t.name)),
+    && filteredTables.value.every((t) => selectedTables.value.includes(tableKey(t))),
 )
 
 /**
@@ -105,7 +135,7 @@ const allFilteredSelected = computed(
  * 而用户搜索之后想要的是"这些结果全要"。
  */
 function toggleAllFiltered(): void {
-  const names = filteredTables.value.map((t) => t.name)
+  const names = filteredTables.value.map((t) => tableKey(t))
   if (allFilteredSelected.value) {
     selectedTables.value = selectedTables.value.filter((n) => !names.includes(n))
   } else {
@@ -159,6 +189,7 @@ async function loadTables(): Promise<void> {
   selectedTables.value = []
   draft.value = null
   tableKeyword.value = ''
+  tableSchema.value = ''
   onlyDocumented.value = false
   tablePage.value = 0
   try {
@@ -174,9 +205,12 @@ async function generate(): Promise<void> {
   error.value = ''
   message.value = ''
   try {
+    // 后端只认表名；多库同名表的情况暂时按"全都要"处理，
+    // 草稿里会按库分别列出（TableDraft 带 schema）
+    const names = selectedTables.value.map((k) => k.includes('.') ? k.slice(k.lastIndexOf('.') + 1) : k)
     draft.value = await generateModelingDraft(
       selectedDs.value,
-      selectedTables.value.length ? selectedTables.value : undefined,
+      names.length ? names : undefined,
     )
     aliasEdits.value = {}
     const ds = datasources.value.find((d) => d.id === selectedDs.value)
@@ -337,11 +371,20 @@ function aggText(c: DraftColumn): string {
       <div class="tables">
         <!-- 搜索 + 筛选。500+ 张表时这是主要入口，不是可选装饰 -->
         <div class="table-toolbar">
+          <select
+            v-if="schemas.length > 0"
+            v-model="tableSchema"
+            class="schema-select"
+            @change="onFilterChange"
+          >
+            <option value="">全部库（{{ schemas.length }}）</option>
+            <option v-for="s in schemas" :key="s" :value="s">{{ s }}</option>
+          </select>
           <input
             v-model="tableKeyword"
             class="search"
             type="search"
-            placeholder="搜索表名或注释…"
+            placeholder="搜索表名 / 注释 / 库名…"
             @input="onFilterChange"
           />
           <label class="check">
@@ -371,15 +414,25 @@ function aggText(c: DraftColumn): string {
         </div>
 
         <div class="table-grid">
-          <label v-for="t in visibleTables" :key="t.name" class="table-item">
+          <label
+            v-for="t in visibleTables"
+            :key="`${t.schema ?? ''}.${t.name}`"
+            class="table-item"
+            :title="`${t.schema ? t.schema + '.' : ''}${t.name}${t.comment ? ' — ' + t.comment : ''}`"
+          >
             <input
               type="checkbox"
-              :checked="selectedTables.includes(t.name)"
-              @change="selectTable(t.name, ($event.target as HTMLInputElement).checked)"
+              :checked="selectedTables.includes(tableKey(t))"
+              @change="selectTable(tableKey(t), ($event.target as HTMLInputElement).checked)"
             />
-            <span class="name">{{ t.name }}</span>
-            <span v-if="t.comment" class="comment" :title="t.comment">{{ t.comment }}</span>
-            <span v-else class="no-comment">无注释</span>
+            <span class="text">
+              <span class="line1">
+                <span v-if="t.schema" class="schema-badge">{{ t.schema }}</span>
+                <span class="name">{{ t.name }}</span>
+              </span>
+              <span v-if="t.comment" class="comment">{{ t.comment }}</span>
+              <span v-else class="no-comment">无注释</span>
+            </span>
           </label>
         </div>
 
@@ -535,10 +588,37 @@ function aggText(c: DraftColumn): string {
 .pager button { padding: 4px 12px; border: 1px solid #e2e8f0; background: #fff; border-radius: 7px; cursor: pointer; font-size: 0.8rem; }
 .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
 .table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; max-height: 320px; overflow-y: auto; }
-.table-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px; font-size: 0.82rem; cursor: pointer; }
+.schema-select { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 9px; font-size: 0.84rem; max-width: 200px; }
+
+/*
+ * 表项：两行布局。
+ *
+ * 原来是一行 flex，长表名会把注释挤出去、甚至和相邻项重叠——
+ * 实测长表名（如 fact_order_detail_daily）会盖到下一个复选框上。
+ * 改成 min-width:0 + 单行省略后，再长的名字也只占自己那一格。
+ */
+.table-item {
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: 6px 8px; border-radius: 7px; font-size: 0.82rem; cursor: pointer;
+  min-width: 0; overflow: hidden;
+}
 .table-item:hover { background: #f8fafc; }
-.table-item .name { font-family: ui-monospace, monospace; }
-.table-item .comment { color: #94a3b8; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-item input { margin-top: 2px; flex-shrink: 0; }
+.table-item .text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.table-item .line1 { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.table-item .schema-badge {
+  flex-shrink: 0; font-size: 0.68rem; padding: 0 5px; border-radius: 4px;
+  background: #eef2ff; color: #4338ca; max-width: 96px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.table-item .name {
+  font-family: ui-monospace, monospace; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.table-item .comment {
+  color: #94a3b8; font-size: 0.73rem; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .actions { margin-top: 14px; }
 button.primary { background: #0f172a; color: #fff; border: none; border-radius: 9px; padding: 9px 18px; font-size: 0.86rem; cursor: pointer; }
 button.primary:disabled { opacity: 0.45; cursor: not-allowed; }

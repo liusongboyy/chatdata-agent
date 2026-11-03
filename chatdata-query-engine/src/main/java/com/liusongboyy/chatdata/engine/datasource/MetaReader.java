@@ -51,7 +51,17 @@ public class MetaReader {
      * @param comment 表注释。各库支持程度不一，取不到时为空串
      * @param type    TABLE / VIEW
      */
-    public record TableMeta(String name, String comment, String type) {
+    public record TableMeta(String name, String comment, String type, String schema) {
+
+        /**
+         * 兼容旧调用方（不带库名）。
+         *
+         * <p>多库实例里 {@code schema} 是**必需信息**：两个库都有 {@code orders} 时，
+         * 只报表名会让用户选错表，而错的表现是"数字不对"。
+         */
+        public TableMeta(String name, String comment, String type) {
+            this(name, comment, type, null);
+        }
     }
 
     /**
@@ -77,6 +87,15 @@ public class MetaReader {
                 // MySQL 走 catalog，PostgreSQL/Oracle 走 schema——见类注释
                 tables = readTables(md, null, c.getSchema());
             }
+            // **连接没指定默认库时**（URL 不带库名），MySQL 体系的 getTables 常把
+            // 所有库的表一起返回，且 TABLE_SCHEM 为空。补一次按 schema 读，
+            // 这次才能拿到每张表真正属于哪个库。
+            if (tables.stream().anyMatch(t -> t.schema() == null || t.schema().isBlank())) {
+                List<TableMeta> bySchema = readTables(md, null, null);
+                if (!bySchema.isEmpty()) {
+                    tables = bySchema;
+                }
+            }
 
             // 注释为空时用 information_schema 补——Doris/StarRocks 的 JDBC
             // REMARKS 常为空，而表注释是挑表时最主要的线索
@@ -86,11 +105,13 @@ public class MetaReader {
                 var extras = readTableExtras(c, c.getCatalog(), c.getSchema());
                 List<TableMeta> enriched = new ArrayList<>(tables.size());
                 for (TableMeta t : tables) {
-                    TableExtras e = extras.get(t.name().toLowerCase(java.util.Locale.ROOT));
+                    String key = ((t.schema() == null ? "" : t.schema())
+                            + "\u0000" + t.name()).toLowerCase(java.util.Locale.ROOT);
+                    TableExtras e = extras.get(key);
                     String comment = (t.comment() != null && !t.comment().isBlank())
                             ? t.comment()
                             : (e == null ? "" : e.comment());
-                    enriched.add(new TableMeta(t.name(), comment, t.type()));
+                    enriched.add(new TableMeta(t.name(), comment, t.type(), t.schema()));
                 }
                 tables = enriched;
             }
@@ -113,7 +134,8 @@ public class MetaReader {
                     continue;
                 }
                 out.add(new TableMeta(name, nullToEmpty(rs.getString("REMARKS")),
-                        nullToEmpty(rs.getString("TABLE_TYPE"))));
+                        nullToEmpty(rs.getString("TABLE_TYPE")),
+                        nullToEmpty(rs.getString("TABLE_SCHEM"))));
             }
         }
         return out;
@@ -155,7 +177,9 @@ public class MetaReader {
                     if (name == null) {
                         continue;
                     }
-                    out.put(name.toLowerCase(java.util.Locale.ROOT), new TableExtras(
+                    // 键带库名：多库实例里同名表很常见，只按表名会让注释串库
+                    String key = (db + "\u0000" + name).toLowerCase(java.util.Locale.ROOT);
+                    out.put(key, new TableExtras(
                             nullToEmpty(rs.getString("table_comment")),
                             rs.getLong("table_rows")));
                 }
@@ -172,13 +196,30 @@ public class MetaReader {
 
     /** 列出某张表的列。表不存在时返回空列表。 */
     public List<ColumnMeta> listColumns(String datasourceId, String table) {
+        return listColumns(datasourceId, null, table);
+    }
+
+    /**
+     * 列出某张表的列（指定库）。
+     *
+     * <p><b>多库实例必须传 schema。</b>两个库都有 {@code orders} 时，只按表名查
+     * 会拿到其中一个的列——而选错列的表现是"数字不对"，不报错。
+     */
+    public List<ColumnMeta> listColumns(String datasourceId, String schema, String table) {
         if (table == null || table.isBlank()) {
             throw new IllegalArgumentException("表名不能为空");
         }
         try (Connection c = resolver.resolve(datasourceId).getConnection()) {
             DatabaseMetaData md = c.getMetaData();
 
-            List<ColumnMeta> columns = readColumns(md, c.getCatalog(), null, table);
+            // 指定了库就只查那个库；没指定按老逻辑回落
+            String useSchema = (schema != null && !schema.isBlank()) ? schema : c.getSchema();
+            List<ColumnMeta> columns = useSchema == null || useSchema.isBlank()
+                    ? readColumns(md, c.getCatalog(), null, table)
+                    : readColumns(md, null, useSchema, table);
+            if (columns.isEmpty()) {
+                columns = readColumns(md, c.getCatalog(), null, table);
+            }
             if (columns.isEmpty()) {
                 columns = readColumns(md, null, c.getSchema(), table);
             }

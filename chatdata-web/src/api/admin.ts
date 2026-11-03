@@ -245,6 +245,13 @@ export interface TableMeta {
   name: string
   comment: string
   type: string
+  /**
+   * 所属库。
+   *
+   * 多库实例（一个账号有多个库权限）里这是**必需信息**：
+   * 两个库都有 `orders` 时，只显示表名会让人选错表。
+   */
+  schema?: string | null
 }
 
 export interface ColumnMeta {
