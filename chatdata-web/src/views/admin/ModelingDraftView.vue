@@ -39,6 +39,92 @@ const selectedDs = ref<number | null>(null)
 const availableTables = ref<TableMeta[]>([])
 const selectedTables = ref<string[]>([])
 
+/**
+ * 表清单的筛选与搜索。
+ *
+ * ## 为什么必须有
+ *
+ * 实测数据源有 500+ 张表。一个没有搜索、没有分页的平铺列表在那种规模下
+ * 根本没法用——滚到第 300 行已经忘了自己在找什么。
+ *
+ * ## 为什么默认只显示前 N 条
+ *
+ * 一次渲染 500 个复选框会明显卡顿，而用户第一眼只需要"大概有哪些"。
+ * 搜索 / 翻页把范围收窄到能一次看完的数量。
+ */
+const tableKeyword = ref('')
+/** 只看带注释的表——没注释的通常是中间表或临时表 */
+const onlyDocumented = ref(false)
+const tablePage = ref(0)
+const TABLE_PAGE_SIZE = 60
+
+/** 按关键字与筛选条件过滤后的表。 */
+const filteredTables = computed(() => {
+  const kw = tableKeyword.value.trim().toLowerCase()
+  return availableTables.value.filter((t) => {
+    if (onlyDocumented.value && !t.comment?.trim()) return false
+    if (!kw) return true
+    // 同时搜表名和注释：用户往往记得"那张订单表"而不是它的英文名
+    return t.name.toLowerCase().includes(kw) || (t.comment ?? '').toLowerCase().includes(kw)
+  })
+})
+
+const tablePageCount = computed(
+  () => Math.max(1, Math.ceil(filteredTables.value.length / TABLE_PAGE_SIZE)),
+)
+
+/** 当前页要渲染的表。 */
+const visibleTables = computed(() => {
+  const start = tablePage.value * TABLE_PAGE_SIZE
+  return filteredTables.value.slice(start, start + TABLE_PAGE_SIZE)
+})
+
+/** 搜索条件变了要回到第一页，否则会停在一个空页上。 */
+function onFilterChange(): void {
+  tablePage.value = 0
+}
+
+function prevPage(): void {
+  if (tablePage.value > 0) tablePage.value--
+}
+
+function nextPage(): void {
+  if (tablePage.value < tablePageCount.value - 1) tablePage.value++
+}
+
+/** 当前筛选结果是否全被选中（"全选"作用在筛选结果上，不是全部表）。 */
+const allFilteredSelected = computed(
+  () => filteredTables.value.length > 0
+    && filteredTables.value.every((t) => selectedTables.value.includes(t.name)),
+)
+
+/**
+ * 全选/取消全选**当前筛选结果**。
+ *
+ * 刻意不是"全部表"：500 张表时一键全选几乎肯定是误操作，
+ * 而用户搜索之后想要的是"这些结果全要"。
+ */
+function toggleAllFiltered(): void {
+  const names = filteredTables.value.map((t) => t.name)
+  if (allFilteredSelected.value) {
+    selectedTables.value = selectedTables.value.filter((n) => !names.includes(n))
+  } else {
+    selectedTables.value = Array.from(new Set([...selectedTables.value, ...names]))
+  }
+}
+
+function selectTable(name: string, on: boolean): void {
+  if (on) {
+    if (!selectedTables.value.includes(name)) selectedTables.value = [...selectedTables.value, name]
+  } else {
+    selectedTables.value = selectedTables.value.filter((n) => n !== name)
+  }
+}
+
+function clearSelection(): void {
+  selectedTables.value = []
+}
+
 const draft = ref<ModelingDraft | null>(null)
 const loading = ref(false)
 const generating = ref(false)
@@ -51,11 +137,6 @@ const domainMode = ref<'MODELED' | 'RAW'>('MODELED')
 
 /** 编辑中的业务名。键 = `表名.列名`，用户改过才写回 draft */
 const aliasEdits = ref<Record<string, string>>({})
-
-const allChecked = computed(
-  () => availableTables.value.length > 0
-    && selectedTables.value.length === availableTables.value.length,
-)
 
 onMounted(load)
 
@@ -77,17 +158,14 @@ async function loadTables(): Promise<void> {
   availableTables.value = []
   selectedTables.value = []
   draft.value = null
+  tableKeyword.value = ''
+  onlyDocumented.value = false
+  tablePage.value = 0
   try {
     availableTables.value = await listDatasourceTables(selectedDs.value)
   } catch (e) {
     error.value = `读取表清单失败：${errorMessage(e)}`
   }
-}
-
-function toggleAll(): void {
-  selectedTables.value = allChecked.value
-    ? []
-    : availableTables.value.map((t) => t.name)
 }
 
 async function generate(): Promise<void> {
@@ -257,24 +335,62 @@ function aggText(c: DraftColumn): string {
       </div>
 
       <div class="tables">
+        <!-- 搜索 + 筛选。500+ 张表时这是主要入口，不是可选装饰 -->
+        <div class="table-toolbar">
+          <input
+            v-model="tableKeyword"
+            class="search"
+            type="search"
+            placeholder="搜索表名或注释…"
+            @input="onFilterChange"
+          />
+          <label class="check">
+            <input v-model="onlyDocumented" type="checkbox" @change="onFilterChange" />
+            <span>只看有注释的</span>
+          </label>
+          <span class="count">
+            {{ filteredTables.length }} / {{ availableTables.length }} 张
+          </span>
+        </div>
+
         <div class="tables-head">
           <label class="check">
             <input
               type="checkbox"
-              :checked="allChecked"
-              :indeterminate="selectedTables.length > 0 && !allChecked"
-              @change="toggleAll"
+              :checked="allFilteredSelected"
+              :indeterminate="selectedTables.length > 0 && !allFilteredSelected"
+              @change="toggleAllFiltered"
             />
-            <span>全选（{{ availableTables.length }} 张表）</span>
+            <span>{{ tableKeyword || onlyDocumented ? '全选筛选结果' : '全选当前页' }}</span>
           </label>
-          <span class="hint">不选则用数据源里的全部表</span>
+          <span v-if="selectedTables.length" class="selected-count">
+            已选 {{ selectedTables.length }} 张
+            <button class="link" @click="clearSelection">清空</button>
+          </span>
+          <span v-else class="hint">不选则用数据源里的全部表</span>
         </div>
+
         <div class="table-grid">
-          <label v-for="t in availableTables" :key="t.name" class="table-item">
-            <input v-model="selectedTables" type="checkbox" :value="t.name" />
+          <label v-for="t in visibleTables" :key="t.name" class="table-item">
+            <input
+              type="checkbox"
+              :checked="selectedTables.includes(t.name)"
+              @change="selectTable(t.name, ($event.target as HTMLInputElement).checked)"
+            />
             <span class="name">{{ t.name }}</span>
-            <span v-if="t.comment" class="comment">{{ t.comment }}</span>
+            <span v-if="t.comment" class="comment" :title="t.comment">{{ t.comment }}</span>
+            <span v-else class="no-comment">无注释</span>
           </label>
+        </div>
+
+        <p v-if="visibleTables.length === 0" class="empty">
+          没有匹配的表。试试换个关键字，或取消「只看有注释的」。
+        </p>
+
+        <div v-if="tablePageCount > 1" class="pager">
+          <button :disabled="tablePage === 0" @click="prevPage">上一页</button>
+          <span>{{ tablePage + 1 }} / {{ tablePageCount }}</span>
+          <button :disabled="tablePage >= tablePageCount - 1" @click="nextPage">下一页</button>
         </div>
       </div>
 
@@ -407,7 +523,18 @@ function aggText(c: DraftColumn): string {
 .tables-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 500; cursor: pointer; }
 .hint { color: #94a3b8; font-size: 0.78rem; }
-.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; }
+.table-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
+.search { flex: 1; min-width: 240px; max-width: 380px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 9px; font-size: 0.86rem; }
+.search:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px #6366f118; }
+.count { color: #64748b; font-size: 0.8rem; margin-left: auto; font-variant-numeric: tabular-nums; }
+.selected-count { color: #4f46e5; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; }
+.link { background: none; border: none; color: #6366f1; cursor: pointer; font-size: 0.8rem; padding: 0; text-decoration: underline; }
+.no-comment { color: #cbd5e1; font-size: 0.72rem; font-style: italic; }
+.empty { color: #94a3b8; font-size: 0.83rem; text-align: center; padding: 24px 0; margin: 0; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; font-size: 0.8rem; color: #64748b; }
+.pager button { padding: 4px 12px; border: 1px solid #e2e8f0; background: #fff; border-radius: 7px; cursor: pointer; font-size: 0.8rem; }
+.pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; max-height: 320px; overflow-y: auto; }
 .table-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px; font-size: 0.82rem; cursor: pointer; }
 .table-item:hover { background: #f8fafc; }
 .table-item .name { font-family: ui-monospace, monospace; }

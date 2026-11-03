@@ -77,6 +77,24 @@ public class MetaReader {
                 // MySQL 走 catalog，PostgreSQL/Oracle 走 schema——见类注释
                 tables = readTables(md, null, c.getSchema());
             }
+
+            // 注释为空时用 information_schema 补——Doris/StarRocks 的 JDBC
+            // REMARKS 常为空，而表注释是挑表时最主要的线索
+            boolean anyBlank = tables.stream()
+                    .anyMatch(t -> t.comment() == null || t.comment().isBlank());
+            if (anyBlank) {
+                var extras = readTableExtras(c, c.getCatalog(), c.getSchema());
+                List<TableMeta> enriched = new ArrayList<>(tables.size());
+                for (TableMeta t : tables) {
+                    TableExtras e = extras.get(t.name().toLowerCase(java.util.Locale.ROOT));
+                    String comment = (t.comment() != null && !t.comment().isBlank())
+                            ? t.comment()
+                            : (e == null ? "" : e.comment());
+                    enriched.add(new TableMeta(t.name(), comment, t.type()));
+                }
+                tables = enriched;
+            }
+
             log.debug("数据源 {} 读到 {} 张表", datasourceId, tables.size());
             return tables;
         } catch (Exception e) {
@@ -99,6 +117,57 @@ public class MetaReader {
             }
         }
         return out;
+    }
+
+    /**
+     * 用 {@code information_schema} 补表注释与行数。
+     *
+     * <h2>为什么 JDBC 的 REMARKS 不够</h2>
+     *
+     * <p>{@code DatabaseMetaData.getTables} 的 {@code REMARKS} 在不少驱动上是空的，
+     * <b>Doris / StarRocks 尤其如此</b>——它们把注释存在 {@code information_schema.tables}
+     * 里，JDBC 层不返回。
+     *
+     * <p>表注释在挑表时是<b>主要线索</b>：500 张表里靠名字猜用途，比看起来慢得多。
+     * 所以注释拿不到时要主动去补，而不是接受它为空。
+     *
+     * <h2>失败不能影响主流程</h2>
+     *
+     * <p>这条查询依赖 {@code information_schema} 的列名（各家有差异）。
+     * 查不到就返回空 map 让调用方保持原样——补注释是增强，不是前置条件。
+     */
+    private static java.util.Map<String, TableExtras> readTableExtras(
+            Connection c, String catalog, String schema) {
+        java.util.Map<String, TableExtras> out = new java.util.HashMap<>();
+        // information_schema.table_schema 在 MySQL 体系里就是库名；
+        // Doris 的 catalog 概念不同，schema（库）才是有效的那个
+        String db = schema != null && !schema.isBlank() ? schema : catalog;
+        if (db == null || db.isBlank()) {
+            return out;
+        }
+        String sql = "SELECT table_name, table_comment, table_rows "
+                + "FROM information_schema.tables WHERE table_schema = ?";
+        try (java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, db);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString("table_name");
+                    if (name == null) {
+                        continue;
+                    }
+                    out.put(name.toLowerCase(java.util.Locale.ROOT), new TableExtras(
+                            nullToEmpty(rs.getString("table_comment")),
+                            rs.getLong("table_rows")));
+                }
+            }
+        } catch (Exception e) {
+            log.debug("读取 information_schema 表注释失败（不影响主流程）：{}", e.getMessage());
+        }
+        return out;
+    }
+
+    /** {@code information_schema} 里的补充信息。 */
+    private record TableExtras(String comment, long rowCount) {
     }
 
     /** 列出某张表的列。表不存在时返回空列表。 */
