@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  * 一旦这个模块开始判断「这个人能不能查」，就说明边界破了。
  */
 @SpringBootApplication
+@org.springframework.scheduling.annotation.EnableScheduling
 @EnableConfigurationProperties({ChannelProperties.class, FeishuProperties.class})
 public class ChannelApplication {
 

@@ -305,6 +305,59 @@ public class FeishuCardRenderer {
     }
 
     /**
+     * 定时订阅的结果卡片。
+     *
+     * <p>与手动提问的结果卡区别：标题带「定时」，让人一眼看出这条是自动推的，
+     * 而不是自己刚问的。除此之外排版一致——同一个问题，不该因为触发方式不同
+     * 就长得不一样。
+     */
+    public String subscriptionCard(String question, AskResult result) {
+        List<Map<String, Object>> elements = new ArrayList<>();
+        if (result.answer() != null && !result.answer().isBlank()) {
+            elements.add(md(result.answer()));
+        } else if (result.analysis() != null && result.analysis().narrative() != null) {
+            elements.add(md(result.analysis().narrative()));
+        } else if (result.singleValue()) {
+            elements.add(md("**" + result.columns().get(0) + "："
+                    + result.rows().get(0).get(0) + "**"));
+        } else {
+            StringBuilder sb = new StringBuilder("共 " + result.rowCount() + " 行。\n");
+            int n = Math.min(result.rows().size(), 10);
+            for (int i = 0; i < n; i++) {
+                sb.append("· ").append(String.join(" | ", result.rows().get(i))).append('\n');
+            }
+            elements.add(md(sb.toString()));
+        }
+        elements.add(md("<font color='grey'>定时推送 · " + question + "</font>"));
+        Map<String, Object> t = title(question);
+        // 标题加前缀，和手动问答区分开
+        t = new LinkedHashMap<>(t);
+        t.put("content", "⏰ " + t.get("content"));
+        return card(t, elements);
+    }
+
+    /**
+     * 订阅执行失败的卡片。
+     *
+     * <p><b>失败必须说清楚。</b>「今天没收到」比「收到了报错」难查得多——
+     * 用户不知道是被权限拒了、服务挂了、还是自己把订阅删了。
+     *
+     * <p>权限类的失败额外给一句"检查你的账号权限"，因为那是最常见的原因，
+     * 而且只有用户自己能处理（找管理员重新授权）。
+     */
+    public String subscriptionFailureCard(String question, String message) {
+        List<Map<String, Object>> elements = new ArrayList<>();
+        elements.add(md("**这次定时查询没能完成。**"));
+        elements.add(md(message == null ? "原因未知" : message));
+        elements.add(md("<font color='grey'>问题：" + question
+                + "\n如果提示权限，请检查你的账号是否还有对应数据的访问权限。</font>"));
+        Map<String, Object> t = title(question);
+        t = new LinkedHashMap<>(t);
+        t.put("content", "⚠️ 定时推送失败");
+        return card(t, elements);
+    }
+
+    /**
      * 绑定引导卡片。
      *
      * <p>给一条<b>能点</b>的链接，而不是「请联系管理员」——
