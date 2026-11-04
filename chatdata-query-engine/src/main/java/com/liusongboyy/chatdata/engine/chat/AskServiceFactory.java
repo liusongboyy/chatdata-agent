@@ -54,6 +54,8 @@ public class AskServiceFactory {
     private final AskAuditRecorder auditRecorder;
     /** 直连模式要模型**自己写 SQL**，故工厂需要直接持有它。同样是惰性代理。 */
     private final io.agentscope.core.model.Model askEngineModel;
+    /** 按模型键取实例。域绑了模型就用它，否则用全局默认。 */
+    private final com.liusongboyy.chatdata.engine.model.ModelPool modelPool;
     private final com.liusongboyy.chatdata.engine.datasource.DatasourceResolver datasources;
     private final com.liusongboyy.chatdata.engine.raw.RawSchemaBuilder rawSchemas;
     /**
@@ -81,7 +83,8 @@ public class AskServiceFactory {
                              com.liusongboyy.chatdata.engine.datasource.DatasourceResolver datasources,
                              com.liusongboyy.chatdata.engine.raw.RawSchemaBuilder rawSchemas,
                              org.springframework.beans.factory.ObjectProvider<io.agentscope.core.state.AgentStateStore>
-                                     sessionStore) {
+                                     sessionStore,
+                             com.liusongboyy.chatdata.engine.model.ModelPool modelPool) {
         this.mapper = mapper;
         this.dslSource = dslSource;
         this.sqlExecutor = sqlExecutor;
@@ -90,6 +93,7 @@ public class AskServiceFactory {
         this.datasources = datasources;
         this.rawSchemas = rawSchemas;
         this.sessionStore = sessionStore;
+        this.modelPool = modelPool;
     }
 
     /**
@@ -115,8 +119,15 @@ public class AskServiceFactory {
         // **按模式分流**。分流放在装配层，控制器只依赖 AskFacade——
         // 让控制器去 if (mode == RAW) 的话，迟早会漏一处，而漏掉的那一处
         // 一定在权限或审计上
+        // **按域选模型。** 域绑了就用绑的，没绑用全局默认。
+        //
+        // 早先所有域共用一个 askEngineModel 单例。改成按 key 取之后，
+        // 同一进程里不同域可以跑在不同模型上——而 ModelPool 保证
+        // 每个 key 只建一个实例（重复建会泄漏 HTTP 连接池）。
+        io.agentscope.core.model.Model domainModel = modelFor(row);
+
         if (domain.isRaw()) {
-            return new RawAskService(domain, askEngineModel, datasources, rawSchemas, auditRecorder,
+            return new RawAskService(domain, domainModel, datasources, rawSchemas, auditRecorder,
                     // 范例与术语一样按 domain 存：跨域照抄 SQL 必然查不到表
                     mapper.selectSqlExamplesByDomain(row.id()));
         }
@@ -130,10 +141,42 @@ public class AskServiceFactory {
         io.agentscope.core.state.AgentStateStore store = sessionStore.getIfAvailable();
         AnalysisService analysis = new AnalysisService(model, dialect, sqlExecutor, auditRecorder,
                 new com.liusongboyy.chatdata.engine.agent.AnalysisPlanGenerator(
-                        askEngineModel, store, null),
-                new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(askEngineModel),
+                        domainModel, store, null),
+                new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(domainModel),
                 store);
         return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder, analysis);
+    }
+
+    /**
+     * 这个域该用哪个模型。
+     *
+     * <p>域绑了 {@code model_key} 就用绑的那个；没绑用全局默认。
+     *
+     * <p><b>模型不可用时抛异常，不回落默认。</b>回落会让这个域突然用上
+     * 弱模型而没人知道——而"绑定"本来就是刻意的技术约束
+     * （数据量大、弱模型跑不动）。
+     *
+     * <p>找不到默认模型时**回落到注入的 {@code askEngineModel} bean**：
+     * 那是 yml 配置直接建的，是升级前的行为。这样老部署不配
+     * {@code ask_model} 表也能照常工作。
+     */
+    private io.agentscope.core.model.Model modelFor(DomainRow row) {
+        String key = row.modelKey();
+        if (key == null || key.isBlank()) {
+            // 没绑定：用数据库里的默认模型；没有则回落到 yml 那个
+            var def = modelPool.defaultModel();
+            return def != null ? modelPool.get(def.key()) : askEngineModel;
+        }
+        var def = modelPool.byKey(key);
+        if (def == null) {
+            throw new IllegalStateException(
+                    "数据域「" + row.name() + "」绑定的模型「" + key + "」不存在，请联系管理员");
+        }
+        if (!def.enabled()) {
+            throw new IllegalStateException(
+                    "数据域「" + row.name() + "」绑定的模型「" + key + "」已停用，请联系管理员");
+        }
+        return modelPool.get(key);
     }
 
     /**

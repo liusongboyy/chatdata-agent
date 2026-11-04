@@ -34,15 +34,45 @@ public final class AskEngineModelFactory {
         requireText(props.getBaseUrl(), "chatdata.engine.model.base-url");
         requireText(props.getModelName(), "chatdata.engine.model.model-name");
 
+        return doBuild(props.getApiKey(), props.getBaseUrl(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
+    /**
+     * 按一条**数据库里的模型配置**构建。
+     *
+     * <p>与上面的区别只在于参数来源。温度与 maxTokens 仍取全局配置——
+     * 它们不是"哪个模型"的属性，而是"问数链路要什么行为"的属性
+     * （温度必须是 0 才能复现，maxTokens 必须够大否则结构化输出被截断）。
+     * <b>让每个模型可配这两个值，等于给"输出被截断"开了一个后门。</b>
+     */
+    public static Model build(AskEngineModelProperties defaults,
+                              String apiKey, String baseUrl, String modelName) {
+        requireText(apiKey, "模型的 api-key");
+        requireText(baseUrl, "模型的 base-url");
+        requireText(modelName, "模型的 model-name");
+
+        return doBuild(apiKey, baseUrl, modelName,
+                defaults.getTemperature(), defaults.getMaxTokens());
+    }
+
+    /**
+     * 唯一实际构建点。
+     *
+     * <p>两个 {@code build} 都汇到这里，避免"参数校验在 A 有、在 B 漏"——
+     * 漏掉的表现是某个模型能建起来但行为与预期不符。
+     */
+    private static Model doBuild(String apiKey, String baseUrl, String modelName,
+                                 Double temperature, Integer maxTokens) {
         return OpenAIChatModel.builder()
-                .apiKey(props.getApiKey())
-                .modelName(props.getModelName())
-                .baseUrl(props.getBaseUrl())
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .baseUrl(baseUrl)
                 .nativeStructuredOutput(true)
                 .nativeStructuredOutputWithTools(false)
                 .generateOptions(GenerateOptions.builder()
-                        .temperature(props.getTemperature())
-                        .maxTokens(props.getMaxTokens())
+                        .temperature(temperature)
+                        .maxTokens(maxTokens)
                         .build())
                 .build();
     }

@@ -65,17 +65,20 @@ public class AskEngineStreamController {
     /** 身份与角色来自 IAM 令牌（内省后进 SecurityContext），不再查本地表。 */
     private final com.liusongboyy.chatdata.ask.identity.CurrentUser currentUser;
     private final AsyncTaskExecutor workerExecutor;
+    private final com.liusongboyy.chatdata.engine.model.ModelService models;
     /** 会话历史（产品视图）。与 agentscope 状态分开存，见 ConversationService。 */
     private final ConversationService conversations;
 
     public AskEngineStreamController(AskServiceFactory serviceFactory,
                                      com.liusongboyy.chatdata.ask.identity.CurrentUser currentUser,
                                      ConversationService conversations,
-                                     @Qualifier("askWorkerExecutor") AsyncTaskExecutor workerExecutor) {
+                                     @Qualifier("askWorkerExecutor") AsyncTaskExecutor workerExecutor,
+                                     com.liusongboyy.chatdata.engine.model.ModelService models) {
         this.serviceFactory = serviceFactory;
         this.currentUser = currentUser;
         this.conversations = conversations;
         this.workerExecutor = workerExecutor;
+        this.models = models;
     }
 
     /**
@@ -120,6 +123,78 @@ public class AskEngineStreamController {
             log.error("读取可用助理列表失败（整条列表不可用，不是某个助理的问题）：{}", e.getMessage(), e);
             return ResponseEntity.ok(List.of());
         }
+    }
+
+    /**
+     * 当前用户**能用**的模型，供问数页的下拉。
+     *
+     * <h2>为什么在这里判权限而不是让前端判</h2>
+     *
+     * <p>同一个判据（{@code ModelAccess.selectable}）也用在真正发起问数时。
+     * 两处各写一遍会漂移，而漂移的表现是<b>「下拉里看得见、选了报 403」</b>——
+     * 用户会以为是系统坏了。
+     *
+     * <h2>未登录返回空列表而不是 401</h2>
+     *
+     * <p>与 {@code /assistants} 同一取舍：登录页也要能正常加载。
+     *
+     * @param domainId 可选。传了就能判断这个域是否锁定了模型
+     */
+    @org.springframework.web.bind.annotation.GetMapping("/models")
+    public ResponseEntity<ModelOptions> modelOptions(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String domainId) {
+        String username = currentUser.username().orElse(null);
+        if (username == null) {
+            return ResponseEntity.ok(new ModelOptions(List.of(), null));
+        }
+
+        // 域绑定：只有明确给出域时才查。传空表示"还没选助理"，
+        // 那时不该用任何域的绑定去限制用户
+        String bound = null;
+        if (domainId != null && !domainId.isBlank()) {
+            bound = models.domainBinding(domainId);
+        }
+
+        var selectable = com.liusongboyy.chatdata.engine.model.ModelAccess
+                .selectable(models.enabled(), currentUser.roles(), bound);
+
+        List<UsableModel> out = selectable.stream().map((m) -> new UsableModel(
+                m.key(),
+                m.displayName(),
+                m.description(),
+                costTier(m),
+                m.isDefault())).toList();
+
+        return ResponseEntity.ok(new ModelOptions(out, bound));
+    }
+
+    /**
+     * 相对贵的程度。0 便宜 / 1 中等 / 2 贵。
+     *
+     * <p>**不返回具体单价**：那会让用户分心算账，而他真正该想的是
+     * "这个问题难不难"。只需知道"这个更贵"就够了。
+     *
+     * 阈值按当前见过的价格区间定：输出价 &lt; 5 元/百万算便宜，
+     * &lt; 30 算中等，再高算贵。
+     */
+    private static int costTier(com.liusongboyy.chatdata.engine.model.ModelDef m) {
+        if (m.priceOutput() == null) {
+            return 0;   // 未配单价：不知道贵不贵，按便宜处理，不给用户额外负担
+        }
+        double p = m.priceOutput().doubleValue();
+        if (p < 5) {
+            return 0;
+        }
+        return p < 30 ? 1 : 2;
+    }
+
+    /** 一个可选的模型。与前端 {@code UsableModel} 一一对应。 */
+    public record UsableModel(String key, String displayName, String description,
+                              int costTier, boolean isDefault) {
+    }
+
+    /** 可选模型列表 + 域绑定情况。 */
+    public record ModelOptions(List<UsableModel> models, String lockedByDomain) {
     }
 
     /**

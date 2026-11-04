@@ -68,7 +68,8 @@ public interface SemanticConfigMapper {
 
     @Select("""
             SELECT id, name, datasource_id AS datasourceId, status, mode,
-                   joins_json AS joinsJson, perm_json AS permJson
+                   joins_json AS joinsJson, perm_json AS permJson,
+                   model_key AS modelKey
             FROM ask_domain
             WHERE status = 'enabled'
             ORDER BY sort_no, id
@@ -77,7 +78,8 @@ public interface SemanticConfigMapper {
 
     @Select("""
             SELECT id, name, datasource_id AS datasourceId, status, mode,
-                   joins_json AS joinsJson, perm_json AS permJson
+                   joins_json AS joinsJson, perm_json AS permJson,
+                   model_key AS modelKey
             FROM ask_domain
             WHERE id = #{id}
             """)
@@ -86,7 +88,8 @@ public interface SemanticConfigMapper {
     /** 全部语义域，**含停用的**。供管理面用——停用的域也要能找回来改。 */
     @Select("""
             SELECT id, name, datasource_id AS datasourceId, status, mode,
-                   joins_json AS joinsJson, perm_json AS permJson
+                   joins_json AS joinsJson, perm_json AS permJson,
+                   model_key AS modelKey
             FROM ask_domain
             ORDER BY sort_no, id
             """)

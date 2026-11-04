@@ -83,8 +83,10 @@ class AskEngineRecomputeEndpointTest {
         lenient().when(conversations.ensure(any(), any(), any(), any()))
                 .thenAnswer(inv -> new ConversationService.ConversationRef(
                         inv.getArgument(0), inv.getArgument(2)));
+        // 这个测试只覆盖重算端点，不碰模型选择——传 null 即可。
+        // 若将来它开始测 /models，要换成真的 ModelService
         controller = new AskEngineStreamController(
-                serviceFactory, new CurrentUser(), conversations, workerExecutor);
+                serviceFactory, new CurrentUser(), conversations, workerExecutor, null);
     }
 
     /** 模拟已登录：资源服务器内省成功后会把 authorities 放进 SecurityContext。 */

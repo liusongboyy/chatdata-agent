@@ -22,7 +22,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         // 会话历史（产品视图，与 agentscope 状态表分开）
         "com.liusongboyy.chatdata.ask.conversation.mapper",
         // 数据域/助理策略变更审计
-        "com.liusongboyy.chatdata.ask.policy.mapper"
+        "com.liusongboyy.chatdata.ask.policy.mapper",
+        // 模型配置（问数用什么模型、单价、角色白名单）
+        "com.liusongboyy.chatdata.engine.model.mapper"
 })
 @EnableScheduling
 public class AskApplication {

@@ -22,7 +22,14 @@ public record DomainRow(
         String status,
         String mode,
         String joinsJson,
-        String permJson
+        String permJson,
+        /**
+         * 域绑定的模型键。null / 空表示**不限制**，用户在角色允许范围内自选。
+         *
+         * <p>注意与「角色白名单为空」区分：那个是"所有人可用"，
+         * 这个是"不限制选择范围"。两者含义不同。
+         */
+        String modelKey
 ) {
 
     /**
@@ -32,7 +39,13 @@ public record DomainRow(
      */
     public DomainRow(long id, String name, Long datasourceId, String status,
                      String joinsJson, String permJson) {
-        this(id, name, datasourceId, status, null, joinsJson, permJson);
+        this(id, name, datasourceId, status, null, joinsJson, permJson, null);
+    }
+
+    /** 兼容构造器：带模式、不带模型绑定。 */
+    public DomainRow(long id, String name, Long datasourceId, String status, String mode,
+                     String joinsJson, String permJson) {
+        this(id, name, datasourceId, status, mode, joinsJson, permJson, null);
     }
 
     public boolean enabled() {
