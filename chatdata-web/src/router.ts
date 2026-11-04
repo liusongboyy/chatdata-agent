@@ -5,6 +5,7 @@ import LoginView from './views/LoginView.vue'
 import AskView from './views/AskView.vue'
 import AdminLayout from './views/admin/AdminLayout.vue'
 import DatasourceListView from './views/admin/DatasourceListView.vue'
+import ModelListView from './views/admin/ModelListView.vue'
 import DomainListView from './views/admin/DomainListView.vue'
 import DomainTablesView from './views/admin/DomainTablesView.vue'
 import AssistantListView from './views/admin/AssistantListView.vue'
@@ -30,6 +31,12 @@ export const ADMIN_PAGES = [
     path: '/admin/datasources',
     label: '数据源',
     permission: P.ASK_ADMIN_DATASOURCES,
+  },
+  {
+    name: 'admin-models',
+    path: '/admin/models',
+    label: '模型',
+    permission: P.ASK_ADMIN_MODELS,
   },
   { name: 'admin-domains', path: '/admin/domains', label: '语义域', permission: P.ASK_ADMIN_DOMAINS },
   {
@@ -92,6 +99,12 @@ export const router = createRouter({
           name: 'admin-datasources',
           component: DatasourceListView,
           meta: { permission: P.ASK_ADMIN_DATASOURCES },
+        },
+        {
+          path: 'models',
+          name: 'admin-models',
+          component: ModelListView,
+          meta: { permission: P.ASK_ADMIN_MODELS },
         },
         {
           path: 'domains',

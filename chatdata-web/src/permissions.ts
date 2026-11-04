@@ -10,6 +10,9 @@ export const P = {
   ASK_ADMIN_DATASOURCES_WRITE: 'ask.admin.datasources.write',
   ASK_ADMIN_DATASOURCES_DELETE: 'ask.admin.datasources.delete',
   ASK_ADMIN_DATASOURCES_TEST: 'ask.admin.datasources.test',
+  ASK_ADMIN_MODELS: 'ask.admin.models',
+  ASK_ADMIN_MODELS_WRITE: 'ask.admin.models.write',
+  ASK_ADMIN_MODELS_TEST: 'ask.admin.models.test',
   ASK_ADMIN_DOMAINS: 'ask.admin.domains',
   ASK_ADMIN_DOMAINS_WRITE: 'ask.admin.domains.write',
   ASK_ADMIN_DOMAINS_DELETE: 'ask.admin.domains.delete',
@@ -36,6 +39,7 @@ export type PermissionCode = (typeof P)[keyof typeof P]
  */
 export const ASK_ADMIN_PAGE_CODES: readonly string[] = [
   P.ASK_ADMIN_DATASOURCES,
+  P.ASK_ADMIN_MODELS,
   P.ASK_ADMIN_DOMAINS,
   P.ASK_ADMIN_ASSISTANTS,
   P.ASK_ADMIN_FEEDBACK,

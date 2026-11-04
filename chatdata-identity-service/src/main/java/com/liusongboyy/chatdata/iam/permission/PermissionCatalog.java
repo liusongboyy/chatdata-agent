@@ -50,6 +50,9 @@ public final class PermissionCatalog {
     public static final String ASK_ADMIN_DATASOURCES_WRITE = "ask.admin.datasources.write";
     public static final String ASK_ADMIN_DATASOURCES_DELETE = "ask.admin.datasources.delete";
     public static final String ASK_ADMIN_DATASOURCES_TEST = "ask.admin.datasources.test";
+    public static final String ASK_ADMIN_MODELS = "ask.admin.models";
+    public static final String ASK_ADMIN_MODELS_WRITE = "ask.admin.models.write";
+    public static final String ASK_ADMIN_MODELS_TEST = "ask.admin.models.test";
     public static final String ASK_ADMIN_DOMAINS = "ask.admin.domains";
     public static final String ASK_ADMIN_DOMAINS_WRITE = "ask.admin.domains.write";
     public static final String ASK_ADMIN_DOMAINS_DELETE = "ask.admin.domains.delete";
@@ -165,6 +168,10 @@ public final class PermissionCatalog {
                             Node.action(ASK_ADMIN_DATASOURCES_WRITE, "新增 / 编辑数据源"),
                             Node.action(ASK_ADMIN_DATASOURCES_DELETE, "删除数据源"),
                             Node.sensitiveAction(ASK_ADMIN_DATASOURCES_TEST, "测试连接")),
+                    Node.page(ASK_ADMIN_MODELS, "模型",
+                            Node.action(ASK_ADMIN_MODELS_WRITE, "新增 / 编辑 / 启停"),
+                            // 测试会真发一次请求，产生真实费用，故与"测试连接"同级敏感
+                            Node.sensitiveAction(ASK_ADMIN_MODELS_TEST, "测试连通性")),
                     Node.page(ASK_ADMIN_DOMAINS, "语义域",
                             Node.action(ASK_ADMIN_DOMAINS_WRITE, "新增 / 编辑语义域"),
                             Node.action(ASK_ADMIN_DOMAINS_DELETE, "删除语义域"),

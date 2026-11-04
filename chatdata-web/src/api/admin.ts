@@ -498,6 +498,105 @@ export async function healthOverview(days = 7): Promise<HealthOverview> {
   )).data
 }
 
+// ── 模型管理 ──
+
+/**
+ * 一个模型配置。
+ *
+ * **没有 `apiKey` 字段**，只有 `hasApiKey`：服务端连密文都不出。
+ * 前端因此也无法"回显密钥"——编辑时留空 = 不改。
+ */
+export interface AdminModel {
+  key: string
+  displayName: string
+  description: string
+  baseUrl: string
+  modelName: string
+  /** **空数组 = 不限制**，不是"谁都不可用" */
+  allowedRoles: string[]
+  hasApiKey: boolean
+  priceInput: number | null
+  priceCached: number | null
+  priceOutput: number | null
+  /** 这套单价是哪天配的。价格会变，看板上要能说明 */
+  pricedAt: string | null
+  priced: boolean
+  isDefault: boolean
+  enabled: boolean
+}
+
+export interface AdminModelForm {
+  /** 只在新建时有意义。**创建后不可改**——审计里存的是它 */
+  key: string
+  displayName: string
+  description: string
+  baseUrl: string
+  /** 更新时留空表示不改密钥。空串与 null 同义 */
+  apiKey: string
+  modelName: string
+  allowedRoles: string[]
+  /** 单价三件套：要么全填，要么全空（空 = 算不出钱，但不是 0） */
+  priceInput: number | null
+  priceCached: number | null
+  priceOutput: number | null
+  isDefault: boolean
+  enabled: boolean
+}
+
+export async function listModels(): Promise<AdminModel[]> {
+  return (await get<Envelope<AdminModel[]>>('/api/engine/admin/models')).data
+}
+
+export async function createModel(form: AdminModelForm): Promise<void> {
+  await post<Envelope<void>>('/api/engine/admin/models', form)
+}
+
+export async function updateModel(key: string, form: AdminModelForm): Promise<void> {
+  await put<Envelope<void>>(`/api/engine/admin/models/${encodeURIComponent(key)}`, form)
+}
+
+/** 启停。单独一个端点：走 PUT 要带全量，等于给"并发覆盖"开门。 */
+export async function setModelEnabled(key: string, enabled: boolean): Promise<void> {
+  await put<Envelope<void>>(`/api/engine/admin/models/${encodeURIComponent(key)}/enabled`, { enabled })
+}
+
+/** 绑定了这个模型的域。停用前的拦截提示。 */
+export async function boundDomains(key: string): Promise<Array<{ id: number; name: string }>> {
+  return (await get<Envelope<Array<{ id: number; name: string }>>>(
+    `/api/engine/admin/models/${encodeURIComponent(key)}/domains`,
+  )).data
+}
+
+/** 测试已保存模型的连通性。**会真发一次请求、产生真实费用**。 */
+export async function testModel(key: string): Promise<ModelProbeResult> {
+  return (await post<Envelope<ModelProbeResult>>(
+    `/api/engine/admin/models/${encodeURIComponent(key)}/test`, {})).data
+}
+
+/**
+ * 测试表单里尚未保存的配置。
+ *
+ * `key` 传编辑中的键，服务端在密钥留空时用它取已存密钥——
+ * 否则会拿空密钥去测，得到一次毫无意义的 401。
+ */
+export async function testModelDraft(
+  key: string | null,
+  model: AdminModelForm,
+): Promise<ModelProbeResult> {
+  return (await post<Envelope<ModelProbeResult>>('/api/engine/admin/models/test', {
+    key,
+    model,
+  })).data
+}
+
+export interface ModelProbeResult {
+  ok: boolean
+  /** 失败时带供应商原文 + 处置方向 */
+  message: string
+  /** 往返耗时。管理员据此判断"这个模型快不快" */
+  elapsedMs: number
+}
+
 // ── 成本看板 ──
 
 /**

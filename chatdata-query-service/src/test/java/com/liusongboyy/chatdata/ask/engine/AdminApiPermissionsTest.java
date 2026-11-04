@@ -47,6 +47,50 @@ class AdminApiPermissionsTest {
     }
 
     @Test
+    @DisplayName("★ 模型控制器上每个映射也有规则")
+    void everyModelEndpointHasARule() {
+        // 模型接口挂在另一个控制器上（/api/engine/admin/models），但用的是同一张表。
+        // **不测它就会漏**：这个控制器是后加的，覆盖测试原本只扫 AdminEngineController
+        List<String> missing = new ArrayList<>();
+        Set<String> allTableCodes = AdminApiPermissions.allCodes();
+        for (String endpoint : endpointsOf(AdminModelController.class)) {
+            int space = endpoint.indexOf(' ');
+            String method = endpoint.substring(0, space);
+            String path = endpoint.substring(space + 1);
+            if (!AdminApiPermissions.allows(method, path, allTableCodes)) {
+                missing.add(endpoint);
+            }
+        }
+        assertThat(missing).as("以下模型接口没有权限规则").isEmpty();
+    }
+
+    @Test
+    @DisplayName("★ 模型的测试连通性单独成码：会真花钱，页面权限不够")
+    void modelProbeNeedsItsOwnCode() {
+        assertThat(AdminApiPermissions.allows("POST", BASE + "/models/flash/test",
+                Set.of("ask.admin.models"))).isFalse();
+        assertThat(AdminApiPermissions.allows("POST", BASE + "/models/flash/test",
+                Set.of("ask.admin.models.test"))).isTrue();
+        // 表单试连（尚未保存）是同一个动作，同样要那个码
+        assertThat(AdminApiPermissions.allows("POST", BASE + "/models/test",
+                Set.of("ask.admin.models"))).isFalse();
+        assertThat(AdminApiPermissions.allows("POST", BASE + "/models/test",
+                Set.of("ask.admin.models.test"))).isTrue();
+    }
+
+    @Test
+    @DisplayName("★ 模型列表对语义域页也开放：域编辑要选绑定模型")
+    void modelListSharedWithDomainPage() {
+        assertThat(AdminApiPermissions.allows("GET", BASE + "/models",
+                Set.of("ask.admin.domains"))).isTrue();
+        assertThat(AdminApiPermissions.allows("GET", BASE + "/models",
+                Set.of("ask.admin.models"))).isTrue();
+        // 但写不行——只有页面权限管不了模型配置
+        assertThat(AdminApiPermissions.allows("POST", BASE + "/models",
+                Set.of("ask.admin.domains"))).isFalse();
+    }
+
+    @Test
     @DisplayName("★ 表里的码都是 ask.admin.*（写错一个字母 = 那个接口永远拒绝）")
     void tableCodesAreAdminCodes() {
         assertThat(AdminApiPermissions.allCodes())

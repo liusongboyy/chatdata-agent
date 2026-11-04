@@ -136,6 +136,26 @@ public interface ModelMapper {
     String selectDomainModelKey(@Param("id") long id);
 
     /**
+     * 绑定了这个模型的域。
+     *
+     * <p>管理页要能在停用前告诉管理员"有 3 个域绑着它"——停用之后那些域会立刻问不了，
+     * 而管理员的本意通常只是"把它从下拉里摘掉"。
+     *
+     * <p>只查名字，不查配置：这个信息只需要让人认出是哪几个域。
+     */
+    @Select("""
+            SELECT id, name
+            FROM ask_domain
+            WHERE model_key = #{key}
+            ORDER BY id
+            """)
+    List<DomainRef> selectDomainsByModelKey(@Param("key") String key);
+
+    /** 绑定了某模型的一个域（只要 id 与名字）。 */
+    record DomainRef(long id, String name) {
+    }
+
+    /**
      * 一条模型记录（不含密钥）。
      *
      * <p>{@code allowedRoles} 是 JSON 原文，由 Service 解析——

@@ -356,6 +356,16 @@ public class ModelService {
                 .findFirst().map(ModelDef::key).orElse(null);
     }
 
+    /**
+     * 仅测试用：注入固定列表**而不清空**，用于「读侧给定、写侧真实」的场景。
+     *
+     * <p>与 {@link #forTest} 的区别是那里 mapper 是 null，只能读。
+     * 管理面的测试要验"写完之后缓存有没有清"，所以必须能写。
+     */
+    public void cachedForTest(List<ModelDef> fixed) {
+        this.cached = fixed;
+    }
+
     /** 缓存预热：供测试与启动时用。 */
     void warmUp() {
         invalidate();

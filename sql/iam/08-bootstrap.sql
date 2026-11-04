@@ -64,6 +64,9 @@ JOIN (
   UNION ALL SELECT 'ask.admin.datasources.write'
   UNION ALL SELECT 'ask.admin.datasources.delete'
   UNION ALL SELECT 'ask.admin.datasources.test'
+  UNION ALL SELECT 'ask.admin.models'
+  UNION ALL SELECT 'ask.admin.models.write'
+  UNION ALL SELECT 'ask.admin.models.test'
   UNION ALL SELECT 'ask.admin.domains'
   UNION ALL SELECT 'ask.admin.domains.write'
   UNION ALL SELECT 'ask.admin.domains.delete'
@@ -79,7 +82,7 @@ WHERE r.`tenant_id` = 't_default' AND r.`code` = 'chat2bi';
 -- ── 4) 核对 ──────────────────────────────────────────────────────────
 -- 期望：
 --   super_admin  → 内置超管，permission_count 恒为 0（权限在代码里展开，这是正常的）
---   chat2bi      → 24 项（上面那份预置）
+--   chat2bi      → 27 项（上面那份预置）
 -- 每个启用中的部署至少要有一个 super_admin 的持有者，否则下面这条会报出来。
 SELECT r.`code` AS role_code, r.`enabled`,
        (SELECT COUNT(*) FROM `iam_role_permission` p WHERE p.`role_id` = r.`id`) AS permission_count,

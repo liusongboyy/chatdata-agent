@@ -47,6 +47,10 @@ public final class AdminApiPermissions {
     private static final String DS_DELETE = "ask.admin.datasources.delete";
     private static final String DS_TEST = "ask.admin.datasources.test";
 
+    private static final String MD = "ask.admin.models";
+    private static final String MD_WRITE = "ask.admin.models.write";
+    private static final String MD_TEST = "ask.admin.models.test";
+
     private static final String DM = "ask.admin.domains";
     private static final String DM_WRITE = "ask.admin.domains.write";
     private static final String DM_DELETE = "ask.admin.domains.delete";
@@ -84,6 +88,20 @@ public final class AdminApiPermissions {
             // 不另设权限码：多一个码就多一次"谁能看"的讨论，而收益为零
             new Rule("GET", "/health/overview", DM),
             new Rule("GET", "/health/quality", DM),
+            // 成本看板与健康度同档：看成本的人就是管模型的人
+            new Rule("GET", "/health/cost", DM, MD),
+
+            // ── 模型 ──
+            // 列表要给语义域页用（域编辑里选绑定模型），故 DM 也放行。
+            // 只读，不含密钥，多给一个页面看没有额外风险
+            new Rule("GET", "/models", MD, DM),
+            new Rule("POST", "/models", MD_WRITE),
+            new Rule("PUT", "/models/*", MD_WRITE),
+            new Rule("PUT", "/models/*/enabled", MD_WRITE),
+            new Rule("GET", "/models/*/domains", MD, DM),
+            // 测试会真发一次请求、产生真实费用，故单列一个敏感码
+            new Rule("POST", "/models/test", MD_TEST),
+            new Rule("POST", "/models/*/test", MD_TEST),
 
             // ── 语义域 ──
             new Rule("POST", "/domains", DM_WRITE),

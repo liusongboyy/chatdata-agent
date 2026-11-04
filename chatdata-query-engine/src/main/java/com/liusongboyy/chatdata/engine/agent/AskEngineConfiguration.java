@@ -118,6 +118,22 @@ public class AskEngineConfiguration {
         return new DbAskAuditRecorder(mapper);
     }
 
+    /**
+     * 模型管理。
+     *
+     * <p>依赖 {@code ModelService}（运行期读侧）与 {@code ModelMapper}（写侧 + 密钥密文）。
+     * 写完之后由 {@code ModelService.invalidate()} 让运行期看见——漏掉它，
+     * 改了 base-url 之后问数还会连旧地址，因为模型实例被按 key 缓存着。
+     */
+    @Bean
+    public com.liusongboyy.chatdata.engine.admin.AdminModelService adminModelService(
+            com.liusongboyy.chatdata.engine.model.ModelService modelService,
+            com.liusongboyy.chatdata.engine.model.mapper.ModelMapper modelMapper,
+            AskEngineModelProperties askEngineModelProperties) {
+        return new com.liusongboyy.chatdata.engine.admin.AdminModelService(
+                modelService, modelMapper, askEngineModelProperties);
+    }
+
     /** 数据源管理。密码走 {@link PasswordCipher}，普通更新不碰密码。 */
     @Bean
     public AdminDatasourceService adminDatasourceService(SemanticConfigMapper readMapper,
