@@ -376,6 +376,51 @@ export async function fetchAssistants(): Promise<UsableAssistant[]> {
 }
 
 /**
+ * 一个可选的模型。
+ *
+ * **只返回当前用户有权用的**——与助理同一取舍：把不能用的名字发过来，
+ * 等于告诉无权限的人"存在哪些模型"，而且用户会以为是下拉坏了。
+ */
+export interface UsableModel {
+  key: string
+  displayName: string
+  /** 用途说明，写给人看。**不是参数**——用户关心"这个适合什么场景" */
+  description: string | null
+  /**
+   * 相对贵的程度：0 = 便宜，1 = 中等，2 = 贵。
+   *
+   * **刻意不显示具体单价**：那会让用户分心算账，而他真正该想的是
+   * "这个问题难不难"。只需知道"这个更贵"就够了。
+   */
+  costTier: 0 | 1 | 2
+  /** 是不是全局默认。下拉里打「默认」标记 */
+  isDefault: boolean
+}
+
+/** 当前用户可选的模型，以及这个域是否锁定了模型。 */
+export interface ModelOptions {
+  models: UsableModel[]
+  /** 非 null 表示这个域锁定了模型，前端下拉置灰 */
+  lockedByDomain: string | null
+}
+
+/**
+ * 取当前用户**能用**的模型。
+ *
+ * 服务端已按「角色白名单 + 域绑定」过滤过——前端不再判权限，
+ * 否则两处判据迟早漂移，而漂移时的表现是"下拉里看得见、选了下单失败"。
+ */
+export async function fetchModels(domainId?: string): Promise<ModelOptions> {
+  const query = domainId ? `?domainId=${encodeURIComponent(domainId)}` : ''
+  const response = await fetch(`/api/ask/models${query}`, {
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+  })
+  if (!response.ok) return { models: [], lockedByDomain: null }
+  return (await response.json()) as ModelOptions
+}
+
+/**
  * 基于给定的 DSL 重算，**不经过模型**（后端 FR-5.5）。
  *
  * 用途是"改掉一个条件再算一次"：查出 0 行时，最常见的下一步是去掉时间范围

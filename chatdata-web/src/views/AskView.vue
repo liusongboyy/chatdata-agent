@@ -7,6 +7,7 @@ import {
   fetchAssistants,
   fetchCapabilities,
   fetchConversation,
+  fetchModels,
   listConversations,
   recompute,
   submitFeedback,
@@ -19,6 +20,7 @@ import {
   type FailureCode,
   type FeedbackType,
   type UsableAssistant,
+  type UsableModel,
 } from '../api/ask'
 import { errorMessage } from '../api/http'
 import { logout as bffLogout } from '../api/auth'
@@ -50,6 +52,37 @@ const userInitial = computed(() => {
   return name.slice(0, 1).toUpperCase()
 })
 
+/**
+ * 可选的模型。
+ *
+ * 服务端已按角色白名单与域绑定过滤——前端不再判权限。
+ * 两处判据会漂移，而漂移的表现是"下拉里看得见、选了报 403"。
+ */
+const models = ref<UsableModel[]>([])
+/** 当前选中的模型 key。空串 = 用服务端默认。 */
+const modelKey = ref('')
+/** 非 null 表示这个域锁定了模型，下拉置灰。 */
+const lockedModel = ref<string | null>(null)
+
+/** 换助理后重新取模型——不同助理绑不同域，域可能锁定不同模型。 */
+async function refreshModels(): Promise<void> {
+  const opts = await fetchModels(undefined)
+  models.value = opts.models
+  lockedModel.value = opts.lockedByDomain
+  if (opts.lockedByDomain) {
+    // 域锁死了就只能用它，把选中项也拨过去，否则下拉显示与实际不一致
+    modelKey.value = opts.lockedByDomain
+  } else if (!opts.models.some((m) => m.key === modelKey.value)) {
+    // 当前选中的不在新列表里（换了助理/权限变了）→ 回到默认
+    modelKey.value = opts.models.find((m) => m.isDefault)?.key ?? ''
+  }
+}
+
+/** 当前选中的模型对象，用于展示说明。 */
+const currentModel = computed(
+  () => models.value.find((m) => m.key === modelKey.value) ?? null,
+)
+
 /** 按当前助理刷新"能问什么"。换助理就得重取——不同助理绑不同域。 */
 async function refreshCapabilities(): Promise<void> {
   const caps = await fetchCapabilities(undefined, assistantId.value || undefined)
@@ -68,7 +101,7 @@ onMounted(async () => {
   if (assistants.value.length > 0) {
     assistantId.value = assistants.value[0]!.id
   }
-  await refreshCapabilities()
+  await Promise.all([refreshCapabilities(), refreshModels()])
 })
 
 async function onAssistantChange(): Promise<void> {
@@ -77,6 +110,9 @@ async function onAssistantChange(): Promise<void> {
   // 语法正确、语义错误的查询。所以换助理必须同时开新会话。
   if (turns.value.length > 0) resetSession()
   await refreshCapabilities()
+  // 换助理 = 换域，而域可能锁定不同模型。不重取的话下拉里还是上一个域的可选项，
+  // 用户选了会 403
+  await refreshModels()
 }
 
 /** 一轮问答。 */
@@ -405,6 +441,8 @@ async function submit(): Promise<void> {
         question,
         sessionId: sessionId.value,
         ...(assistantId.value ? { assistantId: assistantId.value } : {}),
+        // 空串不带：让服务端按「域绑定 > 全局默认」自己解析
+        ...(modelKey.value ? { modelKey: modelKey.value } : {}),
         ...(analyzeMode.value ? { analyze: true } : {}),
       },
       (event) => applyEvent(turn.id, event),
@@ -757,6 +795,35 @@ async function logout(): Promise<void> {
 
       <span v-else class="assistant-note">
         你的账号还没有可用的助理，请联系管理员授权
+      </span>
+
+      <!-- 模型选择。与助理并排：两者的性质相同（每次提问都可能变），
+           藏进设置里用户就不会用。 -->
+      <template v-if="models.length > 1">
+        <span class="assistant-label model-label">模型</span>
+        <select
+          v-model="modelKey"
+          class="assistant-pick model-pick"
+          :disabled="lockedModel !== null"
+          :title="lockedModel !== null ? '此数据域限定了模型' : (currentModel?.description ?? '')"
+        >
+          <option v-for="m in models" :key="m.key" :value="m.key">
+            {{ m.displayName }}{{ m.costTier === 2 ? ' ¥¥' : m.costTier === 1 ? ' ¥' : '' }}{{ m.isDefault ? '（默认）' : '' }}
+          </option>
+        </select>
+        <span v-if="lockedModel !== null" class="model-note">此域限定</span>
+      </template>
+
+      <!-- 只有一个模型时不渲染下拉：一个只有一个选项的下拉是纯噪音，
+           而且会让人以为"切换坏了"——与助理同一取舍 -->
+      <template v-else-if="models.length === 1">
+        <span class="assistant-label model-label">模型</span>
+        <span class="assistant-only">{{ models[0]!.displayName }}</span>
+      </template>
+
+      <!-- 一个都没有：**必须禁用输入框**，否则用户打了半天字、点发送才报错 -->
+      <span v-else class="assistant-note model-none">
+        你的账号没有可用模型，请联系管理员
       </span>
 
       <!-- 当前落点。**常驻显示**——它此前只在空状态里出现过，
@@ -1444,6 +1511,27 @@ async function logout(): Promise<void> {
 
 .assistant-pick:hover {
   border-color: var(--ink);
+}
+
+.assistant-pick:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.model-label {
+  margin-left: 6px;
+}
+
+.model-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+  padding: 2px 6px;
+  background: var(--surface-sunk);
+  border-radius: 5px;
+}
+
+.model-none {
+  color: #b45309;
 }
 
 /* 单助理时的静态标签，与下拉占同样的位置，视觉上不跳 */
