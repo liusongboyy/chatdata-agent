@@ -4,7 +4,7 @@ import { costReport, type CostReport, type CostRow } from '../../api/admin'
 import { errorMessage } from '../../api/http'
 
 /**
- * 成本看板。
+ * 用量看板：token 是主线，金额是配了单价之后的派生物。
  *
  * ## 为什么单独一个组件而不是塞进 HealthView
  *
@@ -18,6 +18,12 @@ import { errorMessage } from '../../api/http'
  * 全部显示成"—"和一句原因说明，**不显示 ¥0.00**。
  * 0 元是"免费"，而上面三种都是"不知道"——把不知道写成 0，
  * 管理员会得出"成本很低"的结论，而这个结论是假的。
+ *
+ * ## 先给 token，再给钱
+ *
+ * token 一定采得到（只要问数跑过），金额不一定算得出。所以摘要区
+ * **token 放前面**：即使单价一个都没配，这块仍然是有内容的，
+ * 而不是一整屏的破折号让人以为是页面坏了。
  */
 const data = ref<CostReport | null>(null)
 const loading = ref(false)
@@ -32,7 +38,7 @@ async function load(): Promise<void> {
   try {
     data.value = await costReport(days.value)
   } catch (e) {
-    error.value = `读取成本数据失败：${errorMessage(e)}`
+    error.value = `读取用量数据失败：${errorMessage(e)}`
   } finally {
     loading.value = false
   }
@@ -115,27 +121,43 @@ function barWidth(r: CostRow): string {
         不要拿它当完整账单。
       </p>
 
+      <!--
+        token 排前面，金额排后面。
+        token 一定采得到，金额不一定算得出——单价没配时这一屏仍然是有内容的，
+        而不是四个破折号让人以为页面坏了。
+      -->
       <div class="stats">
-        <div class="stat">
-          <b>{{ money(data.total.amount) }}</b>
-          <span>总计</span>
-        </div>
         <div class="stat">
           <b>{{ data.total.asks.toLocaleString() }}</b>
           <span>提问数</span>
         </div>
         <div class="stat">
-          <b>{{ money(data.total.avgPerAsk) }}</b>
-          <span>单次均价</span>
+          <b>{{ tokens(data.total.inputTokens) }}</b>
+          <span>输入 token</span>
+        </div>
+        <div class="stat">
+          <b>{{ tokens(data.total.outputTokens) }}</b>
+          <span>输出 token</span>
         </div>
         <div class="stat">
           <b>{{ rate(data.total.cacheHitRate) }}</b>
           <span>缓存命中率</span>
         </div>
+        <div class="stat">
+          <b>{{ money(data.total.amount) }}</b>
+          <span>总费用</span>
+        </div>
+        <div class="stat">
+          <b>{{ money(data.total.avgPerAsk) }}</b>
+          <span>单次均价</span>
+        </div>
       </div>
       <p class="footnote">
-        单次均价 = 总额 / <strong>能算出钱的</strong>提问数（{{ data.total.pricedAsks }} 次），
-        不是除以总提问数——否则会被未计价的记录拉低。
+        <strong>token 与费用的口径不同：</strong>
+        token 来自每次调用的实测值，一定有；费用只对<strong>配了单价</strong>的模型算得出，
+        分母是能算出钱的 {{ data.total.pricedAsks }} 次，不是总提问数——
+        否则会被未计价的记录拉低。
+        缓存命中率的分子是「输入里命中缓存的那部分」，它是输入的子集。
       </p>
 
       <!-- 按模型 -->

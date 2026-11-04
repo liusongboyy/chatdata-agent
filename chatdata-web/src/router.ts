@@ -40,19 +40,10 @@ export interface AdminPage {
  * 导航与路由守卫都读这一份，免得"菜单里看得见、点进去被弹回"。
  */
 export const ADMIN_PAGES: readonly AdminPage[] = [
-  {
-    name: 'admin-health',
-    path: '/admin/health',
-    label: '健康度',
-    // 与「语义域」同档：看健康度的人就是配域的人
-    permission: P.ASK_ADMIN_DOMAINS,
-  },
-  {
-    name: 'admin-datasources',
-    path: '/admin/datasources',
-    label: '数据源',
-    permission: P.ASK_ADMIN_DATASOURCES,
-  },
+  // 顺序即导航顺序。按「先配什么、再看什么」排：
+  //   模型 → 数据源 → 建模助手 → 语义域 → 助理 → 反馈审核 → 用量
+  // 模型排第一：它是问数能不能跑起来的前提，没配模型什么都问不了。
+  // 用量排最后：它是前六项的结果（配完模型、配完域，才谈得上花了多少）。
   {
     name: 'admin-models',
     path: '/admin/models',
@@ -60,16 +51,11 @@ export const ADMIN_PAGES: readonly AdminPage[] = [
     permission: P.ASK_ADMIN_MODELS,
   },
   {
-    name: 'admin-cost',
-    path: '/admin/cost',
-    label: '成本',
-    // **两个码任一即可**，与后端 `GET /health/cost` 的规则一致
-    // （见 AdminApiPermissions：`new Rule("GET", "/health/cost", DM, MD)`）。
-    // 管模型的人必然要看账单；只有域权限的人也该能看——他配的域在花钱。
-    // 两处写同一组码，否则会出现"菜单里看得见、点进去被弹回"
-    anyPermission: [P.ASK_ADMIN_MODELS, P.ASK_ADMIN_DOMAINS],
+    name: 'admin-datasources',
+    path: '/admin/datasources',
+    label: '数据源',
+    permission: P.ASK_ADMIN_DATASOURCES,
   },
-  { name: 'admin-domains', path: '/admin/domains', label: '语义域', permission: P.ASK_ADMIN_DOMAINS },
   {
     name: 'admin-modeling',
     path: '/admin/modeling',
@@ -79,6 +65,7 @@ export const ADMIN_PAGES: readonly AdminPage[] = [
     // 表现是「点菜单被弹回问数页」（实测踩到）
     permission: P.ASK_ADMIN_DOMAINS,
   },
+  { name: 'admin-domains', path: '/admin/domains', label: '语义域', permission: P.ASK_ADMIN_DOMAINS },
   {
     name: 'admin-assistants',
     path: '/admin/assistants',
@@ -90,6 +77,28 @@ export const ADMIN_PAGES: readonly AdminPage[] = [
     path: '/admin/feedback',
     label: '反馈审核',
     permission: P.ASK_ADMIN_FEEDBACK,
+  },
+  {
+    name: 'admin-health',
+    path: '/admin/health',
+    label: '健康度',
+    // 与「语义域」同档：看健康度的人就是配域的人
+    permission: P.ASK_ADMIN_DOMAINS,
+  },
+  {
+    // 路由是 /admin/cost 而不是 /admin/tokens：
+    // **页面标题改了，路径不该跟着改**。路径会出现在书签、日志、别人的
+    // 排查记录里，为了一次措辞调整让它全部失效，代价远大于收益
+    name: 'admin-cost',
+    path: '/admin/cost',
+    // 叫「用量」而不是「成本」：多数记录只有 token 没有单价，那时算不出钱。
+    // 叫成本会让人第一眼就盯着金额，而那里常常是「未配单价」
+    label: '用量',
+    // **两个码任一即可**，与后端 `GET /health/cost` 的规则一致
+    // （见 AdminApiPermissions：`new Rule("GET", "/health/cost", DM, MD)`）。
+    // 管模型的人必然要看用量；只有域权限的人也该能看——他配的域在花钱。
+    // 两处写同一组码，否则会出现"菜单里看得见、点进去被弹回"
+    anyPermission: [P.ASK_ADMIN_MODELS, P.ASK_ADMIN_DOMAINS],
   },
 ]
 
