@@ -63,4 +63,30 @@ public class HealthController {
             return ResponseEntity.ok(Result.success(null));
         }
     }
+
+    /**
+     * 按问题类型做的质量分析。
+     *
+     * @param days       时间范围，默认 30 天。**比概览的 7 天长**：
+     *                   类型分布需要更多样本才有意义，7 天的样本量
+     *                   会让某些类型只剩个位数
+     * @param minSamples 少于这个次数的问法不列出，默认 5。
+     *                   样本太少时成功率是噪声
+     */
+    @GetMapping("/quality")
+    public ResponseEntity<Result<HealthService.QualityReport>> quality(
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(defaultValue = "5") int minSamples,
+            HttpServletRequest request) {
+        if (currentUser.username().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Result.error(401, "未登录"));
+        }
+        try {
+            return ResponseEntity.ok(Result.success(health.quality(days, minSamples)));
+        } catch (RuntimeException e) {
+            log.error("读取质量分析失败：{}", e.getMessage(), e);
+            return ResponseEntity.ok(Result.success(null));
+        }
+    }
 }

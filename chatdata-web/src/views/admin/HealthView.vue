@@ -7,6 +7,7 @@ import {
   type HealthOverview,
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
+import QualityPanel from './QualityPanel.vue'
 
 /**
  * 问数健康度。
@@ -23,6 +24,13 @@ const data = ref<HealthOverview | null>(null)
 const loading = ref(false)
 const error = ref('')
 const days = ref(7)
+
+/**
+ * 当前标签。
+ *
+ * 两个视图回答的是同一类问题（这个系统好不好），分开放反而要来回切。
+ */
+const tab = ref<'overview' | 'quality'>('overview')
 
 onMounted(load)
 
@@ -100,6 +108,28 @@ function coverageTone(d: DomainHealth): string {
       </select>
     </header>
 
+    <nav class="tabs">
+      <button
+        type="button"
+        class="tab"
+        :class="{ active: tab === 'overview' }"
+        @click="tab = 'overview'"
+      >
+        概览
+      </button>
+      <button
+        type="button"
+        class="tab"
+        :class="{ active: tab === 'quality' }"
+        @click="tab = 'quality'"
+      >
+        质量分析
+      </button>
+    </nav>
+
+    <QualityPanel v-if="tab === 'quality'" />
+
+    <template v-else>
     <div v-if="loading" class="note">加载中…</div>
     <p v-else-if="error" class="note note-danger">{{ error }}</p>
 
@@ -202,11 +232,23 @@ function coverageTone(d: DomainHealth): string {
         </table>
       </div>
     </template>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .health { padding: 24px; max-width: 1100px; }
+.tabs {
+  display: flex; gap: 4px; margin-bottom: 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 8px 16px; font-size: 0.88rem; color: #64748b;
+  cursor: pointer; margin-bottom: -1px;
+}
+.tab:hover { color: #0f172a; }
+.tab.active { color: #0f172a; border-bottom-color: #6366f1; font-weight: 600; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
 .page-head h1 { font-size: 1.35rem; margin: 0 0 6px; }
 .sub { color: #64748b; font-size: 0.85rem; margin: 0; max-width: 68ch; line-height: 1.6; }

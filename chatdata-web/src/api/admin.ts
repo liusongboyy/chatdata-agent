@@ -375,6 +375,49 @@ export { ApiError }
 
 // ── 健康度 ──
 
+// ── 问数质量（按问题类型）──
+
+export interface TypeStat {
+  key: string
+  label: string
+  asks: number
+  failures: number
+  successRate: number
+  avgMs: number
+  sampleQuestion: string | null
+}
+
+export interface QuestionStat {
+  question: string
+  asks: number
+  failures: number
+  successRate: number
+  avgMs: number
+}
+
+export interface QualityReport {
+  days: number
+  totalAsks: number
+  /** 认不出类型的条数。**它是信号不是垃圾桶**——占比持续变大就该提炼新规则 */
+  unknownAsks: number
+  types: TypeStat[]
+  questionsByType: Record<string, QuestionStat[]>
+  notice: string | null
+}
+
+/**
+ * 按问题类型做的质量分析。
+ *
+ * 与 healthOverview 的回答不同：那个看「整体成功率和失败原因」，
+ * 这个看「**哪类问题**难」——整体失败率 9% 会被大量成功掩盖，
+ * 而某个高频问法可能已经坏了一半。
+ */
+export async function qualityReport(days = 30, minSamples = 5): Promise<QualityReport> {
+  return (await get<Envelope<QualityReport>>(
+    `/api/engine/admin/health/quality?days=${days}&minSamples=${minSamples}`,
+  )).data
+}
+
 /** 一个失败桶。 */
 export interface FailureBucket {
   key: string

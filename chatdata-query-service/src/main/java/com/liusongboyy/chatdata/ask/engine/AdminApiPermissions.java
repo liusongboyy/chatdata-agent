@@ -83,6 +83,7 @@ public final class AdminApiPermissions {
             // 与「语义域」同档——**看健康度的人就是配域的人**，
             // 不另设权限码：多一个码就多一次"谁能看"的讨论，而收益为零
             new Rule("GET", "/health/overview", DM),
+            new Rule("GET", "/health/quality", DM),
 
             // ── 语义域 ──
             new Rule("POST", "/domains", DM_WRITE),

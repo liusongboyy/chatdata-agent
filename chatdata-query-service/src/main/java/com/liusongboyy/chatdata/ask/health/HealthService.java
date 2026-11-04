@@ -215,6 +215,144 @@ public class HealthService {
                 + "要长期解决需要改成预聚合（见 .scratch/health-dashboard/spec.md）。";
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // 问数质量：按问题类型看
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * 一个类型的统计。
+     *
+     * @param successRate 0–100，一位小数。无提问时为 0（类型统计里不会出现无提问）
+     * @param sampleQuestion 这个类型里提问次数最多的那一问。
+     *                       **名字是抽象的，看到一个具体问题才知道它长什么样**
+     */
+    public record TypeStat(String key, String label, long asks, long failures,
+                           double successRate, long avgMs, String sampleQuestion) {
+    }
+
+    /**
+     * 一个具体问法的统计。
+     *
+     * @param question 原问题（已截断，见 {@link #QUESTION_MAX_LEN}）
+     */
+    public record QuestionStat(String question, long asks, long failures,
+                               double successRate, long avgMs) {
+    }
+
+    /** 质量报告。 */
+    public record QualityReport(int days, long totalAsks, long unknownAsks,
+                                List<TypeStat> types,
+                                Map<String, List<QuestionStat>> questionsByType,
+                                String notice) {
+    }
+
+    /**
+     * 问题文本的展示长度。
+     *
+     * <p>截断是为了让表格能对齐；完整问题在审计表里，要查随时能查。
+     */
+    private static final int QUESTION_MAX_LEN = 60;
+
+    /**
+     * 按问题类型做质量分析。
+     *
+     * <h2>为什么不复用 {@link #overview}</h2>
+     *
+     * <p>那个方法只取三列（domain_id / outcome / error_message），
+     * 而这里需要 {@code dsl_json} 和 {@code question}、{@code duration_ms}——
+     * 行数一样但列不同，硬塞进一个查询会让两边都拿到用不上的数据。
+     *
+     * @param minSamples 少于这个次数的问法不列出。**样本太少时成功率是噪声**，
+     *                   显示出来会把管理员引去追一个偶然现象
+     */
+    public QualityReport quality(int days, int minSamples) {
+        int window = Math.max(1, Math.min(days, 90));
+        int min = Math.max(1, minSamples);
+        LocalDateTime since = LocalDateTime.now().minusDays(window);
+
+        List<AskAuditLog> logs = auditMapper.selectList(
+                new QueryWrapper<AskAuditLog>()
+                        .ge("created_at", since)
+                        .in("outcome", "SUCCESS", "FAILURE")
+                        .select("question", "dsl_json", "outcome", "duration_ms"));
+
+        // 按类型聚合
+        Map<String, long[]> byType = new LinkedHashMap<>();     // key → [asks, failures, totalMs]
+        Map<String, String> labels = new LinkedHashMap<>();
+        Map<String, Map<String, long[]>> byQuestion = new LinkedHashMap<>();
+
+        for (AskAuditLog l : logs) {
+            var t = QuestionTypeClassifier.classify(l.getDslJson(), l.getQuestion());
+            long[] c = byType.computeIfAbsent(t.key(), k -> new long[3]);
+            c[0]++;
+            labels.putIfAbsent(t.key(), t.label());
+            if ("FAILURE".equals(l.getOutcome())) {
+                c[1]++;
+            }
+            c[2] += Math.max(0, l.getDurationMs());
+
+            // 具体问法的统计。**空问题不统计**——那是脏数据，
+            // 列出来只会让人去查一个查不到的问题
+            String q = l.getQuestion() == null ? "" : l.getQuestion().trim();
+            if (!q.isEmpty()) {
+                String key = truncate(q, QUESTION_MAX_LEN);
+                Map<String, long[]> qs = byQuestion.computeIfAbsent(t.key(),
+                        k -> new LinkedHashMap<>());
+                long[] qc = qs.computeIfAbsent(key, k -> new long[3]);
+                qc[0]++;
+                if ("FAILURE".equals(l.getOutcome())) {
+                    qc[1]++;
+                }
+                qc[2] += Math.max(0, l.getDurationMs());
+            }
+        }
+
+        // 组装类型统计
+        List<TypeStat> types = new ArrayList<>();
+        long total = 0;
+        long unknown = 0;
+        for (var e : byType.entrySet()) {
+            long[] c = e.getValue();
+            total += c[0];
+            if (QuestionTypeClassifier.Type.UNKNOWN.key().equals(e.getKey())) {
+                unknown = c[0];
+            }
+            // 这个类型里提问最多的那一问，作为"它长什么样"的例子
+            String sample = byQuestion.getOrDefault(e.getKey(), Map.of()).entrySet().stream()
+                    .max(Comparator.comparingLong(x -> x.getValue()[0]))
+                    .map(Map.Entry::getKey).orElse(null);
+            types.add(new TypeStat(e.getKey(), labels.get(e.getKey()),
+                    c[0], c[1], c[0] == 0 ? 0 : round(c[1] * 100.0 / c[0]),
+                    c[0] == 0 ? 0 : c[2] / c[0], sample));
+        }
+        // 提问多的排前面——那是影响面大的
+        types.sort(Comparator.comparingLong(TypeStat::asks).reversed());
+
+        // 组装问法统计：只保留达到样本阈值的，按提问次数排序
+        Map<String, List<QuestionStat>> questions = new LinkedHashMap<>();
+        byQuestion.forEach((type, qs) -> {
+            List<QuestionStat> list = new ArrayList<>();
+            qs.forEach((q, c) -> {
+                if (c[0] >= min) {
+                    list.add(new QuestionStat(q, c[0], c[1],
+                            c[0] == 0 ? 0 : round(c[1] * 100.0 / c[0]),
+                            c[0] == 0 ? 0 : c[2] / c[0]));
+                }
+            });
+            // 按次数降序：只出现一次且失败的问题没有统计意义，
+            // 出现 39 次失败 20 次的才是真在影响用户
+            list.sort(Comparator.comparingLong(QuestionStat::asks).reversed());
+            questions.put(type, list);
+        });
+
+        return new QualityReport(window, total, unknown, types, questions,
+                slowNotice(logs.size(), window));
+    }
+
+    private static String truncate(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
+    }
+
     private static double round(double v) {
         return Math.round(v * 10) / 10.0;
     }
