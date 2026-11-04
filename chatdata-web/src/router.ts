@@ -81,7 +81,7 @@ export const ADMIN_PAGES: readonly AdminPage[] = [
   {
     name: 'admin-health',
     path: '/admin/health',
-    label: '健康度',
+    label: '问数健康度',
     // 与「语义域」同档：看健康度的人就是配域的人
     permission: P.ASK_ADMIN_DOMAINS,
   },
@@ -91,9 +91,11 @@ export const ADMIN_PAGES: readonly AdminPage[] = [
     // 排查记录里，为了一次措辞调整让它全部失效，代价远大于收益
     name: 'admin-cost',
     path: '/admin/cost',
-    // 叫「用量」而不是「成本」：多数记录只有 token 没有单价，那时算不出钱。
-    // 叫成本会让人第一眼就盯着金额，而那里常常是「未配单价」
-    label: '用量',
+    // 叫「token 用量」而不是「成本」：多数记录只有 token 没有单价，那时算不出钱。
+    // 叫成本会让人第一眼就盯着金额，而那里常常是「未配单价」。
+    // 带上 token 是要说清这个页面度量的是什么——「用量」单独两个字太泛，
+    // 在配置台里可以指调用次数、存储占用，任何东西
+    label: 'token 用量',
     // **两个码任一即可**，与后端 `GET /health/cost` 的规则一致
     // （见 AdminApiPermissions：`new Rule("GET", "/health/cost", DM, MD)`）。
     // 管模型的人必然要看用量；只有域权限的人也该能看——他配的域在花钱。
