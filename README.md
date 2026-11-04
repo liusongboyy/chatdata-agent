@@ -118,7 +118,7 @@ flowchart TB
         B["浏览器<br/>Vue 3"]
         F["飞书 IM"]
         A["其他 agent<br/>A2A"]
-        S["agentscope<br/>管理台"]
+        S["agentscope service<br/>管理台"]
     end
 
     subgraph edge["接入层"]
@@ -141,7 +141,7 @@ flowchart TB
 
     subgraph data["数据层"]
         direction LR
-        DB[("业务库<br/>MySQL · Doris · StarRocks<br/>PostgreSQL · Oracle · SQL Server<br/>Hive · Trino")]
+        DB[("业务分析库<br/>MySQL · Doris · StarRocks<br/>PostgreSQL · Oracle · SQL Server<br/>Hive · Trino")]
         CFG[("chatdata_ask<br/>配置 · 审计 · 会话")]
         IDS[("chatdata_iam<br/>身份 · 授权")]
     end
