@@ -75,6 +75,36 @@ const domainMode = ref<string>('MODELED')
 const domainDatasourceId = ref<number | null>(null)
 
 // ── 术语 ──
+
+/**
+ * 近义词输入框的**原始文本**。
+ *
+ * ## 为什么不能直接绑定到 termForm.synonyms
+ *
+ * `synonyms` 是数组，而输入框要的是字符串。之前用
+ * `:value="synonyms.join('、')"` + `@input="split(...)"` 做双向转换，
+ * **中文输入法完全用不了**：
+ *
+ * 敲拼音时每一次按键都会触发 input → split → 数组被改 → :value 重新计算
+ * → 输入框内容被覆盖。表现是「打不出中文」，而英文因为不需要组合键所以正常。
+ *
+ * 改成：输入框只跟这一个字符串状态走，**保存时才拆成数组**。
+ * 中间不产生任何往返转换，输入法就不会被打断。
+ */
+const synonymsDraft = ref('')
+
+/** 打开/切换术语时把数组铺成文本。 */
+function syncSynonymsDraft(t: TermForm): void {
+  synonymsDraft.value = t.synonyms.join('、')
+}
+
+/** 保存时把文本拆成数组。中英文标点都认。 */
+function parseSynonymsDraft(raw: string): string[] {
+  return raw
+    .split(/[,，、;；\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+}
 const terms = ref<TermRow[]>([])
 const termForm = ref<TermForm | null>(null)
 const termEditingId = ref<number | null>(null)
@@ -555,14 +585,12 @@ async function pickTable(t: TableMeta): Promise<void> {
   }
 }
 
-
-// ── 术语 ──
-
 function startAddTerm(): void {
   termEditingId.value = null
   // applyKind 固定 none —— 另外两种需要渲染侧支持才会生效，后端也会拒绝。
   // 见 TermInput.validated 的说明
   termForm.value = { name: '', synonyms: [], description: '', applyKind: 'none' }
+  synonymsDraft.value = ''
   termsError.value = ''
 }
 
@@ -574,21 +602,11 @@ function startEditTerm(t: TermRow): void {
     description: t.description ?? '',
     applyKind: 'none',
   }
+  syncSynonymsDraft(termForm.value)
   termsError.value = ''
 }
 
-function setSynonyms(raw: string): void {
-  if (termForm.value) {
-    termForm.value.synonyms = raw
-      .split(/[,，、;；\s]+/)
-      .map((x) => x.trim())
-      .filter(Boolean)
-  }
-}
 
-function synonymsText(t: TermForm): string {
-  return t.synonyms.join('、')
-}
 
 async function saveTerm(): Promise<void> {
   const f = termForm.value
@@ -596,6 +614,9 @@ async function saveTerm(): Promise<void> {
   termsSaving.value = true
   termsError.value = ''
   try {
+    // 输入框只跟字符串草稿走（见 synonymsDraft 的说明），
+    // **保存这一刻**才拆成数组——中间不做任何往返转换，输入法才不会被打断
+    f.synonyms = parseSynonymsDraft(synonymsDraft.value)
     if (termEditingId.value !== null) {
       await updateTerm(termEditingId.value, f)
     } else {
@@ -892,10 +913,9 @@ async function remove(t: DomainTable): Promise<void> {
             <label class="label" for="tm-syn">近义词</label>
             <input
               id="tm-syn"
+              v-model="synonymsDraft"
               class="input"
-              :value="synonymsText(termForm)"
               placeholder="多个用、分隔，如：保费合计、保费金额"
-              @input="setSynonyms(($event.target as HTMLInputElement).value)"
             />
           </div>
         </div>
@@ -908,7 +928,7 @@ async function remove(t: DomainTable): Promise<void> {
           当前尚未接入——提供点了不生效的选项比不提供更糟。
         </p>
         <div class="join-buttons">
-          <button class="btn btn-quiet btn-sm" type="button" @click="termForm = null">取消</button>
+          <button class="btn btn-quiet btn-sm" type="button" @click="termForm = null; synonymsDraft = ''">取消</button>
           <button class="btn btn-primary btn-sm" type="button" :disabled="termsSaving" @click="saveTerm">
             {{ termsSaving ? '保存中…' : '保存' }}
           </button>
