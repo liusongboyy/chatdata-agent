@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import {
   createDomain,
   createTable,
@@ -32,7 +31,8 @@ import { errorMessage } from '../../api/http'
  * 不报错、只是数字不对。所以草稿里每一条都带理由和置信度，人看过、
  * 改过、点了「确认」才写进语义域。
  */
-const router = useRouter()
+// 刻意不用 useRouter：成功后**不自动跳转**，见 createdDomainId 的注释。
+// 去向交给用户点——建完那一刻他才知道自己下一步要看什么。
 
 const datasources = ref<Datasource[]>([])
 const selectedDs = ref<number | null>(null)
@@ -168,6 +168,17 @@ const domainMode = ref<'MODELED' | 'RAW'>('MODELED')
 /** 编辑中的业务名。键 = `表名.列名`，用户改过才写回 draft */
 const aliasEdits = ref<Record<string, string>>({})
 
+/**
+ * 刚创建成功的域 id。
+ *
+ * <p>成功后**不自动跳转**，而是给两个明确去向：「查看还缺什么」和「回列表」。
+ *
+ * <p>自动跳走的话，管理员会被弹到一个与刚才操作无关的页面；
+ * 而建完那一刻他脑子里还有业务场景（"哦对，我还需要能问平均客单价"），
+ * 正是该看覆盖度的时候。过一小时再看，他要先回忆自己当初想配什么。
+ */
+const createdDomainId = ref<number | null>(null)
+
 onMounted(load)
 
 async function load(): Promise<void> {
@@ -213,6 +224,7 @@ async function generate(): Promise<void> {
       names.length ? names : undefined,
     )
     aliasEdits.value = {}
+    createdDomainId.value = null
     const ds = datasources.value.find((d) => d.id === selectedDs.value)
     if (!domainName.value && ds) domainName.value = `${ds.name}分析域`
   } catch (e) {
@@ -315,7 +327,7 @@ async function confirmAndSave(): Promise<void> {
     }
 
     message.value = `已创建域「${domainName.value}」（${draft.value.tables.length} 张表）`
-    setTimeout(() => router.push('/admin/domains'), 1200)
+    createdDomainId.value = domainId
   } catch (e) {
     error.value = `保存失败：${errorMessage(e)}`
   } finally {
@@ -455,7 +467,18 @@ function aggText(c: DraftColumn): string {
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="message" class="ok">{{ message }}</p>
+    <div v-if="message" class="ok">
+      <span>{{ message }}</span>
+      <template v-if="createdDomainId != null">
+        <RouterLink
+          class="ok-link primary"
+          :to="`/admin/domains/${createdDomainId}/tables`"
+        >
+          查看还缺什么 →
+        </RouterLink>
+        <RouterLink class="ok-link" to="/admin/domains">回语义域列表</RouterLink>
+      </template>
+    </div>
 
     <!-- 第二步：草稿 -->
     <template v-if="draft">
@@ -623,7 +646,13 @@ function aggText(c: DraftColumn): string {
 button.primary { background: #0f172a; color: #fff; border: none; border-radius: 9px; padding: 9px 18px; font-size: 0.86rem; cursor: pointer; }
 button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 9px; padding: 10px 14px; font-size: 0.84rem; }
-.ok { color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9px; padding: 10px 14px; font-size: 0.84rem; }
+.ok {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0;
+  border-radius: 9px; padding: 10px 14px; font-size: 0.84rem;
+}
+.ok-link { color: #047857; text-decoration: underline; font-size: 0.83rem; }
+.ok-link.primary { font-weight: 600; }
 .stats { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 18px; min-width: 92px; }
 .stat b { display: block; font-size: 1.3rem; }

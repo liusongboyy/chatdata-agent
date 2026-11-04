@@ -8,6 +8,7 @@ import {
   listDomains,
   listRoles,
   listTables,
+  modelingCheck,
   parseColumns,
   parsePerm,
   updateDomain,
@@ -207,6 +208,63 @@ const roleWarnings = computed(() => {
     .map(([code, p]) => `${code}（${p === 'missing' ? '不存在' : '已停用'}）`)
 })
 
+/**
+ * 每个域的覆盖度：严重问题数 / 建议数。
+ *
+ * ## 为什么要在这里显示
+ *
+ * 管理员打开语义域列表，需要**一眼看出哪个域建得糙**。
+ * 点进每个域去看一遍不现实——十几个域就是十几次点击。
+ *
+ * ## 为什么逐个调而不是批量接口
+ *
+ * 域不多（十几个），逐个调的总耗时可以接受。等域上百了再做批量——
+ * 现在做是过早优化，而批量接口还要处理"部分失败"的语义。
+ *
+ * ## 失败的域不显示徽章
+ *
+ * 检查失败（网络、后端异常）时留空，而不是显示 "0"——
+ * 显示 0 会让管理员以为"这个域没问题"，那是错误的信息。
+ * 这里静默，列表本身的错误由 listError 统一报。
+ */
+const coverage = ref<Record<number, { errors: number; warnings: number }>>({})
+
+/** 只有严重问题才是 ERROR 类别；其余都归为建议。与后端 Category 的枚举名一致。 */
+const ERROR_CATEGORIES = new Set([
+  'DOMAIN_NOT_LOADABLE', 'NO_GRANT', 'DATASOURCE_UNUSABLE', 'NO_VISIBLE_TABLE',
+  'BROKEN_JOIN_REF', 'NO_FIELD', 'DANGLING_RULE_ROLE', 'RAW_DOMAIN_WITH_RULES',
+  'BROKEN_DERIVED_METRIC', 'BROKEN_METRIC_CONDITION',
+])
+
+async function loadCoverage(list: Domain[]): Promise<void> {
+  const out: Record<number, { errors: number; warnings: number }> = {}
+  await Promise.all(list.map(async (d) => {
+    // 直连域后端直接返回空，不必发请求（还能省一次往返）
+    if (d.mode === 'RAW') {
+      out[d.id] = { errors: 0, warnings: 0 }
+      return
+    }
+    try {
+      const vs = await modelingCheck(d.id)
+      let e = 0
+      let w = 0
+      for (const v of vs) {
+        if (ERROR_CATEGORIES.has(v.category)) e++
+        else w++
+      }
+      out[d.id] = { errors: e, warnings: w }
+    } catch {
+      // 不写入 → 不显示徽章。见上面注释：显示 0 是错误信息
+    }
+  }))
+  coverage.value = { ...out }
+}
+
+/** 徽章文案与色调。 */
+function coverageOf(id: number): { errors: number; warnings: number } | null {
+  return coverage.value[id] ?? null
+}
+
 async function load(): Promise<void> {
   loading.value = true
   listError.value = ''
@@ -214,6 +272,8 @@ async function load(): Promise<void> {
     const [ds, dm] = await Promise.all([listDatasources(), listDomains()])
     datasources.value = ds
     domains.value = dm
+    // 不 await：徽章是增强信息，不该拖慢列表首屏
+    void loadCoverage(dm)
   } catch (e: unknown) {
     listError.value = errorMessage(e)
   } finally {
@@ -362,6 +422,9 @@ function grantSummary(d: Domain): string {
             <th scope="col">状态</th>
             <th scope="col" title="访问授权 + 行规则 + 列规则，在「编辑」里配置">策略</th>
             <th scope="col">授权</th>
+            <th scope="col" title="建模覆盖度：缺 AVG / 缺去重计数 / 缺时间口径等。点开注册表后切到「覆盖度」看详情">
+              覆盖度
+            </th>
             <th scope="col" class="col-actions">操作</th>
           </tr>
         </thead>
@@ -379,6 +442,28 @@ function grantSummary(d: Domain): string {
             </td>
             <td class="sub">
               {{ grantSummary(d) }}
+            </td>
+            <td>
+              <template v-if="coverageOf(d.id)">
+                <span
+                  v-if="coverageOf(d.id)!.errors === 0 && coverageOf(d.id)!.warnings === 0"
+                  class="cov cov-ok"
+                  title="没有发现明显短板"
+                >✓</span>
+                <template v-else>
+                  <span
+                    v-if="coverageOf(d.id)!.errors"
+                    class="cov cov-error"
+                    :title="`${coverageOf(d.id)!.errors} 个严重问题`"
+                  >{{ coverageOf(d.id)!.errors }}</span>
+                  <span
+                    v-if="coverageOf(d.id)!.warnings"
+                    class="cov cov-warn"
+                    :title="`${coverageOf(d.id)!.warnings} 条改进建议`"
+                  >{{ coverageOf(d.id)!.warnings }}</span>
+                </template>
+              </template>
+              <span v-else class="cov-empty" title="直连模式不做建模检查">—</span>
             </td>
             <td class="col-actions">
               <RouterLink class="btn btn-quiet btn-sm" :to="`/admin/domains/${d.id}/tables`">
@@ -601,6 +686,21 @@ function grantSummary(d: Domain): string {
 </template>
 
 <style scoped>
+.cov {
+  display: inline-block;
+  min-width: 20px;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+  margin-right: 4px;
+}
+.cov-ok { background: #d1fae5; color: #047857; }
+.cov-error { background: #fee2e2; color: #b91c1c; }
+.cov-warn { background: #fef3c7; color: #b45309; }
+.cov-empty { color: #cbd5e1; font-size: 0.78rem; }
+
 .table-card {
   background: var(--surface);
   border-radius: var(--radius-lg);
