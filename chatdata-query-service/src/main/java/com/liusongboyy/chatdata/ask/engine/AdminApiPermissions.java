@@ -79,6 +79,11 @@ public final class AdminApiPermissions {
             // 与 tables 同档——它做的事等价于"把表结构导进注册表"，只是多了一层推断
             new Rule("POST", "/datasources/*/modeling-draft", DS, DM_TABLES),
 
+            // 健康度概览：读审计日志 + 各域覆盖度。
+            // 与「语义域」同档——**看健康度的人就是配域的人**，
+            // 不另设权限码：多一个码就多一次"谁能看"的讨论，而收益为零
+            new Rule("GET", "/health/overview", DM),
+
             // ── 语义域 ──
             new Rule("POST", "/domains", DM_WRITE),
             new Rule("PUT", "/domains/*", DM_WRITE),

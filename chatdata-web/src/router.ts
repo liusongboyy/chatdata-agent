@@ -10,6 +10,7 @@ import DomainTablesView from './views/admin/DomainTablesView.vue'
 import AssistantListView from './views/admin/AssistantListView.vue'
 import FeedbackReviewView from './views/admin/FeedbackReviewView.vue'
 import ModelingDraftView from './views/admin/ModelingDraftView.vue'
+import HealthView from './views/admin/HealthView.vue'
 
 /**
  * 管理页清单：路径、名称、标题、以及**进入它需要的权限**。
@@ -17,6 +18,13 @@ import ModelingDraftView from './views/admin/ModelingDraftView.vue'
  * 导航与路由守卫都读这一份，免得"菜单里看得见、点进去被弹回"。
  */
 export const ADMIN_PAGES = [
+  {
+    name: 'admin-health',
+    path: '/admin/health',
+    label: '健康度',
+    // 与「语义域」同档：看健康度的人就是配域的人
+    permission: P.ASK_ADMIN_DOMAINS,
+  },
   {
     name: 'admin-datasources',
     path: '/admin/datasources',
@@ -73,6 +81,12 @@ export const router = createRouter({
         // 权限是空的，会一律落到 /ask（实测踩到：只有反馈审核权限的人进不了管理台）。
         // 权限跳转交给下面的守卫：它先解析身份，再按 meta.permission 弹到第一个有权限的页
         { path: '', redirect: '/admin/datasources' },
+        {
+          path: 'health',
+          name: 'admin-health',
+          component: HealthView,
+          meta: { permission: P.ASK_ADMIN_DOMAINS },
+        },
         {
           path: 'datasources',
           name: 'admin-datasources',

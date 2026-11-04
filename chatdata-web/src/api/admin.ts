@@ -373,6 +373,54 @@ export function parsePerm(json: string | null): Record<string, unknown> {
 
 export { ApiError }
 
+// ── 健康度 ──
+
+/** 一个失败桶。 */
+export interface FailureBucket {
+  key: string
+  label: string
+  count: number
+  /** 能不能靠改建模配置解决——决定界面上给不给「去修」链接 */
+  fixable: boolean
+  sampleMessage: string | null
+}
+
+/** 单个域的运行状态。 */
+export interface DomainHealth {
+  id: number
+  name: string
+  mode: string
+  asks: number
+  /** 无提问时为 null，不是 0——0% 和"还没人用过"是两件事 */
+  successRate: number | null
+  /** 覆盖度问题数；直连域为 null */
+  unmodeled: number | null
+}
+
+export interface HealthOverview {
+  summary: {
+    domains: number
+    questions: number
+    successRate: number | null
+    pendingFixes: number
+    pendingFeedback: number
+  }
+  failures: FailureBucket[]
+  domains: DomainHealth[]
+}
+
+/**
+ * 一页健康度：审计日志 + 建模检查。
+ *
+ * 成功率口径 = SUCCESS / (SUCCESS + FAILURE)，**BLOCKED 不计入**——
+ * 权限拒绝是正确行为，不是质量问题。
+ */
+export async function healthOverview(days = 7): Promise<HealthOverview> {
+  return (await get<Envelope<HealthOverview>>(
+    `/api/engine/admin/health/overview?days=${days}`,
+  )).data
+}
+
 // ── 建模覆盖度 ──
 
 /** 违规的严重度。红色是真正的错误，黄色是建模建议。 */
