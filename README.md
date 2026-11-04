@@ -37,11 +37,20 @@
 ## 功能
 
 - **语义建模**：把物理表抽象成业务可理解的指标与维度，口径在建模层定死
+- **建模助手**：选几张表 → 自动推断列角色、聚合与表间关联，生成**可编辑的域草稿**。
+  支持同一物理列的**双登记**（维度管筛选、指标管聚合）
 - **问数**：一句话得到表格 / 图表 / 结论；「我理解成了」回显系统实际理解的口径
 - **分析编排**：把"为什么下降"这类问题拆成多步取数，再由 Java 算出确定性结论
 - **权限**：行级规则（支持组织层级动态变量）、列级脱敏、fail-closed
 - **审计**：每次提问、每步查询、每句 SQL 都可追溯
-- **IM 渠道**：接入飞书，群里 @ 机器人即可问数；权限与 Web 端完全一致
+- **IM 渠道**：接入飞书，群里 @ 机器人即可问数；权限与 Web 端完全一致。
+  支持**定时推送**（每天 9 点自动发数据）与卡片原地更新
+- **运维可见性**：建模覆盖度（这个域缺什么配置）、健康度看板（整体成功率、
+  失败原因排行、没人用的域）、质量分析（哪类问题在拖后腿）、
+  **失败诊断**（能不能修、改哪里、或者为什么改配置也没用）
+- **多数据源**：MySQL / Doris / StarRocks / PostgreSQL / Oracle / SQL Server；
+  Hive 与 Trino 通过 `-Pbigdata` 启用
+- **A2A**：注册到 Nacos 供其他 agent 发现；接入 agentscope 管理台可编排
 - **评测基线**：199 条用例，分数据集报告通过率与失败原因
 
 ## 快速开始
@@ -148,6 +157,7 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 | [docs/feishu-channel-setup.md](docs/feishu-channel-setup.md) | **飞书渠道接入**：建应用、配权限与回调、排障 |
 | [docs/agentscope-local-build.md](docs/agentscope-local-build.md) | **本地构建 agentscope 管理台**：patch 用法、端口、排障 |
 | [docs/adr/](docs/adr/) | 架构决策记录——每个决定的**为什么** |
+| [docs/patches/](docs/patches/) | 外部依赖的补丁（agentscope service 本地构建） |
 | [sql/README.md](sql/README.md) | 库的划分与建表顺序 |
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
 | [demo/adventureworks/](demo/adventureworks/) | 复杂业务域：28 表 / 172 列 / 30 关联的销售分析场景 |

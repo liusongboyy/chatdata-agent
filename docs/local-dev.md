@@ -21,6 +21,32 @@ export JAVA_HOME=/Users/liusongbo/Library/Java/JavaVirtualMachines/azul-21.0.11/
 
 另外 `mvn ... | tail` 的退出码是 `tail` 的，不要用它判断构建成功与否。
 
+### 数据源的 JDBC 驱动
+
+问数引擎按 `db_type` 选方言，但**方言支持不等于驱动在 jar 里**——两者是分开的。
+
+| 数据库 | 驱动 | 何时可用 |
+|---|---|---|
+| MySQL / Doris / StarRocks | `mysql-connector-j` | 默认带 |
+| PostgreSQL | `postgresql` | 默认带 |
+| Oracle | `ojdbc11` | 默认带 |
+| SQL Server | `mssql-jdbc` | 默认带 |
+| **Hive** | `hive-jdbc` | **需要 `-Pbigdata`** |
+| **Trino** | `trino-jdbc` | **需要 `-Pbigdata`** |
+
+```bash
+# 要连 Hive / Trino 时
+mvn package -Pbigdata
+```
+
+Hive 的 JDBC 驱动会拖进一整套 Hadoop 依赖（几十 MB），且与 Spring Boot 的
+logback / jackson 版本冲突，所以放 profile 里、并排除了那几个日志实现。
+多数部署只连关系型库或 Doris/StarRocks，默认带它们用不到的几十 MB 是浪费。
+
+**缺驱动的报错发生在配置数据源之后**（点「测试连接」时），
+提示是「未安装该数据库驱动（类名）」。看到它先确认构建时带没带 profile，
+而不是去查方言。
+
 ## 数据库
 
 四个库按职责分开（详见 [`sql/README.md`](../sql/README.md)）：

@@ -34,7 +34,8 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/14-ask-sql-example.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
-         sql/21-channel.sql
+         sql/21-channel.sql sql/22-channel-subscription.sql \
+         sql/23-audit-health-index.sql
 do
   mysql -uroot -p chatdata_ask < "$f"
 done
@@ -61,6 +62,24 @@ mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
 
 `channel_answer` 存的是**完整结果行**（ask 最多返回 1000 行）。不把它塞进卡片 JSON：
 几百 KB 会撞飞书的卡片体积限制，而回传的 `value` 更放不下。
+
+## 订阅表（`22-channel-subscription.sql`）
+
+| 表 | 用途 |
+|---|---|
+| `channel_subscription` | 定时推送的订阅：谁、发到哪个会话、问什么、cron。唯一键 `(channel, chat_key, question)`——同一人重复配两次会收到两份一样的卡片 |
+| `channel_subscription_run` | 每轮执行的结果。**排查「上周那条为什么没发」要靠历史**，所以单独一张表而不是只存最后一次 |
+
+推送用**订阅创建人**的令牌查数，不是机器人自己的——后者是越权，且创建人被收回权限后订阅还会继续发。
+
+## 健康度索引（`23-audit-health-index.sql`）
+
+给健康度看板的查询加 `idx_health_window (created_at, domain_id, outcome)`：
+「定位窗口内的行」变成 index-only。
+
+`error_message` **刻意不放进去**——试过加前缀索引，反而更差：
+前缀取不到完整值仍需回表，而索引宽度增加不少。它是归类必需的输入，
+所以接受每条匹配行回表一次（已从全表扫描降到 O(窗口行数)）。
 
 ## 不要执行的历史脚本
 
