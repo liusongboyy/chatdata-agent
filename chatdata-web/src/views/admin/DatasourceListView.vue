@@ -12,6 +12,7 @@ import {
   type DatasourceForm,
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
+import { useModalGuard } from '../../composables/useModalGuard'
 import { usePermissions } from '../../composables/usePermissions'
 import { P } from '../../permissions'
 
@@ -62,6 +63,20 @@ const loading = ref(false)
 const listError = ref('')
 
 const showForm = ref(false)
+
+/**
+ * 关闭表单。
+ *
+ * **遮罩点击已不再关闭弹层**（见 useModalGuard）：`.modal` 内部滚动时，
+ * 点在滚动条或边缘会落到遮罩上，填了一半的表单当场消失。
+ * 现在只有「取消」与 Esc 两个入口，两者都会走到这里。
+ */
+function closeForm(): void {
+  showForm.value = false
+}
+
+// Esc 关闭 + 焦点管理
+const { dialogEl } = useModalGuard(showForm, closeForm)
 const editingId = ref<number | null>(null)
 const form = ref<DatasourceForm>(emptyForm())
 const saving = ref(false)
@@ -246,8 +261,8 @@ async function remove(d: Datasource): Promise<void> {
     </div>
 
     <!-- 表单用弹层而不是内联展开：字段多，内联会把列表挤得没法看 -->
-    <div v-if="showForm" class="modal-mask" @click.self="showForm = false">
-      <div class="modal" role="dialog" aria-modal="true" :aria-label="isEditing ? '编辑数据源' : '新增数据源'">
+    <div v-if="showForm" class="modal-mask">
+      <div ref="dialogEl" class="modal" tabindex="-1" role="dialog" aria-modal="true" :aria-label="isEditing ? '编辑数据源' : '新增数据源'">
         <h2 class="modal-title">{{ isEditing ? '编辑数据源' : '新增数据源' }}</h2>
 
         <div class="form">
@@ -317,7 +332,7 @@ async function remove(d: Datasource): Promise<void> {
             {{ testing ? '测试中…' : '测试连接' }}
           </button>
           <div class="spacer" />
-          <button class="btn btn-quiet" type="button" @click="showForm = false">取消</button>
+          <button class="btn btn-quiet" type="button" @click="closeForm">取消</button>
           <button class="btn btn-primary" type="button" :disabled="saving" @click="save">
             {{ saving ? '保存中…' : '保存' }}
           </button>

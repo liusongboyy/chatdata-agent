@@ -35,6 +35,7 @@ import {
   type TopicRow,
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
+import { useModalGuard } from '../../composables/useModalGuard'
 import { usePermissions } from '../../composables/usePermissions'
 import { P } from '../../permissions'
 
@@ -134,6 +135,28 @@ const loading = ref(false)
 const listError = ref('')
 
 const showForm = ref(false)
+
+/**
+ * 关闭注册表编辑弹层。
+ *
+ * **遮罩点击已不再关闭**（见 useModalGuard）：弹层内容长、内部滚动，
+ * 点在滚动条或边缘会落到遮罩上，填了一半的表单当场消失。
+ */
+function closeForm(): void {
+  showForm.value = false
+}
+
+/** 关闭选表弹层。它没有"填写内容"可丢，所以不需要确认。 */
+function closePicker(): void {
+  pickerOpen.value = false
+}
+
+// Esc 关闭注册表表单（焦点管理让它可靠触发）
+const { dialogEl } = useModalGuard(showForm, closeForm)
+
+// 选表弹层也挂上 Esc。两个都开时只在有焦点那个生效是无所谓的——
+// 实际交互里不会同时开
+const { dialogEl: pickerEl } = useModalGuard(pickerOpen, closePicker)
 const editingId = ref<number | null>(null)
 /** 条件编辑器里的一项。`mode` 只是编辑态，保存时再转成 columns_json 的形态。 */
 interface CondTermDraft {
@@ -1158,8 +1181,8 @@ async function remove(t: DomainTable): Promise<void> {
       </div>
     </section>
 
-    <div v-if="showForm" class="modal-mask" @click.self="showForm = false">
-      <div class="modal" role="dialog" aria-modal="true">
+    <div v-if="showForm" class="modal-mask">
+      <div ref="dialogEl" class="modal" role="dialog" aria-modal="true" tabindex="-1">
         <h2 class="modal-title">{{ isEditing ? '编辑注册表' : '新增注册表' }}</h2>
 
         <div class="form">
@@ -1414,7 +1437,7 @@ async function remove(t: DomainTable): Promise<void> {
 
         <div class="modal-actions">
           <div class="spacer" />
-          <button class="btn btn-quiet" type="button" @click="showForm = false">取消</button>
+          <button class="btn btn-quiet" type="button" @click="closeForm">取消</button>
           <button class="btn btn-primary" type="button" :disabled="saving" @click="save">
             {{ saving ? '保存中…' : '保存' }}
           </button>
@@ -1424,8 +1447,8 @@ async function remove(t: DomainTable): Promise<void> {
 
     <!-- 导入面板：列出数据源里的表，选中后回填表单。
          做成独立的弹层而不是塞进表单里——它是"选一张表"，与"编辑这张表"是两件事 -->
-    <div v-if="pickerOpen" class="modal-mask" @click.self="pickerOpen = false">
-      <div class="modal picker" role="dialog" aria-modal="true" aria-label="从数据源选择表">
+    <div v-if="pickerOpen" class="modal-mask">
+      <div ref="pickerEl" class="modal picker" role="dialog" aria-modal="true" aria-label="从数据源选择表" tabindex="-1">
         <h2 class="modal-title">从数据源选择表</h2>
 
         <p v-if="pickerLoading" class="note">读取中…</p>

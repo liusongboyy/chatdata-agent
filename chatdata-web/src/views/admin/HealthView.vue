@@ -7,7 +7,6 @@ import {
   type HealthOverview,
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
-import CostPanel from './CostPanel.vue'
 import QualityPanel from './QualityPanel.vue'
 
 /**
@@ -30,8 +29,13 @@ const days = ref(7)
  * 当前标签。
  *
  * 两个视图回答的是同一类问题（这个系统好不好），分开放反而要来回切。
+ *
+ * **成本不在这里。** 它原先也是本页第三个标签，但那是错的归类：
+ * 健康度回答"系统跑得好不好"，成本回答"钱花在哪"——后者是管理员
+ * 配完单价之后自然会去看的东西，藏在一个统计页的第三个标签里没人找得到。
+ * 现在是独立的一页。
  */
-const tab = ref<'overview' | 'quality' | 'cost'>('overview')
+const tab = ref<'overview' | 'quality'>('overview')
 
 onMounted(load)
 
@@ -126,18 +130,9 @@ function coverageTone(d: DomainHealth): string {
       >
         质量分析
       </button>
-      <button
-        type="button"
-        class="tab"
-        :class="{ active: tab === 'cost' }"
-        @click="tab = 'cost'"
-      >
-        成本
-      </button>
     </nav>
 
     <QualityPanel v-if="tab === 'quality'" />
-    <CostPanel v-else-if="tab === 'cost'" />
 
     <template v-else-if="tab === 'overview'">
     <div v-if="loading" class="note">加载中…</div>

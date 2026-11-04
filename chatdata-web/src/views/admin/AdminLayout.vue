@@ -5,7 +5,7 @@ import { logout as bffLogout } from '../../api/auth'
 import UserMenu from '../../components/UserMenu.vue'
 import { session } from '../../composables/useSession'
 import { usePermissions } from '../../composables/usePermissions'
-import { ADMIN_PAGES } from '../../router'
+import { ADMIN_PAGES, pageAllowed } from '../../router'
 
 /**
  * 管理面的外壳：顶部导航 + 内容区。
@@ -15,7 +15,7 @@ import { ADMIN_PAGES } from '../../router'
  */
 const route = useRoute()
 const router = useRouter()
-const { can } = usePermissions()
+const { granted } = usePermissions()
 
 /**
  * 导航项。
@@ -29,8 +29,15 @@ const { can } = usePermissions()
  * 清单来自 `router.ts` 的 `ADMIN_PAGES`，与路由守卫读同一份——
  * 两处各写一遍的话，迟早出现"菜单里看得见、点进去被弹回"。
  */
+/**
+ * 导航项。
+ *
+ * 判据走 {@link pageAllowed}，与路由守卫**同一个函数**。
+ * 自己再写一遍（哪怕逻辑一样）迟早漂移，而漂移的表现是
+ * "菜单里看得见、点进去被弹回"，或反过来"地址栏能进、菜单里找不到"。
+ */
 const NAV = computed(() =>
-  ADMIN_PAGES.filter((page) => can(page.permission)).map((page) => ({
+  ADMIN_PAGES.filter((page) => pageAllowed(page, granted.value)).map((page) => ({
     name: page.name,
     path: page.path,
     label: page.label,

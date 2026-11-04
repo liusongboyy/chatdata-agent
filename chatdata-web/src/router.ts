@@ -6,6 +6,7 @@ import AskView from './views/AskView.vue'
 import AdminLayout from './views/admin/AdminLayout.vue'
 import DatasourceListView from './views/admin/DatasourceListView.vue'
 import ModelListView from './views/admin/ModelListView.vue'
+import CostView from './views/admin/CostView.vue'
 import DomainListView from './views/admin/DomainListView.vue'
 import DomainTablesView from './views/admin/DomainTablesView.vue'
 import AssistantListView from './views/admin/AssistantListView.vue'
@@ -14,11 +15,31 @@ import ModelingDraftView from './views/admin/ModelingDraftView.vue'
 import HealthView from './views/admin/HealthView.vue'
 
 /**
+ * 一页管理页的准入声明。
+ *
+ * 两种写法互斥：
+ *   - `permission`    单个码
+ *   - `anyPermission` 任一即可（如成本页：模型或语义域权限都能看）
+ *
+ * **声明成同一个类型而不是 `as const` 的联合**：联合类型下
+ * `page.permission` 在"只写了 anyPermission 的那一项"上不存在，
+ * 而读取它的代码（导航过滤、首个可用页）是**对所有项**跑的，
+ * 于是每个调用点都得写一次类型断言。一个字段一处断言，很快就漏。
+ */
+export interface AdminPage {
+  name: string
+  path: string
+  label: string
+  permission?: string
+  anyPermission?: readonly string[]
+}
+
+/**
  * 管理页清单：路径、名称、标题、以及**进入它需要的权限**。
  *
  * 导航与路由守卫都读这一份，免得"菜单里看得见、点进去被弹回"。
  */
-export const ADMIN_PAGES = [
+export const ADMIN_PAGES: readonly AdminPage[] = [
   {
     name: 'admin-health',
     path: '/admin/health',
@@ -37,6 +58,16 @@ export const ADMIN_PAGES = [
     path: '/admin/models',
     label: '模型',
     permission: P.ASK_ADMIN_MODELS,
+  },
+  {
+    name: 'admin-cost',
+    path: '/admin/cost',
+    label: '成本',
+    // **两个码任一即可**，与后端 `GET /health/cost` 的规则一致
+    // （见 AdminApiPermissions：`new Rule("GET", "/health/cost", DM, MD)`）。
+    // 管模型的人必然要看账单；只有域权限的人也该能看——他配的域在花钱。
+    // 两处写同一组码，否则会出现"菜单里看得见、点进去被弹回"
+    anyPermission: [P.ASK_ADMIN_MODELS, P.ASK_ADMIN_DOMAINS],
   },
   { name: 'admin-domains', path: '/admin/domains', label: '语义域', permission: P.ASK_ADMIN_DOMAINS },
   {
@@ -60,11 +91,19 @@ export const ADMIN_PAGES = [
     label: '反馈审核',
     permission: P.ASK_ADMIN_FEEDBACK,
   },
-] as const
+]
+
+/** 这一页这个主体能不能进。与守卫读同一份判据。 */
+export function pageAllowed(page: AdminPage, permissions: readonly string[]): boolean {
+  if (page.anyPermission && page.anyPermission.length > 0) {
+    return page.anyPermission.some((c) => permissions.includes(c))
+  }
+  return page.permission !== undefined && permissions.includes(page.permission)
+}
 
 /** 当前主体**第一个**有权限的管理页。一个都没有时返回 null。 */
 export function firstAllowedAdminPath(permissions: readonly string[]): string | null {
-  const hit = ADMIN_PAGES.find((page) => permissions.includes(page.permission))
+  const hit = ADMIN_PAGES.find((page) => pageAllowed(page, permissions))
   return hit ? hit.path : null
 }
 
@@ -105,6 +144,14 @@ export const router = createRouter({
           name: 'admin-models',
           component: ModelListView,
           meta: { permission: P.ASK_ADMIN_MODELS },
+        },
+        {
+          path: 'cost',
+          name: 'admin-cost',
+          component: CostView,
+          meta: {
+            anyPermission: [P.ASK_ADMIN_MODELS, P.ASK_ADMIN_DOMAINS],
+          },
         },
         {
           path: 'domains',
@@ -166,6 +213,13 @@ router.beforeEach(async (to) => {
   const required = to.meta['permission'] as string | undefined
   if (required && !user.permissions.includes(required)) {
     // 跳到第一个有权限的管理页，而不是原地弹回造成死循环
+    return firstAllowedAdminPath(user.permissions) ?? { name: 'ask' }
+  }
+
+  // 某些页面「任一即可」（如成本：模型或语义域权限都能看）。
+  // 与后端规则同源——只有单码页面才用上面的 permission
+  const any = to.meta['anyPermission'] as readonly string[] | undefined
+  if (any && !any.some((c) => user.permissions.includes(c))) {
     return firstAllowedAdminPath(user.permissions) ?? { name: 'ask' }
   }
   return true

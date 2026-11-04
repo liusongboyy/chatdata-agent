@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   boundDomains,
   createModel,
@@ -16,6 +16,7 @@ import {
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
 import RoleMultiSelect from '../../components/admin/RoleMultiSelect.vue'
+import { useModalGuard } from '../../composables/useModalGuard'
 import { usePermissions } from '../../composables/usePermissions'
 import { P } from '../../permissions'
 
@@ -99,6 +100,120 @@ function emptyForm(): AdminModelForm {
 
 const isEditing = computed(() => editingKey.value !== null)
 
+// ─────────────────────────────────────────────────────────────
+// 草稿持久化
+//
+// 表单有十几个格子，填到一半误关一次就等于白填。所以：
+//   ① 任何字段变化都写进 localStorage
+//   ② 重新打开同一份表单时恢复
+//   ③ 保存成功或明确点「取消」才清
+//
+// 用 localStorage 而不是内存 ref：误关之后**刷新页面**也不该丢。
+// 它只是"这次填到哪了"的便利数据，不是必须持久的状态，
+// 所以读失败（隐私模式、配额满）就静默跳过——见 read()/write() 的 try/catch。
+// ─────────────────────────────────────────────────────────────
+
+/** 草稿的存储键。带页面前缀，避免与别处的键撞。 */
+const DRAFT_KEY = 'ask.admin.models.draft.v1'
+
+interface Draft {
+  editingKey: string | null
+  form: AdminModelForm
+  vendor: string
+}
+
+function readDraft(): Draft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Draft
+    // 结构对不上就当没有——宁可要一份空的表单，也不要把 undefined 灌进输入框
+    if (!parsed || typeof parsed !== 'object' || !parsed.form) return null
+    return parsed
+  } catch {
+    // 隐私模式下 localStorage 可能直接抛。草稿是便利功能，读不到就算了
+    return null
+  }
+}
+
+function writeDraft(): void {
+  // 表单没打开时不写：那样"关闭"本身又会把内容存回去
+  if (!showForm.value) return
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      editingKey: editingKey.value,
+      form: form.value,
+      vendor: vendor.value,
+    } satisfies Draft))
+  } catch {
+    // 配额满或被禁用。丢草稿比丢表单好，且不该因此让页面报错
+  }
+}
+
+function clearDraft(): void {
+  try {
+    localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // 同上
+  }
+}
+
+/**
+ * 表单有没有被改过。
+ *
+ * 与 {@link emptyForm} 比：新建时只要有一格非空就算改过；
+ * 编辑时与打开时记下的快照比（见 {@link pristine}）。
+ */
+const pristine = ref('')
+
+function snapshotOf(): string {
+  return JSON.stringify({ form: form.value, vendor: vendor.value })
+}
+
+function isDirty(): boolean {
+  return pristine.value !== '' && snapshotOf() !== pristine.value
+}
+
+/**
+ * 关闭表单。
+ *
+ * <p><b>三道防线，缺一不可：</b>
+ * <ol>
+ *   <li>遮罩不再响应点击（见模板）——那是最容易误触的一条</li>
+ *   <li>点「取消」或按 Esc 时，改过就确认一次</li>
+ *   <li>确认关掉之后，**草稿还在**——下次打开能接着填</li>
+ * </ol>
+ *
+ * 只做确认不做草稿的话，用户确认完还是丢了东西；
+ * 只做草稿不做确认的话，他不知道自己关掉的是"一份还在的表单"。
+ */
+function closeForm(): void {
+  if (isDirty()) {
+    const ok = window.confirm(
+      '表单里有还没保存的内容。\n\n' +
+      '关闭后可点「继续编辑」找回（草稿会保留）；' +
+      '直接放弃请点「确定」。',
+    )
+    if (!ok) return
+    // 用户明确放弃：清草稿。否则下次打开会莫名其妙地带着旧内容
+    clearDraft()
+  }
+  showForm.value = false
+}
+
+/** 有没有可恢复的草稿。用于「继续编辑」入口。 */
+const draft = ref<Draft | null>(null)
+
+/** 真正打开表单：把当前状态记成"未修改"，并写一份草稿。 */
+function openForm(): void {
+  formError.value = ''
+  probe.value = null
+  pristine.value = snapshotOf()
+  showForm.value = true
+  writeDraft()
+  draft.value = null
+}
+
 async function load(): Promise<void> {
   loading.value = true
   listError.value = ''
@@ -118,15 +233,18 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  // 有草稿就提示「继续编辑」，**不自动弹出**：
+  // 自动弹会让人以为自己点错了什么，而且他可能只是来看一眼列表
+  draft.value = readDraft()
+})
 
 function startCreate(): void {
   editingKey.value = null
   form.value = emptyForm()
   vendor.value = 'ark'
-  formError.value = ''
-  probe.value = null
-  showForm.value = true
+  openForm()
 }
 
 function startEdit(m: AdminModel): void {
@@ -148,9 +266,24 @@ function startEdit(m: AdminModel): void {
   }
   // 匹配已有的 base-url 到预设，匹配不上就是自定义
   vendor.value = VENDORS.find((v) => v.baseUrl && v.baseUrl === m.baseUrl)?.key ?? 'custom'
-  formError.value = ''
-  probe.value = null
-  showForm.value = true
+  openForm()
+}
+
+/** 恢复草稿。 */
+function resumeDraft(): void {
+  const d = draft.value
+  if (!d) return
+  editingKey.value = d.editingKey
+  form.value = { ...emptyForm(), ...d.form }
+  vendor.value = d.vendor ?? 'ark'
+  draft.value = null
+  openForm()
+}
+
+/** 扔掉草稿。 */
+function discardDraft(): void {
+  clearDraft()
+  draft.value = null
 }
 
 /**
@@ -166,6 +299,14 @@ function onVendorChange(): void {
     form.value.baseUrl = v.baseUrl
   }
 }
+
+// 任何字段变化都落一份草稿。deep 是必须的——form 是个对象，
+// 浅监听只会在整体替换时触发，而输入框改的是对象里的字段
+watch([form, vendor], writeDraft, { deep: true })
+
+// Esc 关闭 + 焦点管理。遮罩点击关闭已被移除（那是最容易误触的一条），
+// 详见 useModalGuard 的说明。
+const { dialogEl } = useModalGuard(showForm, closeForm)
 
 async function runTest(): Promise<void> {
   testing.value = true
@@ -197,6 +338,10 @@ async function save(): Promise<void> {
     } else {
       await createModel(form.value)
     }
+    // 保存成功 = 草稿使命结束。不清的话，下次打开会带着这份**已经保存过**的内容，
+    // 而管理员会以为那是新的草稿
+    clearDraft()
+    pristine.value = ''
     showForm.value = false
     await load()
   } catch (e: unknown) {
@@ -289,6 +434,18 @@ const priceWarning = computed(() => {
       </button>
     </header>
 
+    <!-- 有未完成的草稿时提示一次，不自动弹表单 -->
+    <div v-if="draft" class="draft-bar" role="status">
+      <span>
+        有一份<strong>未保存的模型草稿</strong>
+        <span v-if="draft.form.displayName" class="draft-name">「{{ draft.form.displayName }}」</span>
+      </span>
+      <div class="draft-actions">
+        <button class="btn btn-quiet btn-sm" type="button" @click="resumeDraft">继续编辑</button>
+        <button class="btn btn-quiet btn-sm" type="button" @click="discardDraft">丢弃</button>
+      </div>
+    </div>
+
     <p v-if="listError" class="note note-danger" role="alert">{{ listError }}</p>
     <div v-else-if="loading" class="note">加载中…</div>
 
@@ -372,10 +529,30 @@ const priceWarning = computed(() => {
       </article>
     </div>
 
-    <!-- 弹层：字段多，内联会把列表挤得没法看 -->
-    <div v-if="showForm" class="modal-mask" @click.self="showForm = false">
-      <div class="modal" role="dialog" aria-modal="true" :aria-label="isEditing ? '编辑模型' : '新增模型'">
-        <h2 class="modal-title">{{ isEditing ? '编辑模型' : '新增模型' }}</h2>
+    <!--
+      弹层：字段多，内联会把列表挤得没法看。
+
+      ⚠️ **遮罩不响应点击。** 之前是 `@click.self="showForm = false"`，
+      而 `.modal` 有 max-height + overflow:auto，内容一长就在**内部**滚动——
+      鼠标在滚动条上、或在边缘按下去再抬起，都会落到遮罩上，表单当场消失。
+      十几个格子填到一半丢掉一次，没人愿意再填第二遍。
+
+      现在只有三种关闭方式：点「取消」、按 Esc、保存成功。
+      前两种如果表单被改过，会先确认；而确认关掉之后**草稿仍在**，可以找回。
+    -->
+    <div v-if="showForm" class="modal-mask">
+      <div
+        ref="dialogEl"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+        :aria-label="isEditing ? '编辑模型' : '新增模型'"
+      >
+        <h2 class="modal-title">
+          {{ isEditing ? '编辑模型' : '新增模型' }}
+          <span v-if="isDirty()" class="dirty-flag" title="表单已修改，内容会自动存为草稿">未保存</span>
+        </h2>
 
         <div class="form">
           <div class="two-col">
@@ -493,7 +670,7 @@ const priceWarning = computed(() => {
             {{ testing ? '测试中…' : '测试连通性' }}
           </button>
           <div class="spacer" />
-          <button class="btn btn-quiet" type="button" @click="showForm = false">取消</button>
+          <button class="btn btn-quiet" type="button" @click="closeForm">取消</button>
           <button class="btn btn-primary" type="button" :disabled="saving" @click="save">
             {{ saving ? '保存中…' : '保存' }}
           </button>
@@ -505,6 +682,41 @@ const priceWarning = computed(() => {
 
 <style scoped>
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 草稿提示条 ── */
+.draft-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: 11px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  font-size: 0.83rem;
+  color: #1e40af;
+}
+.draft-name { color: #1d4ed8; }
+.draft-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+
+/* 「未保存」标记：让人在关之前就知道这里有东西 */
+.dirty-flag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* 弹层获得焦点时不要描边——它是容器不是控件 */
+.modal:focus { outline: none; }
 
 .card.off { opacity: 0.62; }
 .card-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
