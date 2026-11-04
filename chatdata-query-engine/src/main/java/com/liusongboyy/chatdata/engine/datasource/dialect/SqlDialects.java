@@ -34,11 +34,27 @@ public final class SqlDialects {
         register(oracle, "ORACLE");
         register(sqlServer, "SQLSERVER");
 
+        // ── 第二批：大数据分析场景 ──
+
+        StarRocksDialect starRocks = new StarRocksDialect();
+        HiveDialect hive = new HiveDialect();
+        TrinoDialect trino = new TrinoDialect();
+
+        // StarRocks 与 Doris 是实时 OLAP 的"双雄"，国内采用率极高。
+        // 它兼容 MySQL 协议与方言，故继承 MySQL
+        register(starRocks, "StarRocks", "STARROCKS");
+        // Hive 是离线数仓的事实标准。**方言差异大**——没有 INTERVAL 语法、
+        // datediff 只到天，见 HiveDialect 的说明
+        register(hive, "HIVE", "HiveServer2");
+        // Trino（原 PrestoSQL）常用于联邦查询。ANSI SQL 风格，双引号标识符
+        register(trino, "TRINO", "PRESTO", "PRESTOSQL");
+
         // 同方言的别名。它们与本尊的 SQL 方言一致，但驱动或版本不同：
         //   MYSQL5.5 —— 厂商的历史数据里有这个类型，不加会直接查不到
         //   TIDB     —— 兼容 MySQL 协议与方言
         //   MARIADB  —— 兼容 MySQL，差异点我们用不到
-        register(mysql, "MYSQL5.5", "MYSQL", "TIDB", "MARIADB");
+        //   OCEANBASE —— 兼容 MySQL 模式（Oracle 模式需另配，暂不支持）
+        register(mysql, "MYSQL5.5", "MYSQL", "TIDB", "MARIADB", "OCEANBASE");
     }
 
     private SqlDialects() {

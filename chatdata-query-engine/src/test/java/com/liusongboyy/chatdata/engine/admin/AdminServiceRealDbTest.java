@@ -206,27 +206,35 @@ class AdminServiceRealDbTest {
             // 厂商的行为是报 `连接失败：org.postgresql.Driver`——一个类名，
             // 用户完全看不出是"缺驱动"。这里必须说清楚。
             //
-            // 注意：PostgreSQL 方言是支持的，缺的只是驱动本身，
-            // 所以这条走的是驱动校验而不是方言校验
-            DatasourceInput input = new DatasourceInput("测试源-H", "POSTGRESQL",
-                    "org.postgresql.Driver", "jdbc:postgresql://127.0.0.1:5432/x", "u", "p", true);
+            // 注意：方言是支持的，缺的只是驱动本身，所以这条走的是驱动校验
+            // 而不是方言校验。
+            //
+            // **必须选"方言支持但驱动没带"的组合**——方言校验先于驱动校验触发，
+            // 用不支持的方言（如 ClickHouse）会先报"暂不支持的数据源类型"。
+            //
+            // 这里曾经用 PostgreSQL，后来补了 pg 驱动（它以前确实没进 jar，
+            // 是个真缺陷），反例就失效了。Hive 的驱动放在 -Pbigdata profile 里，
+            // 默认构建不带，正好是这个组合
+            DatasourceInput input = new DatasourceInput("测试源-H", "HIVE",
+                    "org.apache.hive.jdbc.HiveDriver",
+                    "jdbc:hive2://127.0.0.1:10000/x", "u", "p", true);
 
             assertThatThrownBy(() -> datasources.test(input))
                     .isInstanceOf(AdminException.class)
                     .hasMessageContaining("未安装该数据库驱动")
-                    .hasMessageContaining("org.postgresql.Driver");
+                    .hasMessageContaining("org.apache.hive.jdbc.HiveDriver");
         }
 
         @Test
         @DisplayName("★ 方言不受支持时明确说清楚，而不是配完了在问数时才炸")
         void unsupportedDialectRejected() {
-            DatasourceInput input = new DatasourceInput("测试源-I", "HIVE",
-                    "org.apache.hive.jdbc.HiveDriver", "jdbc:hive2://x:10000/d", "u", "p", true);
+            DatasourceInput input = new DatasourceInput("测试源-I", "SYBASE",
+                    "com.sybase.jdbc4.jdbc.SybDriver", "jdbc:sybase:Tds:x:5000/d", "u", "p", true);
 
             assertThatThrownBy(() -> datasources.test(input))
                     .isInstanceOf(AdminException.class)
                     .hasMessageContaining("暂不支持的数据源类型")
-                    .hasMessageContaining("HIVE");
+                    .hasMessageContaining("SYBASE");
         }
 
         @Test

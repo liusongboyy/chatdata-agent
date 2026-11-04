@@ -133,20 +133,22 @@ class EngineConfigValidatorTest {
         void unsupportedDialect() {
             // DatasourceDef 构造器刻意不校验 dbType —— 见该 record 的说明。
             // 若它抛异常，MyBatis 的整条列表查询会失败，一行坏数据就炸掉整份启动报告
-            DatasourceDef hive = ds(2L, "HIVE");
+            // 这里曾经用 HIVE 当反例——后来真支持了 Hive。
+            // 换一个确实没注册的方言（引擎不认识的 DB 类型）
+            DatasourceDef unknown = ds(2L, "SYBASE");
 
-            List<EngineConfigViolation> v = EngineConfigValidator.validateDatasource(hive);
+            List<EngineConfigViolation> v = EngineConfigValidator.validateDatasource(unknown);
 
             assertThat(v).extracting(EngineConfigViolation::category)
                     .contains(EngineConfigViolation.Category.DATASOURCE_UNUSABLE);
-            assertThat(v.get(0).message()).contains("HIVE");
+            assertThat(v.get(0).message()).contains("SYBASE");
         }
 
         @Test
         @DisplayName("★ 引用一个类型不支持的数据源时，域层也报违规")
         void domainReferencingUnsupportedDatasource() {
-            Map<Long, DatasourceDef> dss = Map.of(2L, ds(2L, "HIVE"));
-            Domain d = new Domain("1", "域", "2", "HIVE", true,
+            Map<Long, DatasourceDef> dss = Map.of(2L, ds(2L, "SYBASE"));
+            Domain d = new Domain("1", "域", "2", "SYBASE", true,
                     List.of(policy(true)), List.of(), granted(), List.of(), List.of());
 
             List<EngineConfigViolation> v = EngineConfigValidator.validate(d, dss);

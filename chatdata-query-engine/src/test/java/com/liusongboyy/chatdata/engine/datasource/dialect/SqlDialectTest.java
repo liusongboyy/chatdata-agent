@@ -177,11 +177,13 @@ class SqlDialectTest {
         @Test
         @DisplayName("★ 未知类型抛异常，绝不回落默认方言")
         void unknownTypeThrows() {
-            assertThatThrownBy(() -> SqlDialects.of("HIVE"))
+            // 用一个**确实没注册**的类型。这里曾经写的是 HIVE——
+            // 后来真支持了 Hive，这条测试就变成了"已知类型不该抛"的反例
+            assertThatThrownBy(() -> SqlDialects.of("CLICKHOUSE"))
                     .as("回落默认方言会拿 MySQL 语法去渲染别的库，生成的 SQL 是错的，"
                             + "而报错会出现在执行阶段，离真实原因很远")
                     .isInstanceOf(SqlDialects.UnsupportedDialectException.class)
-                    .hasMessageContaining("HIVE");
+                    .hasMessageContaining("CLICKHOUSE");
 
             assertThatThrownBy(() -> SqlDialects.of(""))
                     .isInstanceOf(SqlDialects.UnsupportedDialectException.class);
@@ -193,7 +195,8 @@ class SqlDialectTest {
         @DisplayName("supports 用于管理页前置校验，不抛异常")
         void supportsIsNonThrowing() {
             assertThat(SqlDialects.supports("MYSQL5.7")).isTrue();
-            assertThat(SqlDialects.supports("HIVE")).isFalse();
+            assertThat(SqlDialects.supports("HIVE")).isTrue();   // 已支持
+            assertThat(SqlDialects.supports("CLICKHOUSE")).isFalse();
             assertThat(SqlDialects.supports(null)).isFalse();
         }
 

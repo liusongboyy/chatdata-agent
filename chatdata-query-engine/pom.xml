@@ -76,6 +76,47 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
+        <!--
+          其余方言的 JDBC 驱动。
+
+          ## 为什么以前只有 MySQL
+
+          方言（SqlDialect）先支持了 Oracle / PostgreSQL / SQLServer，
+          但驱动没进来——于是**配了数据源、测试连接时才报
+          「未安装该数据库驱动」**，而错误发生在用户已经以为配好了的时候。
+
+          ## 为什么用 runtime scope
+
+          编译期不需要它们的任何类：代码一律通过 DriverManager /
+          java.sql 接口访问，不 import 厂商 API。用 runtime 让它们
+          只进最终 jar，不参与编译。
+
+          ## 为什么用 profile 而不是默认全带
+
+          这些驱动加起来几十 MB（尤其 Hive 会拖进一整套 Hadoop 依赖）。
+          默认全带会让每个部署都背着自己用不到的库。
+
+          但**默认带上更安全**——缺驱动的失败发生在用户配置数据源的时候，
+          而那时他已经在管理台里点了一圈，报错却是一句"未安装驱动"。
+          权衡之后：常用的四个（PG / Oracle / SQLServer / StarRocks 走 MySQL 协议）
+          默认带，大数据那三个（Hive / Trino）放 profile。
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -95,4 +136,59 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+      大数据方向的 JDBC 驱动。
+
+      ## 为什么放 profile 而不是默认带
+
+      Hive 的 JDBC 驱动会拖进一整套 Hadoop 依赖（几十 MB），
+      而多数部署只连关系型库或 Doris/StarRocks。默认背着自己用不到的
+      几十 MB 是浪费。
+
+      ## 什么时候开
+
+      要连 Hive 或 Trino 时加 `-Pbigdata`：
+
+        mvn package -Pbigdata
+
+      或者在自己的部署 pom 里显式引用对应驱动。
+    -->
+    <profiles>
+        <profile>
+            <id>bigdata</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.apache.hive</groupId>
+                    <artifactId>hive-jdbc</artifactId>
+                    <version>4.0.1</version>
+                    <scope>runtime</scope>
+                    <!-- Hive JDBC 会拖入大量 Hadoop 依赖，且与 Spring Boot 的
+                         logback / jackson 版本有冲突。排除掉这些——
+                         我们只用它的 JDBC 驱动类，不需要它的日志与序列化实现 -->
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.slf4j</groupId>
+                            <artifactId>slf4j-log4j12</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>log4j</groupId>
+                            <artifactId>log4j</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>ch.qos.logback</groupId>
+                            <artifactId>logback-classic</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>io.trino</groupId>
+                    <artifactId>trino-jdbc</artifactId>
+                    <version>468</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
 </project>
