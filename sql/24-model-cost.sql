@@ -113,6 +113,16 @@ SET @sql := (
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+SET @sql := (
+  SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE `ask_audit_log` ADD COLUMN `reasoning_tokens` INT NULL COMMENT ''推理 token。是 output_tokens 的**子集**，不能单独计费''',
+    'DO 0')
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ask_audit_log'
+    AND COLUMN_NAME = 'reasoning_tokens'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 -- 成本看板按时间窗口 + 模型聚合，这个索引让它 index-only
 SET @sql := (
   SELECT IF(COUNT(*) = 0,

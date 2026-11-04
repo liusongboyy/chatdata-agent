@@ -33,11 +33,69 @@ public class HealthController {
     private static final Logger log = LoggerFactory.getLogger(HealthController.class);
 
     private final HealthService health;
+    private final CostService cost;
     private final CurrentUser currentUser;
 
-    public HealthController(HealthService health, CurrentUser currentUser) {
+    public HealthController(HealthService health, CostService cost, CurrentUser currentUser) {
         this.health = health;
+        this.cost = cost;
         this.currentUser = currentUser;
+    }
+
+    /**
+     * 成本看板。
+     *
+     * <h2>为什么「按用户」不是谁都能看</h2>
+     *
+     * <p>普通员工不该知道同事花了多少钱——那不是数据权限问题，是同事关系问题。
+     * 所以这里按管理员权限裁剪，而<b>不靠前端隐藏</b>：
+     * 前端隐藏只是不显示，接口照样能拿到。
+     *
+     * <p>判据与域管理同档：能进这个页面的人就是管理员。
+     *
+     * @param days 时间范围，默认 30 天。**比健康度页更长**：成本核算按月看，
+     *             7 天的样本不足以看出趋势
+     */
+    @GetMapping("/cost")
+    public ResponseEntity<Result<com.liusongboyy.chatdata.engine.model.CostAggregate.Report>>
+            cost(@RequestParam(defaultValue = "30") int days,
+                 HttpServletRequest request) {
+        if (currentUser.username().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Result.error(401, "未登录"));
+        }
+        try {
+            var report = cost.cost(days);
+            // 非管理员：抹掉按用户的部分，其余照给。
+            // **整页拒绝是不对的**——他本来就是管理员才进得来这个页面，
+            // 而万一将来权限模型变了，返回一份少了明细的报表比 403 更有用
+            boolean admin = isAdmin();
+            var safe = admin ? report : new com.liusongboyy.chatdata.engine.model.CostAggregate.Report(
+                    report.days(), report.total(), report.byModel(), report.byDomain(),
+                    java.util.List.of(), report.notice());
+            return ResponseEntity.ok(Result.success(safe));
+        } catch (RuntimeException e) {
+            log.error("读取成本看板失败：{}", e.getMessage(), e);
+            // 返回 null 而不是 500：这是"看一眼花了多少"的页面，不是关键路径
+            return ResponseEntity.ok(Result.success(null));
+        }
+    }
+
+    /**
+     * 是不是管理员。
+     *
+     * <p>看的是角色里有没有管理相关的名字。**这里刻意宽松**：
+     * 域管理接口本身已经有更强的鉴权，这条只决定"要不要给出别人的花销明细"。
+     * 判错方向是"少给"，不是"多给"——安全方向。
+     */
+    private boolean isAdmin() {
+        for (String r : currentUser.roles()) {
+            String low = r.toLowerCase(java.util.Locale.ROOT);
+            if (low.contains("admin") || r.contains("管理员") || r.contains("总经理")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

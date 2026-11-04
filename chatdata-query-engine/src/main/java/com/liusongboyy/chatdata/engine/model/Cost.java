@@ -46,7 +46,7 @@ public record Cost(
      */
     public static Cost of(ModelDef model, long inputTokens, long cachedTokens,
                           long outputTokens) {
-        if (!model.priced()) {
+        if (model == null || !model.priced()) {
             return null;
         }
         // 缓存命中是 inputTokens 的子集，不能相加

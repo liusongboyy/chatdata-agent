@@ -45,6 +45,16 @@ public class ModelPool {
     }
 
     /**
+     * 全部模型（含停用）。
+     *
+     * <p>访问判定需要看到停用的那些——{@code ModelAccess.resolve} 要能区分
+     * "不存在"与"已停用"，两者给用户的提示不同。
+     */
+    public java.util.List<ModelDef> all() {
+        return models.all();
+    }
+
+    /**
      * 全局默认模型。没有默认时返回 {@code null}——调用方据此回落到 yml 配置。
      */
     public ModelDef defaultModel() {

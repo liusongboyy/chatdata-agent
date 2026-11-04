@@ -16,6 +16,9 @@ import java.util.Set;
  * @param attributes  主体的业务属性（tenant/orgCode/orgPath/displayName…）。
  *                    动态行规则（{@code sysVar: "orgCode"}）从这里取值——
  *                    它由资源服务器内省令牌后填入，**不由客户端传入**。
+ * @param modelKey    用户在下拉里选的模型键；空表示没选（用域绑定或全局默认）。
+ *                    它只是"用户的意向"，**权限与存在性由 {@code ModelAccess} 校验**——
+ *                    这个字段来自客户端，绝不能直接信
  */
 public record AskRequest(
         String question,
@@ -24,13 +27,20 @@ public record AskRequest(
         Set<String> roles,
         String sessionId,
         String assistantId,
-        Map<String, Object> attributes
+        Map<String, Object> attributes,
+        String modelKey
 ) {
 
-    /** 兼容构造器：不带业务属性。既有调用点与测试不必改。 */
+    /** 兼容构造器：不带业务属性与模型选择。既有调用点与测试不必改。 */
     public AskRequest(String question, String userId, String username, Set<String> roles,
                       String sessionId, String assistantId) {
-        this(question, userId, username, roles, sessionId, assistantId, Map.of());
+        this(question, userId, username, roles, sessionId, assistantId, Map.of(), null);
+    }
+
+    /** 兼容构造器：带业务属性但没选模型。 */
+    public AskRequest(String question, String userId, String username, Set<String> roles,
+                      String sessionId, String assistantId, Map<String, Object> attributes) {
+        this(question, userId, username, roles, sessionId, assistantId, attributes, null);
     }
 
     /** 与厂商集成那条链路一致的长度上限。 */
@@ -56,5 +66,7 @@ public record AskRequest(
         // 也让"哪些记录没走助理"这种查询写起来别扭
         assistantId = (assistantId == null || assistantId.isBlank()) ? null : assistantId;
         attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
+        // 空串与 null 同义：前端"不指定"传的是空串，而两者在下拉里是同一件事
+        modelKey = (modelKey == null || modelKey.isBlank()) ? null : modelKey.trim();
     }
 }

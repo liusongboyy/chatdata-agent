@@ -35,7 +35,7 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
          sql/21-channel.sql sql/22-channel-subscription.sql \
-         sql/23-audit-health-index.sql
+         sql/23-audit-health-index.sql sql/24-model-cost.sql
 do
   mysql -uroot -p chatdata_ask < "$f"
 done
@@ -80,6 +80,25 @@ mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql
 `error_message` **刻意不放进去**——试过加前缀索引，反而更差：
 前缀取不到完整值仍需回表，而索引宽度增加不少。它是归类必需的输入，
 所以接受每条匹配行回表一次（已从全表扫描降到 O(窗口行数)）。
+
+## 模型与成本（`24-model-cost.sql`）
+
+| 表 / 列 | 用途 |
+|---|---|
+| `ask_model` | 问数可用的模型：供应商（`base_url` + 密文密钥）、单价、**角色白名单**、默认标记 |
+| `ask_audit_log.model_key` | 这条提问实际用的模型键 |
+| `ask_audit_log.input/output/cached/cache_creation/reasoning_tokens` | token 消耗 |
+| `ask_domain.model_key` | 域绑定的模型；NULL 表示不限制 |
+
+**六列 token 全部可空**，而且必须保持可空：NULL 是"没采到"（老数据、失败请求），
+0 是"确实没消耗"。成本看板靠这个区分「未知」与「免费」——把未知写成 0，
+管理员会得出"成本很低"的结论，而那是个假结论。
+
+`allowed_roles` 存 JSON 数组，**空数组 = 不限制**。不能拿 NULL 表示"不限制"：
+NULL 与"还没配"无法区分，而两者含义相反。
+
+模型配置从 `application.yml` 迁到这张表之后**以表为准**——改 yml 不再同步。
+首次启动时表为空才会用 yml 种一条，启动日志会明说。
 
 ## 不要执行的历史脚本
 

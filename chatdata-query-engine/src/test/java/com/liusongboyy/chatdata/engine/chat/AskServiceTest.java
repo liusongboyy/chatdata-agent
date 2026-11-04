@@ -3,6 +3,8 @@ package com.liusongboyy.chatdata.engine.chat;
 import com.liusongboyy.chatdata.engine.agent.AskDeniedException;
 import com.liusongboyy.chatdata.engine.agent.DslGenerationException;
 import com.liusongboyy.chatdata.engine.agent.DslSource;
+import com.liusongboyy.chatdata.engine.agent.Generated;
+import com.liusongboyy.chatdata.engine.agent.TokenUsage;
 import com.liusongboyy.chatdata.engine.agent.EngineNotConfiguredException;
 import com.liusongboyy.chatdata.engine.audit.AskAuditOutcome;
 import com.liusongboyy.chatdata.engine.audit.AskAuditRecord;
@@ -88,14 +90,18 @@ class AskServiceTest {
         AskDsl result = new AskDsl(List.of("保费"), List.of(), null, List.of());
         RuntimeException toThrow;
 
+        /** 每次调用消耗的 token。默认 0——采不采集不影响断言"调了几次"。 */
+        TokenUsage perCall = TokenUsage.ZERO;
+
         @Override
-        public AskDsl generate(String question, String sysPrompt, String userId, String sessionId) {
+        public Generated<AskDsl> generate(String question, String sysPrompt,
+                                          String userId, String sessionId) {
             calls.incrementAndGet();
             lastPrompt.set(sysPrompt);
             if (toThrow != null) {
                 throw toThrow;
             }
-            return result;
+            return new Generated<>(result, perCall);
         }
     }
 
@@ -384,6 +390,87 @@ class AskServiceTest {
      * 那个类型不在分类 catch 里，于是用户看到一句不知该做什么的话。
      */
     @Nested
+    @DisplayName("token 采集")
+    class UsageCapture {
+
+        @Test
+        @DisplayName("★ 一次成功提问记下模型键与消耗")
+        void writesModelAndUsage() {
+            CountingDslSource dsl = new CountingDslSource();
+            dsl.perCall = new TokenUsage(1000, 200, 800, 0, 50);
+            CapturingAudit audit = new CapturingAudit();
+
+            new AskService(model(OPEN), SqlDialects.of("MYSQL5.7"), dsl,
+                    new FakeExecutor(), audit, null, "flash")
+                    .ask(request("u1", "分析师"));
+
+            assertThat(audit.records).singleElement().satisfies(r -> {
+                assertThat(r.modelKey()).isEqualTo("flash");
+                assertThat(r.inputTokens()).isEqualTo(1000);
+                assertThat(r.outputTokens()).isEqualTo(200);
+                assertThat(r.cachedTokens()).isEqualTo(800);
+            });
+        }
+
+        @Test
+        @DisplayName("★ 重问两次 → token 累加，不是只记最后一次")
+        void sumsAcrossRetries() {
+            // 「上个月华东的保费」带时间词，会触发一次完整性重问
+            CountingDslSource dsl = new CountingDslSource();
+            dsl.perCall = new TokenUsage(100, 10, 0, 0, 0);
+            CapturingAudit audit = new CapturingAudit();
+
+            new AskService(model(OPEN), SqlDialects.of("MYSQL5.7"), dsl,
+                    new FakeExecutor(), audit, null, "flash")
+                    .ask(new AskRequest("上个月华东的保费是多少", "u1", "u1",
+                            Set.of("分析师"), "s1", null));
+
+            assertThat(dsl.calls.get()).as("前提：确实调了不止一次").isGreaterThan(1);
+            assertThat(audit.records).singleElement().satisfies(r -> {
+                // 每次 100 输入，调了 n 次就应该是 n×100——只记最后一次会系统性低估
+                assertThat(r.inputTokens()).isEqualTo(100 * dsl.calls.get());
+            });
+        }
+
+        @Test
+        @DisplayName("★ 拿不到 usage → 记 null，不是 0")
+        void unknownUsageIsNullNotZero() {
+            // CountingDslSource 默认 perCall = ZERO，这里显式改成 UNKNOWN
+            CountingDslSource dsl = new CountingDslSource();
+            dsl.perCall = TokenUsage.UNKNOWN;
+            CapturingAudit audit = new CapturingAudit();
+
+            new AskService(model(OPEN), SqlDialects.of("MYSQL5.7"), dsl,
+                    new FakeExecutor(), audit, null, "flash")
+                    .ask(request("u1", "分析师"));
+
+            assertThat(audit.records).singleElement().satisfies(r -> {
+                assertThat(r.inputTokens()).as("null = 没采到；0 = 确实没消耗。两者不能混")
+                        .isNull();
+            });
+        }
+
+        @Test
+        @DisplayName("失败路径也记 token——失败的调用同样花钱")
+        void failurePathStillRecordsUsage() {
+            CountingDslSource dsl = new CountingDslSource();
+            dsl.perCall = new TokenUsage(500, 0, 0, 0, 0);
+            dsl.result = new AskDsl(List.of(), List.of(), null, List.of());   // 空 DSL → 没听懂
+            CapturingAudit audit = new CapturingAudit();
+
+            assertThatThrownBy(() -> new AskService(model(OPEN), SqlDialects.of("MYSQL5.7"),
+                    dsl, new FakeExecutor(), audit, null, "flash")
+                    .ask(request("u1", "分析师")))
+                    .isInstanceOf(AskService.NotUnderstoodException.class);
+
+            assertThat(audit.records).singleElement().satisfies(r -> {
+                assertThat(r.outcome()).isEqualTo(AskAuditOutcome.FAILURE);
+                assertThat(r.inputTokens()).isEqualTo(500);
+            });
+        }
+    }
+
+    @Nested
     @DisplayName("重试后仍解析不出内容")
     class RetryProducesNothing {
 
@@ -392,10 +479,10 @@ class AskServiceTest {
             final AtomicInteger calls = new AtomicInteger();
 
             @Override
-            public AskDsl generate(String q, String p, String u, String s) {
-                return calls.incrementAndGet() == 1
+            public Generated<AskDsl> generate(String q, String p, String u, String s) {
+                return Generated.of(calls.incrementAndGet() == 1
                         ? new AskDsl(List.of("根本不存在的字段"), List.of(), null, List.of())
-                        : new AskDsl(List.of(), List.of(), null, List.of());
+                        : new AskDsl(List.of(), List.of(), null, List.of()));
             }
         }
 
@@ -465,9 +552,9 @@ class AskServiceTest {
             }
 
             @Override
-            public AskDsl generate(String q, String p, String u, String s) {
+            public Generated<AskDsl> generate(String q, String p, String u, String s) {
                 lastPrompt = p;
-                return calls.incrementAndGet() <= leakFirst ? INCOMPLETE : COMPLETE;
+                return Generated.of(calls.incrementAndGet() <= leakFirst ? INCOMPLETE : COMPLETE);
             }
         }
 
@@ -579,13 +666,14 @@ class AskServiceTest {
             // 重试时模型 Bean 创建失败
             CountingDslSource dsl = new CountingDslSource() {
                 @Override
-                public AskDsl generate(String q, String p, String u, String s) {
+                public Generated<AskDsl> generate(String q, String p, String u, String s) {
                     if (calls.incrementAndGet() > 1) {
                         throw new org.springframework.beans.factory.BeanCreationException(
                                 "askEngineModel", "boom",
                                 new IllegalStateException("缺少配置 api-key"));
                     }
-                    return new AskDsl(List.of("根本不存在的字段"), List.of(), null, List.of());
+                    return Generated.of(
+                            new AskDsl(List.of("根本不存在的字段"), List.of(), null, List.of()));
                 }
             };
 

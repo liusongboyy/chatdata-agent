@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liusongboyy.chatdata.engine.agent.DslGenerationException;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPlan;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPlanSource;
+import com.liusongboyy.chatdata.engine.agent.Generated;
+import com.liusongboyy.chatdata.engine.agent.TokenUsage;
 import com.liusongboyy.chatdata.engine.analysis.NarrativeSource;
 import com.liusongboyy.chatdata.engine.analysis.PlanStep;
 import com.liusongboyy.chatdata.engine.datasource.QueryResult;
@@ -86,7 +88,7 @@ class AnalysisServiceTest {
 
     private static AnalysisService service(NarrativeSource narrative) {
         return new AnalysisService(model(), SqlDialects.of("MYSQL5.7"), executor(), null,
-                (q, p, u, s) -> plan(), narrative);
+                (q, p, u, s) -> Generated.of(plan()), narrative);
     }
 
     @Test
@@ -95,7 +97,7 @@ class AnalysisServiceTest {
         // 600/1000 = 60.0%、400/1000 = 40.0%
         // 注意：**只引用算过的数字**。40% 是"其余"，计算器没单独产出它，
         // 所以写进来同样会被白名单挡下——这正是它该有的严格程度
-        AskResult result = service((p, u, s) -> "华东占 60%，集中度较高。")
+        AskResult result = service((p, u, s) -> Generated.of("华东占 60%，集中度较高。"))
                 .analyze(request(), e -> { });
 
         assertThat(result.analysis()).isNotNull();
@@ -106,7 +108,7 @@ class AnalysisServiceTest {
     @Test
     @DisplayName("★ 叙述编了数字 → 退回确定性文本，且每个数字可溯源")
     void rejectsFabricatedNumber() {
-        AskResult result = service((p, u, s) -> "华东占 93%，其余分散在多个区域。")
+        AskResult result = service((p, u, s) -> Generated.of("华东占 93%，其余分散在多个区域。"))
                 .analyze(request(), e -> { });
 
         String narrative = result.analysis().narrative();
@@ -117,7 +119,7 @@ class AnalysisServiceTest {
     @Test
     @DisplayName("叙述为空 / 抛异常 → 退回确定性文本，分析本身仍然成功")
     void narrativeFailureDoesNotFailAnalysis() {
-        AskResult empty = service((p, u, s) -> null).analyze(request(), e -> { });
+        AskResult empty = service((p, u, s) -> Generated.of(null)).analyze(request(), e -> { });
         assertThat(empty.analysis().narrative()).contains("60.0%");
 
         AskResult boom = service((p, u, s) -> {

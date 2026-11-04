@@ -53,4 +53,26 @@ public class AskAuditLog implements Serializable {
     private String errorMessage;
 
     private LocalDateTime createdAt;
+
+    // ── 计量（见 sql/24-model-cost.sql）──────────────────────────────
+    // **六列全部可空**：加列之前的历史记录没有这些值，失败的请求也可能拿不到 usage。
+    // null 是"没采到"，0 是"确实没消耗"——成本看板靠这个区分「未知」与「免费」
+
+    /** 实际使用的模型键。为空表示回落到了 yml 配置（或老数据）。 */
+    private String modelKey;
+
+    /** 输入 token。**已包含 {@link #cachedTokens}**，不能相加。 */
+    private Integer inputTokens;
+
+    /** 输出 token。**已包含 reasoning tokens**，不能相加。 */
+    private Integer outputTokens;
+
+    /** 缓存命中的输入 token，是 {@link #inputTokens} 的子集。 */
+    private Integer cachedTokens;
+
+    /** 写缓存的消耗（部分供应商单独计费）。 */
+    private Integer cacheCreationTokens;
+
+    /** 推理 token，是 {@link #outputTokens} 的子集。 */
+    private Integer reasoningTokens;
 }

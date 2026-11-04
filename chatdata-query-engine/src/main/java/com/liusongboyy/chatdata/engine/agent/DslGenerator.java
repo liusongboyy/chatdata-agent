@@ -74,7 +74,8 @@ public final class DslGenerator implements DslSource {
      * @param sessionId  会话标识。多轮追问靠它保持上下文
      */
     @Override
-    public AskDsl generate(String question, String sysPrompt, String userId, String sessionId) {
+    public Generated<AskDsl> generate(String question, String sysPrompt,
+                                      String userId, String sessionId) {
         ReActAgent.Builder builder = ReActAgent.builder()
                 .name("nlsql")
                 .sysPrompt(sysPrompt)
@@ -98,7 +99,12 @@ public final class DslGenerator implements DslSource {
                 .sessionId(sessionId)
                 .build();
 
-        Msg reply = agent.call(List.of(new UserMessage(question)), schema, ctx).block();
+        // 走 streamEvents 而不是 call：它同时给出最终消息与**每次模型调用**的
+        // usage（ModelCallEndEvent）。call 只保留最终消息上的那一份，
+        // 多轮时其余全部丢失
+        Generated<Msg> produced = UsageCollector.run(
+                agent, List.of(new UserMessage(question)), ctx);
+        Msg reply = produced.value();
 
         if (reply == null) {
             throw new DslGenerationException("模型没有返回内容");
@@ -108,9 +114,14 @@ public final class DslGenerator implements DslSource {
         // 不是 Java 对象——反序列化由我们自己做，这样也顺带统一了错误信息
         String json = reply.getTextContent();
         if (json == null || json.isBlank()) {
+            // 同样是花了钱的失败。异常带不上 usage，故这里只抛——
+            // 上层按 FAILURE 记账，token 字段为 NULL（"没采到"的语义）
             throw new DslGenerationException("模型返回的结构化内容为空");
         }
 
-        return DslParser.parse(json);
+        // **usage 必须在解析之前带出。**解析失败时这次调用照样花了钱，
+        // 而拿不到 usage 的话审计里这条记录会显示成"零消耗"——
+        // 失败的重试正是最贵的那一类
+        return new Generated<>(DslParser.parse(json), produced.usage());
     }
 }

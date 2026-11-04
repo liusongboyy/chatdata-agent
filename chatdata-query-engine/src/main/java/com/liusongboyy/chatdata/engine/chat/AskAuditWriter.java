@@ -44,10 +44,36 @@ public final class AskAuditWriter {
                              long duration,
                              AskAuditOutcome outcome,
                              String errorMessage) {
+        // 兼容入口：不采集 token。**只给直连模式与重算用**——
+        // 建模模式的调用点必须走带 modelKey/usage 的那个重载，
+        // 否则成本看板上会凭空少一块
+        write(recorder, request, domainId, dsl, sqlText, rowCount, duration, outcome,
+                errorMessage, null, com.liusongboyy.chatdata.engine.agent.TokenUsage.UNKNOWN);
+    }
+
+    /**
+     * 写一条审计，带上模型与 token 消耗。
+     *
+     * @param modelKey 实际使用的模型键；null 表示回落到了 yml 配置
+     * @param usage    本次提问累计消耗；{@link com.liusongboyy.chatdata.engine.agent.TokenUsage#UNKNOWN}
+     *                 表示没采到——写进库是 NULL，不是 0
+     */
+    public static void write(AskAuditRecorder recorder,
+                             AskRequest request,
+                             String domainId,
+                             AskDsl dsl,
+                             String sqlText,
+                             Integer rowCount,
+                             long duration,
+                             AskAuditOutcome outcome,
+                             String errorMessage,
+                             String modelKey,
+                             com.liusongboyy.chatdata.engine.agent.TokenUsage usage) {
         if (recorder == null) {
             return;
         }
         try {
+            boolean known = usage != null && usage.known();
             recorder.record(new AskAuditRecord(
                     request.username(),
                     request.roles().isEmpty() ? null : String.join(",", request.roles()),
@@ -61,7 +87,16 @@ public final class AskAuditWriter {
                     duration,
                     outcome,
                     errorMessage,
-                    java.time.LocalDateTime.now()));
+                    java.time.LocalDateTime.now(),
+                    null, null, null, null,
+                    // **失败路径 modelKey 也要记。**「哪个模型老出错」是排查的第一步，
+                    // 而错的那些请求恰恰在最需要它的地方
+                    modelKey == null || modelKey.isBlank() ? null : modelKey,
+                    known ? usage.inputTokens() : null,
+                    known ? usage.outputTokens() : null,
+                    known ? usage.cachedTokens() : null,
+                    known ? usage.cacheCreationTokens() : null,
+                    known ? usage.reasoningTokens() : null));
         } catch (Exception e) {
             log.error("组装审计记录失败：user={}", request.username(), e);
         }
@@ -86,9 +121,34 @@ public final class AskAuditWriter {
                                      long duration,
                                      AskAuditOutcome outcome,
                                      String errorMessage) {
+        writeAnalysis(recorder, request, domainId, plan, result, rowCount, duration, outcome,
+                errorMessage, null, com.liusongboyy.chatdata.engine.agent.TokenUsage.UNKNOWN);
+    }
+
+    /**
+     * 写一次分析的审计，带上模型与 token。
+     *
+     * <p><b>token 只记在主记录上。</b>步骤记录是同一批模型调用的拆分结果，
+     * 每个步骤各记一份会让总额翻倍——而"总共花了多少"只看主记录就够。
+     *
+     * @param modelKey 实际使用的模型键；null 表示回落到了 yml 配置
+     * @param usage    拆解 + 写结论两次调用的合计
+     */
+    public static void writeAnalysis(AskAuditRecorder recorder,
+                                     AskRequest request,
+                                     String domainId,
+                                     com.liusongboyy.chatdata.engine.analysis.AnalysisPlan plan,
+                                     com.liusongboyy.chatdata.engine.analysis.AnalysisResult result,
+                                     Integer rowCount,
+                                     long duration,
+                                     AskAuditOutcome outcome,
+                                     String errorMessage,
+                                     String modelKey,
+                                     com.liusongboyy.chatdata.engine.agent.TokenUsage usage) {
         if (recorder == null) {
             return;
         }
+        boolean known = usage != null && usage.known();
         String batchId = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 24);
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         String roles = request.roles().isEmpty() ? null : String.join(",", request.roles());
@@ -99,7 +159,13 @@ public final class AskAuditWriter {
                     domainId, null, null, rowCount, duration, outcome, errorMessage, now,
                     batchId, null,
                     plan == null ? null : toJson(plan),
-                    result == null ? null : result.narrative()));
+                    result == null ? null : result.narrative(),
+                    modelKey == null || modelKey.isBlank() ? null : modelKey,
+                    known ? usage.inputTokens() : null,
+                    known ? usage.outputTokens() : null,
+                    known ? usage.cachedTokens() : null,
+                    known ? usage.cacheCreationTokens() : null,
+                    known ? usage.reasoningTokens() : null));
 
             if (result != null) {
                 int stepNo = 1;

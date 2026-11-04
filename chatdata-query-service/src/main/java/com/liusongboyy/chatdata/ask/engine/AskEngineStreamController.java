@@ -88,10 +88,15 @@ public class AskEngineStreamController {
      *                缺省 false——**默认仍是单查询**，避免一次误点就多花几次查询与模型调用
      */
     public record EngineAskBody(String question, String domainId, String sessionId,
-                                String assistantId, Boolean analyze) {
+                                String assistantId, Boolean analyze, String modelKey) {
 
         public EngineAskBody(String question, String domainId, String sessionId, String assistantId) {
-            this(question, domainId, sessionId, assistantId, null);
+            this(question, domainId, sessionId, assistantId, null, null);
+        }
+
+        public EngineAskBody(String question, String domainId, String sessionId,
+                             String assistantId, Boolean analyze) {
+            this(question, domainId, sessionId, assistantId, analyze, null);
         }
 
         boolean wantsAnalysis() {
@@ -277,7 +282,13 @@ public class AskEngineStreamController {
      * @param assistantId 与首次问数保持一致——换助理就是换域，重算必须落在同一个域上
      */
     public record RecomputeBody(String question, String domainId, String sessionId,
-                                String assistantId, Map<String, Object> dsl) {
+                                String assistantId, Map<String, Object> dsl, String modelKey) {
+
+        /** 兼容构造器：不带模型选择（重算本身不再调模型，模型只影响审计归属）。 */
+        public RecomputeBody(String question, String domainId, String sessionId,
+                             String assistantId, Map<String, Object> dsl) {
+            this(question, domainId, sessionId, assistantId, dsl, null);
+        }
     }
 
     /**
@@ -318,8 +329,9 @@ public class AskEngineStreamController {
         conversations.appendUser(conversation.id(), rawQuestion, "recompute");
 
         try {
-            AskFacade facade = serviceFactory.forAssistant(conversation.assistantId(), body.domainId(),
-                    permissionContext(username));
+            // 重算也带模型键：域可能绑定了模型，越权同样要在这里就拒
+            AskFacade facade = serviceFactory.forAssistant(conversation.assistantId(),
+                    body.domainId(), permissionContext(username), body.modelKey());
 
             // 重算是 **DSL 概念**：直连模式压根没有 DSL，模型写的是 SQL。
             // 与其假装支持，不如明确告诉调用方这个模式没有可重算的中间表示
@@ -364,9 +376,9 @@ public class AskEngineStreamController {
 
         } catch (AskDeniedException e) {
             // 403 而不是 200 + blocked:true —— ADR-0002 记的那个坑
-            conversations.appendFailure(conversation.id(), "DENIED", e.getMessage());
+            conversations.appendFailure(conversation.id(), denyCode(e), e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("code", "DENIED", "message", e.getMessage()));
+                    .body(Map.of("code", denyCode(e), "message", e.getMessage()));
 
         } catch (AskService.NotUnderstoodException e) {
             conversations.appendFailure(conversation.id(), "NOT_UNDERSTOOD", e.getMessage());
@@ -405,9 +417,11 @@ public class AskEngineStreamController {
         try {
             // 经助理进入时，助理层与域层**两道闸门都要过**——它们的判据不同，
             // 见 AskServiceFactory.forAssistant 的说明
+            // modelKey 在这里就参与校验：**越权在发起模型调用之前就被拒**，
+            // 不会走了半条链路（甚至查了数据）才发现模型不能用
             AskFacade service = serviceFactory.forAssistant(
                     conversation.assistantId(), body.domainId(),
-                    permissionContext(username));
+                    permissionContext(username), body.modelKey());
 
             // assistantId 必须带上：**审计要能回答"这次走的是哪个助理"**。
             // 助理决定功能可见性与落点域，是排查"他为什么看到这些数据"的一环；
@@ -415,7 +429,8 @@ public class AskEngineStreamController {
             // idx_assistant_created 索引都成了摆设
             AskRequest askRequest = new AskRequest(
                     body.question(), username, username, currentUser.roles(),
-                    conversation.id(), conversation.assistantId(), currentUser.attributes());
+                    conversation.id(), conversation.assistantId(), currentUser.attributes(),
+                    body.modelKey());
 
             // 显式开关 + 域支持才走编排。默认单查询——编排会多花几次查询与模型调用，
             // 不该由系统替用户决定（自动路由留到有分析评测集之后）
@@ -431,8 +446,10 @@ public class AskEngineStreamController {
             emitter.complete();
 
         } catch (AskDeniedException e) {
-            // 权限拒绝与"没听懂"要说清楚——用户能自己处理
-            fail(emitter, conversation.id(), AskEvent.FailureCode.DENIED, e.getMessage());
+            // 权限拒绝与"没听懂"要说清楚——用户能自己处理。
+            // **模型不可用单独给一个码**：处理方式完全不同（换一个模型 vs 找管理员开权限），
+            // 共用一个码会把用户引去做一件没有用的事
+            fail(emitter, conversation.id(), denyCode(e), e.getMessage());
 
         } catch (AskService.NotUnderstoodException e) {
             fail(emitter, conversation.id(), AskEvent.FailureCode.NOT_UNDERSTOOD, e.getMessage());
@@ -468,6 +485,19 @@ public class AskEngineStreamController {
      * <p>失败事件也带 {@code conversationId}：新会话第一次提问就失败时，
      * 前端需要它把本地 id 落定，否则接下来那次"重试"会开出一个新会话。
      */
+    /**
+     * 拒绝的错误码。
+     *
+     * <p>模型不可用与数据权限是两件不同的事：前者换一个模型即可，
+     * 后者要找管理员。共用一个码，用户会沿着错误的方向去解决。
+     */
+    private static String denyCode(AskDeniedException e) {
+        return e.reason() == com.liusongboyy.chatdata.engine.permission.PermissionDecision.Reason
+                .MODEL_NOT_ALLOWED
+                ? "MODEL_NOT_ALLOWED"
+                : AskEvent.FailureCode.DENIED;
+    }
+
     private void fail(SseEmitter emitter, String conversationId, String code, String message) {
         conversations.appendFailure(conversationId, code, message);
         Map<String, Object> payload = new java.util.LinkedHashMap<>();

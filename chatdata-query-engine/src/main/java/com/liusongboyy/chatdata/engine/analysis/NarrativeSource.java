@@ -8,5 +8,9 @@ package com.liusongboyy.chatdata.engine.analysis;
  */
 public interface NarrativeSource {
 
-    String narrate(String prompt, String userId, String sessionId);
+    /**
+     * @return 结论文本（可能为 null 表示模型没给）+ 本次调用消耗的 token
+     */
+    com.liusongboyy.chatdata.engine.agent.Generated<String> narrate(
+            String prompt, String userId, String sessionId);
 }

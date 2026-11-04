@@ -5,6 +5,8 @@ import com.liusongboyy.chatdata.engine.agent.AskDeniedException;
 import com.liusongboyy.chatdata.engine.agent.DslGenerationException;
 import com.liusongboyy.chatdata.engine.agent.DslSource;
 import com.liusongboyy.chatdata.engine.agent.EngineNotConfiguredException;
+import com.liusongboyy.chatdata.engine.agent.Generated;
+import com.liusongboyy.chatdata.engine.agent.TokenUsage;
 import com.liusongboyy.chatdata.engine.agent.PromptAssembler;
 import com.liusongboyy.chatdata.engine.audit.AskAuditOutcome;
 import com.liusongboyy.chatdata.engine.audit.AskAuditRecord;
@@ -61,13 +63,23 @@ public class AskService implements AskFacade {
     private final AskAuditRecorder auditRecorder;
     /** 分析编排；为 null 表示这个域/环境不支持（例如模型未配置）。 */
     private final AnalysisService analysisService;
+    /**
+     * 本域实际使用的模型键，写进审计。
+     *
+     * <p>解析发生在 {@link AskServiceFactory}（那里才知道域绑了什么、默认是什么），
+     * 服务层只负责把它记下来。<b>不在这里重新解析</b>——两处各解析一遍，
+     * 迟早会出现「审计记的模型」与「实际调的模型」不一致，而那种错只有对账时才发现。
+     *
+     * <p>可为 null：老配置回落到 yml 的模型时没有 key。
+     */
+    private final String modelKey;
 
     public AskService(SemanticModel model,
                       SqlDialect dialect,
                       DslSource dslSource,
                       SqlExecutor sqlExecutor,
                       AskAuditRecorder auditRecorder) {
-        this(model, dialect, dslSource, sqlExecutor, auditRecorder, null);
+        this(model, dialect, dslSource, sqlExecutor, auditRecorder, null, null);
     }
 
     public AskService(SemanticModel model,
@@ -76,12 +88,26 @@ public class AskService implements AskFacade {
                       SqlExecutor sqlExecutor,
                       AskAuditRecorder auditRecorder,
                       AnalysisService analysisService) {
+        this(model, dialect, dslSource, sqlExecutor, auditRecorder, analysisService, null);
+    }
+
+    /**
+     * @param modelKey 本域实际使用的模型键，写进审计；null 表示回落到了 yml 配置（没有 key）
+     */
+    public AskService(SemanticModel model,
+                      SqlDialect dialect,
+                      DslSource dslSource,
+                      SqlExecutor sqlExecutor,
+                      AskAuditRecorder auditRecorder,
+                      AnalysisService analysisService,
+                      String modelKey) {
         this.model = model;
         this.dialect = dialect;
         this.dslSource = dslSource;
         this.sqlExecutor = sqlExecutor;
         this.auditRecorder = auditRecorder == null ? AskAuditRecorder.NOOP : auditRecorder;
         this.analysisService = analysisService;
+        this.modelKey = modelKey;
     }
 
     @Override
@@ -170,7 +196,8 @@ public class AskService implements AskFacade {
      */
     public AskResult recompute(AskDsl dsl, AskRequest request) {
         return run(request, AskProgressListener.NOOP,
-                (req, decision, today, progress) -> renderGiven(dsl, decision, today, progress));
+                (req, decision, today, progress, usage) ->
+                        renderGiven(dsl, decision, today, progress, usage));
     }
 
     /**
@@ -182,7 +209,31 @@ public class AskService implements AskFacade {
     @FunctionalInterface
     private interface DslStage {
         Rendered obtain(AskRequest request, PermissionDecision decision, LocalDate today,
-                        AskProgressListener progress);
+                        AskProgressListener progress, UsageMeter usage);
+    }
+
+    /**
+     * 请求内的 token 累加器。
+     *
+     * <p><b>一次提问可能调多次模型</b>：约束缺失时重问一次、渲染失败时再重问一次。
+     * 只记最后一次的用量会系统性低估成本，而低估的部分恰好落在
+     * "这个域老是重问"这种最该被看见的场景上。
+     *
+     * <p>它只是请求内的局部变量（在 {@link #run} 里新建），不是字段——
+     * 做成字段会在并发提问下互相覆盖，而那种错是静默的。
+     */
+    private static final class UsageMeter {
+        private TokenUsage total = TokenUsage.UNKNOWN;
+
+        void add(Generated<?> generated) {
+            if (generated != null) {
+                total = total.plus(generated.usage());
+            }
+        }
+
+        TokenUsage total() {
+            return total;
+        }
     }
 
     /** 共用主干：权限 → 取 DSL 并渲染 → 执行 → 审计。 */
@@ -197,6 +248,7 @@ public class AskService implements AskFacade {
         // 失败时审计要能记下"当时用的是哪份 DSL / SQL"，故在主干里持有
         AskDsl dsl = null;
         RenderedSql rendered = null;
+        UsageMeter usage = new UsageMeter();
 
         try {
             // ① 权限判定 —— **两条链路都在最前**，在任何模型调用与渲染之前。
@@ -205,7 +257,7 @@ public class AskService implements AskFacade {
             PermissionDecision decision = AskPermissions.require(model.domain(), request);
 
             // ② 取 DSL 并渲染
-            Rendered obtained = stage.obtain(request, decision, today, progress);
+            Rendered obtained = stage.obtain(request, decision, today, progress, usage);
             dsl = obtained.dsl();
             rendered = obtained.sql();
 
@@ -223,18 +275,19 @@ public class AskService implements AskFacade {
                     null,   // 建模模式没有"只说不用查"的答复：它的契约是产出 DSL
                     com.liusongboyy.chatdata.engine.semantic.Domain.Mode.MODELED);
 
-            record(request, dsl, rendered, result.rowCount(), duration, AskAuditOutcome.SUCCESS, null);
+            record(request, dsl, rendered, result.rowCount(), duration, AskAuditOutcome.SUCCESS,
+                    null, usage.total());
             return askResult;
 
         } catch (AskDeniedException e) {
             // 拒绝单独记一类：审计里"被拒绝"与"查了但没数据"必须可区分（ADR-0002）
             record(request, dsl, rendered, null, System.currentTimeMillis() - t0,
-                    AskAuditOutcome.BLOCKED, e.reason().name());
+                    AskAuditOutcome.BLOCKED, e.reason().name(), usage.total());
             throw e;
 
         } catch (NotUnderstoodException e) {
             record(request, dsl, rendered, null, System.currentTimeMillis() - t0,
-                    AskAuditOutcome.FAILURE, AskEvent.FailureCode.NOT_UNDERSTOOD);
+                    AskAuditOutcome.FAILURE, AskEvent.FailureCode.NOT_UNDERSTOOD, usage.total());
             throw e;
 
         } catch (DslGenerationException | SemanticException
@@ -251,7 +304,8 @@ public class AskService implements AskFacade {
                 log.warn("问数失败：user={} question={} 原因={}",
                         request.username(), abbreviate(request.question()), e.getMessage());
             }
-            record(request, dsl, rendered, null, duration, AskAuditOutcome.FAILURE, e.getMessage());
+            record(request, dsl, rendered, null, duration, AskAuditOutcome.FAILURE,
+                    e.getMessage(), usage.total());
             throw e;
 
         } catch (RuntimeException e) {
@@ -262,17 +316,18 @@ public class AskService implements AskFacade {
                     request.username(), abbreviate(request.question()),
                     e.getClass().getSimpleName(), e.getMessage());
             record(request, dsl, rendered, null, System.currentTimeMillis() - t0,
-                    AskAuditOutcome.FAILURE, e.getMessage());
+                    AskAuditOutcome.FAILURE, e.getMessage(), usage.total());
             throw e;
         }
     }
 
     /** 生成链路：让模型产出 DSL，失败时带纠正提示重试一次。 */
     private Rendered generateStage(AskRequest request, PermissionDecision decision,
-                                   LocalDate today, AskProgressListener progress) {
+                                   LocalDate today, AskProgressListener progress,
+                                   UsageMeter usage) {
         progress.onStage(AskEvent.Stage.GENERATING_DSL);
         String sysPrompt = PromptAssembler.assemble(model);
-        AskDsl dsl = generate(request, sysPrompt);
+        AskDsl dsl = generate(request, sysPrompt, usage);
 
         if (dsl.isEmpty()) {
             // **不是"查询无数据"**，而是"没听懂"。两者必须分开，
@@ -284,10 +339,10 @@ public class AskService implements AskFacade {
         // **语义完整性校验必须在渲染之前。**
         // 一个漏了约束的 DSL 是**能渲染成功**的——它会安静地变成一次全量查询，
         // 数字看着正常，只是错的。等渲染完再查就晚了
-        dsl = reaskIfConstraintsMissing(request, sysPrompt, dsl, today);
+        dsl = reaskIfConstraintsMissing(request, sysPrompt, dsl, today, usage);
 
         progress.onStage(AskEvent.Stage.RENDERING_SQL);
-        return renderWithRetry(request, sysPrompt, dsl, decision, today);
+        return renderWithRetry(request, sysPrompt, dsl, decision, today, usage);
     }
 
     /**
@@ -307,7 +362,7 @@ public class AskService implements AskFacade {
      * 那时把漏的东西留在界面上让用户自己看见（「我理解成了」）。
      */
     private AskDsl reaskIfConstraintsMissing(AskRequest request, String sysPrompt,
-                                            AskDsl dsl, LocalDate today) {
+                                            AskDsl dsl, LocalDate today, UsageMeter usage) {
         List<String> missing = ConstraintCheck.findMissing(request.question(), dsl, model, today);
         if (missing.isEmpty()) {
             return dsl;
@@ -327,7 +382,7 @@ public class AskService implements AskFacade {
                 少一个条件，答案就是错的，而且**不会报错**——所以不要因为不确定就省略。
                 """.formatted(String.join("\n", missing.stream().map(m -> "- " + m).toList()));
 
-        AskDsl retry = generate(request, corrected);
+        AskDsl retry = generate(request, corrected, usage);
         // 重问反而什么都没解析出来时，保留第一次的：至少它还能渲染出一个结果，
         // 而不是把"约束不全"升级成"完全查不了"
         return retry.isEmpty() ? dsl : retry;
@@ -346,10 +401,13 @@ public class AskService implements AskFacade {
      * 用户反复重试、运维看不到"去配密钥"这个真实信号，而且这条失败
      * **连审计都进不去**（它没落到 {@link #run} 的任何 catch 分支上）。
      */
-    private AskDsl generate(AskRequest request, String sysPrompt) {
+    private AskDsl generate(AskRequest request, String sysPrompt, UsageMeter usage) {
         try {
-            return dslSource.generate(request.question(), sysPrompt,
+            Generated<AskDsl> generated = dslSource.generate(request.question(), sysPrompt,
                     request.userId(), request.sessionId());
+            // 先记账再取值：解析在 dslSource 内部完成，走到这里说明调用已经发生了
+            usage.add(generated);
+            return generated.value();
         } catch (BeansException e) {
             throw new EngineNotConfiguredException(
                     "问数引擎的模型未配置成功：" + rootMessage(e)
@@ -372,7 +430,7 @@ public class AskService implements AskFacade {
 
     /** 重算链路：DSL 已给定，直接渲染。 */
     private Rendered renderGiven(AskDsl dsl, PermissionDecision decision, LocalDate today,
-                                 AskProgressListener progress) {
+                                 AskProgressListener progress, UsageMeter usage) {
         if (dsl == null || dsl.isEmpty()) {
             // 空 DSL 渲染不出任何东西。归到"没听懂"而不是抛 IllegalArgumentException——
             // 前者有明确的用户提示与审计分类，后者只会变成一句"处理失败"
@@ -409,7 +467,7 @@ public class AskService implements AskFacade {
      */
     private Rendered renderWithRetry(AskRequest request, String sysPrompt,
                                      AskDsl firstAttempt, PermissionDecision decision,
-                                     LocalDate today) {
+                                     LocalDate today, UsageMeter usage) {
         try {
             return new Rendered(firstAttempt,
                     AskSqlRenderer.render(firstAttempt, model, dialect, decision, today));
@@ -433,7 +491,7 @@ public class AskService implements AskFacade {
                     可用的字段名：%s
                     """.formatted(e.getMessage(), String.join("、", model.availableFieldNames()));
 
-            AskDsl retry = generate(request, corrected);
+            AskDsl retry = generate(request, corrected, usage);
 
             // **重试也要判空。**首次尝试在 generateStage 里判过了，这一处曾经漏掉：
             // 模型被纠正提示绕晕、什么都没解析出来时，空 DSL 会直接进渲染器，
@@ -451,9 +509,11 @@ public class AskService implements AskFacade {
 
     /** 写审计。委托给 {@link AskAuditWriter}——与直连模式共用同一套记录装配。 */
     private void record(AskRequest request, AskDsl dsl, RenderedSql rendered,
-                        Integer rowCount, long duration, AskAuditOutcome outcome, String errorMessage) {
+                        Integer rowCount, long duration, AskAuditOutcome outcome,
+                        String errorMessage, TokenUsage usage) {
         AskAuditWriter.write(auditRecorder, request, model.domain().id(), dsl,
-                rendered == null ? null : rendered.sql(), rowCount, duration, outcome, errorMessage);
+                rendered == null ? null : rendered.sql(), rowCount, duration, outcome,
+                errorMessage, modelKey, usage);
     }
 
     private static String abbreviate(String s) {

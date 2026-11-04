@@ -362,8 +362,14 @@ public class ModelService {
         all();
     }
 
-    /** 仅测试用：注入固定列表，绕开数据库。 */
-    static ModelService forTest(List<ModelDef> fixed, PasswordCipher cipher) {
+    /**
+     * 仅测试用：注入固定列表，绕开数据库。
+     *
+     * <p>public 是因为别的模块（如 {@code chatdata-query-service} 的成本看板测试）
+     * 需要一个不连库的 ModelService。为此单独造一个接口不值得——
+     * 它只做一件事：把 cached 填上。
+     */
+    public static ModelService forTest(List<ModelDef> fixed, PasswordCipher cipher) {
         ModelService s = new ModelService(null, cipher, null);
         s.cached = fixed;
         return s;

@@ -74,7 +74,8 @@ public class AskEngine {
 
         // ② 生成 DSL
         String sysPrompt = PromptAssembler.assemble(model);
-        AskDsl dsl = dslGenerator.generate(question, sysPrompt, userId, sessionId);
+        // 这条路只产出 SQL，不写审计，故 usage 丢弃（getUsage 的采集归 AskService）
+        AskDsl dsl = dslGenerator.generate(question, sysPrompt, userId, sessionId).value();
 
         if (dsl.isEmpty()) {
             // 模型什么都没解析出来。这**不是**"查询无数据"，而是"没听懂"——

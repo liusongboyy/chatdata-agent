@@ -498,6 +498,74 @@ export async function healthOverview(days = 7): Promise<HealthOverview> {
   )).data
 }
 
+// ── 成本看板 ──
+
+/**
+ * 一个分组的成本统计。
+ *
+ * `amount` 为 null 表示**一条都算不出钱**——模型没配单价，或这期间的记录没有 token。
+ * 不要用 0 代替：0 元是"免费"，而这里是"不知道"，两者会让管理员得出相反的结论。
+ */
+export interface CostRow {
+  key: string
+  label: string
+  asks: number
+  /** 能算出费用的提问数。与 asks 的差就是"没配单价或没采到 token" */
+  pricedAsks: number
+  amount: number | null
+  inputTokens: number
+  cachedTokens: number
+  outputTokens: number
+  /** 0–100；没有输入 token 时为 null */
+  cacheHitRate: number | null
+  /** 部分记录算不出钱。前端要据此显示「部分未计价」而不是假装金额完整 */
+  partial: boolean
+  /** 有提问但一条都算不出——多半是没配单价 */
+  unpriced: boolean
+}
+
+export interface CostTotals {
+  asks: number
+  pricedAsks: number
+  amount: number | null
+  /** 单次均价；pricedAsks 为 0 时 null */
+  avgPerAsk: number | null
+  inputTokens: number
+  cachedTokens: number
+  outputTokens: number
+  cacheHitRate: number | null
+}
+
+export interface CostUserRow {
+  username: string
+  asks: number
+  pricedAsks: number
+  amount: number | null
+  topModelKey: string | null
+}
+
+export interface CostReport {
+  days: number
+  total: CostTotals
+  byModel: CostRow[]
+  byDomain: CostRow[]
+  /** 非管理员时为空数组——服务端裁剪，不是前端隐藏 */
+  byUser: CostUserRow[]
+  notice: string | null
+}
+
+/**
+ * 成本看板。
+ *
+ * 默认 30 天：**比健康度页的 7 天更长**——成本核算按月看，
+ * 7 天的样本不足以看出趋势。
+ */
+export async function costReport(days = 30): Promise<CostReport> {
+  return (await get<Envelope<CostReport>>(
+    `/api/engine/admin/health/cost?days=${days}`,
+  )).data
+}
+
 // ── 建模覆盖度 ──
 
 /** 违规的严重度。红色是真正的错误，黄色是建模建议。 */

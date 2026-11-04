@@ -7,6 +7,7 @@ import {
   type HealthOverview,
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
+import CostPanel from './CostPanel.vue'
 import QualityPanel from './QualityPanel.vue'
 
 /**
@@ -30,7 +31,7 @@ const days = ref(7)
  *
  * 两个视图回答的是同一类问题（这个系统好不好），分开放反而要来回切。
  */
-const tab = ref<'overview' | 'quality'>('overview')
+const tab = ref<'overview' | 'quality' | 'cost'>('overview')
 
 onMounted(load)
 
@@ -125,11 +126,20 @@ function coverageTone(d: DomainHealth): string {
       >
         质量分析
       </button>
+      <button
+        type="button"
+        class="tab"
+        :class="{ active: tab === 'cost' }"
+        @click="tab = 'cost'"
+      >
+        成本
+      </button>
     </nav>
 
     <QualityPanel v-if="tab === 'quality'" />
+    <CostPanel v-else-if="tab === 'cost'" />
 
-    <template v-else>
+    <template v-else-if="tab === 'overview'">
     <div v-if="loading" class="note">加载中…</div>
     <p v-else-if="error" class="note note-danger">{{ error }}</p>
 

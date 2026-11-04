@@ -2,6 +2,9 @@ package com.liusongboyy.chatdata.engine.chat;
 
 import com.liusongboyy.chatdata.engine.agent.AskDeniedException;
 import com.liusongboyy.chatdata.engine.agent.EngineNotConfiguredException;
+import com.liusongboyy.chatdata.engine.agent.Generated;
+import com.liusongboyy.chatdata.engine.agent.TokenUsage;
+import com.liusongboyy.chatdata.engine.agent.UsageCollector;
 import com.liusongboyy.chatdata.engine.audit.AskAuditOutcome;
 import com.liusongboyy.chatdata.engine.audit.AskAuditRecorder;
 import com.liusongboyy.chatdata.engine.datasource.DatasourceResolver;
@@ -79,16 +82,28 @@ public final class RawAskService implements AskFacade {
     private final AskAuditRecorder auditRecorder;
     /** 该域的范例库（已按 enabled 过滤）。为空表示没有范例，那就少一块提示。 */
     private final List<SqlExample> sqlExamples;
+    /** 本域实际使用的模型键，写进审计；null 表示回落到了 yml 配置。 */
+    private final String modelKey;
 
     public RawAskService(Domain domain, Model model, DatasourceResolver datasources,
                          RawSchemaBuilder schemas, AskAuditRecorder auditRecorder,
                          List<SqlExample> sqlExamples) {
+        this(domain, model, datasources, schemas, auditRecorder, sqlExamples, null);
+    }
+
+    /**
+     * @param modelKey 本域实际使用的模型键，写进审计；null 表示回落到了 yml 配置
+     */
+    public RawAskService(Domain domain, Model model, DatasourceResolver datasources,
+                         RawSchemaBuilder schemas, AskAuditRecorder auditRecorder,
+                         List<SqlExample> sqlExamples, String modelKey) {
         this.domain = domain;
         this.model = model;
         this.datasources = datasources;
         this.schemas = schemas;
         this.auditRecorder = auditRecorder == null ? AskAuditRecorder.NOOP : auditRecorder;
         this.sqlExamples = sqlExamples == null ? List.of() : List.copyOf(sqlExamples);
+        this.modelKey = modelKey;
     }
 
     @Override
@@ -118,6 +133,9 @@ public final class RawAskService implements AskFacade {
     private AskResult doAsk(AskRequest request, AskProgressListener progress) {
         long t0 = System.currentTimeMillis();
         String sql = null;
+        // 直连模式是 ReAct 循环，每轮都计费。这里累计整轮的消耗，
+        // 而不是只取最终回复上的那一轮
+        TokenUsage usage = TokenUsage.UNKNOWN;
 
         try {
             // ① 权限判定 —— **与建模模式共用同一个闸门**。
@@ -140,7 +158,9 @@ public final class RawAskService implements AskFacade {
                     MAX_ROWS, TIMEOUT_SECONDS, Set.copyOf(tables));
             String schema = schemas.describe(domain.datasourceId(), tables);
 
-            Msg reply = runAgent(request, tools, schema, tables);
+            Generated<Msg> produced = runAgent(request, tools, schema, tables);
+            Msg reply = produced.value();
+            usage = produced.usage();
             log.debug("直连模式模型回复长度={}", reply == null ? -1 : reply.getTextContent().length());
 
             // ③ 模型没有查库 —— 那它必须给出了一段文字答复，否则就是真的没听懂。
@@ -171,7 +191,7 @@ public final class RawAskService implements AskFacade {
                         Domain.Mode.RAW);
 
                 AskAuditWriter.write(auditRecorder, request, domain.id(), null, null,
-                        null, textDuration, AskAuditOutcome.SUCCESS, null);
+                        null, textDuration, AskAuditOutcome.SUCCESS, null, modelKey, usage);
                 return textOnly;
             }
             sql = tools.lastSql();
@@ -193,18 +213,19 @@ public final class RawAskService implements AskFacade {
                     Domain.Mode.RAW);
 
             AskAuditWriter.write(auditRecorder, request, domain.id(), null, sql,
-                    result.rowCount(), duration, AskAuditOutcome.SUCCESS, null);
+                    result.rowCount(), duration, AskAuditOutcome.SUCCESS, null, modelKey, usage);
             return askResult;
 
         } catch (AskDeniedException e) {
             AskAuditWriter.write(auditRecorder, request, domain.id(), null, sql,
-                    null, System.currentTimeMillis() - t0, AskAuditOutcome.BLOCKED, e.reason().name());
+                    null, System.currentTimeMillis() - t0, AskAuditOutcome.BLOCKED, e.reason().name(),
+                    modelKey, usage);
             throw e;
 
         } catch (AskService.NotUnderstoodException e) {
             AskAuditWriter.write(auditRecorder, request, domain.id(), null, sql,
                     null, System.currentTimeMillis() - t0, AskAuditOutcome.FAILURE,
-                    AskEvent.FailureCode.NOT_UNDERSTOOD);
+                    AskEvent.FailureCode.NOT_UNDERSTOOD, modelKey, usage);
             throw e;
 
         } catch (RuntimeException e) {
@@ -213,7 +234,8 @@ public final class RawAskService implements AskFacade {
             log.warn("直连模式问数失败：user={} question={} 原因={}",
                     request.username(), request.question(), e.getMessage());
             AskAuditWriter.write(auditRecorder, request, domain.id(), null, sql,
-                    null, System.currentTimeMillis() - t0, AskAuditOutcome.FAILURE, e.getMessage());
+                    null, System.currentTimeMillis() - t0, AskAuditOutcome.FAILURE, e.getMessage(),
+                    modelKey, usage);
             throw e;
         }
     }
@@ -226,7 +248,8 @@ public final class RawAskService implements AskFacade {
      * {@link EngineNotConfiguredException}，否则用户会看到一句误导的
      * "处理失败，请稍后重试"——重试永远不会成功。
      */
-    private Msg runAgent(AskRequest request, SqlTools tools, String schema, List<String> tables) {
+    private Generated<Msg> runAgent(AskRequest request, SqlTools tools, String schema,
+                                    List<String> tables) {
         Toolkit toolkit = new Toolkit();
         toolkit.registerTool(tools);
 
@@ -252,7 +275,9 @@ public final class RawAskService implements AskFacade {
                 .userId(request.userId())
                 .sessionId(request.sessionId())
                 .build();
-        return agent.call(List.of(new UserMessage(request.question())), ctx).block();
+        // 走 streamEvents 而不是 call：ReAct 循环每一轮都要计费，
+        // 而 call 的返回消息上只有最后一轮的 usage
+        return UsageCollector.run(agent, List.of(new UserMessage(request.question())), ctx);
     }
 
     private static String rootMessage(Throwable e) {

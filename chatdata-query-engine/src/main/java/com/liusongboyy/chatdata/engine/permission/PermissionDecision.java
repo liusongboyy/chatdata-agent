@@ -48,7 +48,15 @@ public sealed interface PermissionDecision {
         /** 有域访问权，但没有任何可确定的行范围（本项目新增的拒绝类型，厂商此处是放行） */
         NO_ROW_SCOPE,
         /** 行规则无法求值（如动态变量取不到）。厂商此处跳过规则并放行 */
-        RULE_NOT_EVALUABLE
+        RULE_NOT_EVALUABLE,
+        /**
+         * 请求的模型不可用：不存在、已停用、超出角色白名单，或被域绑定限制。
+         *
+         * <p><b>与数据权限分开单列。</b>两者都表现为"不能用"，但处理方式完全不同：
+         * 数据权限要找管理员开权限，模型问题只要换一个模型重试即可。
+         * 混成一类，用户会被引导去做一件没有用的事。
+         */
+        MODEL_NOT_ALLOWED
     }
 
     default boolean isAllowed() {

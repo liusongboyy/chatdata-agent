@@ -42,8 +42,8 @@ public final class AnalysisPlanGenerator implements AnalysisPlanSource {
     }
 
     @Override
-    public AnalysisPlan generatePlan(String question, String sysPrompt,
-                                     String userId, String sessionId) {
+    public Generated<AnalysisPlan> generatePlan(String question, String sysPrompt,
+                                                String userId, String sessionId) {
         ReActAgent.Builder builder = ReActAgent.builder()
                 .name("analysis-planner")
                 .sysPrompt(sysPrompt)
@@ -61,7 +61,9 @@ public final class AnalysisPlanGenerator implements AnalysisPlanSource {
                 .sessionId(sessionId)
                 .build();
 
-        Msg reply = builder.build().call(List.of(new UserMessage(question)), schema, ctx).block();
+        Generated<Msg> produced = UsageCollector.run(
+                builder.build(), List.of(new UserMessage(question)), ctx);
+        Msg reply = produced.value();
         if (reply == null) {
             throw new DslGenerationException("模型没有返回分析计划");
         }
@@ -69,6 +71,6 @@ public final class AnalysisPlanGenerator implements AnalysisPlanSource {
         if (json == null || json.isBlank()) {
             throw new DslGenerationException("模型返回的分析计划为空");
         }
-        return AnalysisPlanParser.parse(json, question);
+        return new Generated<>(AnalysisPlanParser.parse(json, question), produced.usage());
     }
 }

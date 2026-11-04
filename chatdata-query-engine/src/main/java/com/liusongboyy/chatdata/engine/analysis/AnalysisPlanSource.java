@@ -5,6 +5,9 @@ package com.liusongboyy.chatdata.engine.analysis;
  * 但**入参语义相同**（问题 + 域描述 + 会话标识）。
  *
  * <p>实现走同一个模型与同一套"手写 schema"路径，理由见 {@code AskDslSchema}。
+ *
+ * <p>返回值带 token 消耗，理由与 {@code DslSource} 相同：模型调用的用量只在
+ * 回复消息上存在一次，不随返回值带出来就永远采不到了。
  */
 public interface AnalysisPlanSource {
 
@@ -14,5 +17,6 @@ public interface AnalysisPlanSource {
      * @param userId    会话隔离
      * @param sessionId 会话隔离
      */
-    AnalysisPlan generatePlan(String question, String sysPrompt, String userId, String sessionId);
+    com.liusongboyy.chatdata.engine.agent.Generated<AnalysisPlan> generatePlan(
+            String question, String sysPrompt, String userId, String sessionId);
 }

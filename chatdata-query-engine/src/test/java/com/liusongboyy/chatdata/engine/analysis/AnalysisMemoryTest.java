@@ -195,7 +195,7 @@ class AnalysisMemoryTest {
                 executor(), null,
                 (q, sysPrompt, u, s) -> {
                     prompts.add(sysPrompt);
-                    return plan();
+                    return com.liusongboyy.chatdata.engine.agent.Generated.of(plan());
                 },
                 null, store);
 

@@ -32,6 +32,18 @@ import java.time.LocalDateTime;
  *                     **提问列表查 {@code step_no IS NULL}**，天然向后兼容
  * @param planJson     分析计划原文；仅主记录有
  * @param narrative    合成结论；仅主记录有
+ * @param modelKey     实际使用的模型键；为空表示没采到（老数据或回落到了 yml 配置）。
+ *                     **审计里存 key 而不是模型名**——模型名会变（供应商升级同名模型），
+ *                     而成本统计要跨时间对得上
+ * @param inputTokens  输入 token。**已包含 {@code cachedTokens}**，不能相加
+ * @param outputTokens 输出 token。**已包含 {@code reasoningTokens}**，不能相加
+ * @param cachedTokens 缓存命中的输入，是 {@code inputTokens} 的子集
+ * @param cacheCreationTokens 写缓存的消耗（部分供应商单独计费）
+ * @param reasoningTokens     推理 token，是 {@code outputTokens} 的子集
+ *
+ * <p><b>六个计量字段全部允许为 null。</b>null 是"没采到"，0 是"确实没消耗"——
+ * 成本看板靠这个区分「免费」与「不知道」。写成 0 会让一批本该被看见的消耗
+ * 变成"零成本"。
  */
 public record AskAuditRecord(
         String username,
@@ -49,7 +61,13 @@ public record AskAuditRecord(
         String batchId,
         Integer stepNo,
         String planJson,
-        String narrative
+        String narrative,
+        String modelKey,
+        Integer inputTokens,
+        Integer outputTokens,
+        Integer cachedTokens,
+        Integer cacheCreationTokens,
+        Integer reasoningTokens
 ) {
 
     /** 兼容构造器：单查询与直连模式不涉及编排。 */
@@ -58,7 +76,23 @@ public record AskAuditRecord(
                           long durationMs, AskAuditOutcome outcome, String errorMessage,
                           LocalDateTime createdAt) {
         this(username, roles, question, assistantId, domainId, dslJson, sqlText, rowCount,
-                durationMs, outcome, errorMessage, createdAt, null, null, null, null);
+                durationMs, outcome, errorMessage, createdAt, null, null, null, null,
+                null, null, null, null, null, null);
+    }
+
+    /**
+     * 兼容构造器：不采集 token 的记录（权限拒绝、生成失败等拿不到 usage 的路径）。
+     *
+     * <p>意图是"这次没采到"，与"这次消耗为 0"不同，故六个计量字段留 null。
+     */
+    public AskAuditRecord(String username, String roles, String question, String assistantId,
+                          String domainId, String dslJson, String sqlText, Integer rowCount,
+                          long durationMs, AskAuditOutcome outcome, String errorMessage,
+                          LocalDateTime createdAt, String batchId, Integer stepNo,
+                          String planJson, String narrative) {
+        this(username, roles, question, assistantId, domainId, dslJson, sqlText, rowCount,
+                durationMs, outcome, errorMessage, createdAt, batchId, stepNo, planJson,
+                narrative, null, null, null, null, null, null);
     }
 
     /** 数据库里 error_message 是 VARCHAR(512)，超出会被截断或报错——在这里先截好。 */

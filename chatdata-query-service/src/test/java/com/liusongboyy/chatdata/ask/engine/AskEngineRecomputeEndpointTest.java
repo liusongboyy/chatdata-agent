@@ -195,7 +195,7 @@ class AskEngineRecomputeEndpointTest {
 
         private void ask(String assistantId) {
             loggedInAs("u1");
-            lenient().when(serviceFactory.forAssistant(eq(assistantId), any(), any()))
+            lenient().when(serviceFactory.forAssistant(eq(assistantId), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class)))
                     .thenReturn(askService);
             lenient().when(askService.askStreaming(any(), any())).thenReturn(sampleResult());
 
@@ -287,7 +287,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("★ 成功：返回体与 SSE 的 result 事件同一个形状，且带上理解回显与 DSL")
     void successPayloadShape() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenReturn(sampleResult());
 
         ResponseEntity<?> response = controller.recompute(body(), request);
@@ -309,7 +309,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("★ 载荷能被 Jackson 序列化 —— 否则前端拿到的是 500 而不是结果")
     void payloadIsSerializable() throws Exception {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenReturn(sampleResult());
 
         String json = M.writeValueAsString(controller.recompute(body(), request).getBody());
@@ -325,7 +325,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("★ 审计里的问题带「重算」前缀 —— 否则同一个问题在审计里无法区分来源")
     void auditQuestionIsMarked() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenReturn(sampleResult());
 
         controller.recompute(body(), request);
@@ -344,7 +344,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("权限拒绝 → 403，不是 200 + blocked:true（ADR-0002 那个坑）")
     void deniedMapsTo403() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenThrow(new AskDeniedException(
                 PermissionDecision.Reason.DOMAIN_NOT_GRANTED, "您没有该数据域的访问权限"));
 
@@ -359,7 +359,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("没听懂 → 400，且消息是给用户看的")
     void notUnderstoodMapsTo400() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenThrow(
                 new AskService.NotUnderstoodException("这次重算没有可用的查询条件，请重新提问"));
 
@@ -373,7 +373,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("语义配置问题 → 400，但**不把内部细节给用户**")
     void semanticErrorHidesInternals() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenThrow(new SemanticException(
                 SemanticException.Reason.FIELD_NOT_FOUND, "本数据域内找不到字段「秘密列」"));
 
@@ -389,7 +389,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("执行失败 → 500，SQL 报错原文不进响应（可能含表名列名）")
     void executionFailureHidesSqlDetail() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenThrow(
                 new SqlExecutor.SqlExecutionException("Unknown column 'ins_policy.secret' in 'field list'"));
 
@@ -405,7 +405,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("问的域不存在 → 走同一条错误映射，不抛到容器变成 500 白页")
     void unknownDomainIsMapped() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenThrow(new SemanticException(
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenThrow(new SemanticException(
                 SemanticException.Reason.INVALID_TABLE_DEFINITION, "数据域 id=99 不存在"));
 
         assertThat(controller.recompute(body(), request).getStatusCode())
@@ -416,7 +416,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("★ 助理 id 进审计 —— 否则「这次走哪个助理」永远查不到")
     void assistantIdReachesAudit() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(eq("2"), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(eq("2"), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenReturn(sampleResult());
 
         controller.recompute(new AskEngineStreamController.RecomputeBody(
@@ -434,7 +434,7 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("会话 id 原样传给引擎 —— 重算属于同一段对话")
     void sessionIdIsForwarded() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(any(), any(), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(any(), any(), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenReturn(sampleResult());
 
         controller.recompute(new AskEngineStreamController.RecomputeBody(
@@ -452,12 +452,12 @@ class AskEngineRecomputeEndpointTest {
     @DisplayName("助理与域原样下传 —— 重算必须落在同一个域上")
     void assistantAndDomainAreForwarded() {
         loggedInAs("u1");
-        when(serviceFactory.forAssistant(eq("7"), eq("d9"), any())).thenReturn(askService);
+        when(serviceFactory.forAssistant(eq("7"), eq("d9"), any(), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(askService);
         when(askService.recompute(any(), any())).thenReturn(sampleResult());
 
         controller.recompute(new AskEngineStreamController.RecomputeBody(
                 "q", "d9", "s1", "7", dslMap()), request);
 
-        org.mockito.Mockito.verify(serviceFactory).forAssistant(eq("7"), eq("d9"), any());
+        org.mockito.Mockito.verify(serviceFactory).forAssistant(eq("7"), eq("d9"), any(), org.mockito.ArgumentMatchers.nullable(String.class));
     }
 }

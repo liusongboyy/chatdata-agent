@@ -26,7 +26,7 @@ public final class NarrativeGenerator implements NarrativeSource {
     }
 
     @Override
-    public String narrate(String prompt, String userId, String sessionId) {
+    public Generated<String> narrate(String prompt, String userId, String sessionId) {
         ReActAgent agent = ReActAgent.builder()
                 .name("narrative")
                 .sysPrompt(SYS)
@@ -43,11 +43,16 @@ public final class NarrativeGenerator implements NarrativeSource {
         // 「Hooks must not inject SYSTEM messages into PreCallEvent.inputMessages」。
         // 这个错误此前是静默的——异常被 AnalysisService 吞掉、退回确定性文本，
         // 所以"模型写结论"看似一直正常，实际从未成功过一次。
-        Msg reply = agent.call(List.of(new UserMessage(prompt)), ctx).block();
+        Generated<Msg> produced = UsageCollector.run(
+                agent, List.of(new UserMessage(prompt)), ctx);
+        Msg reply = produced.value();
         if (reply == null) {
-            return null;
+            // agent 没产出结果，但调用可能已经发生——按采到的算
+            return new Generated<>(null, produced.usage());
         }
         String text = reply.getTextContent();
-        return (text == null || text.isBlank()) ? null : text.trim();
+        // usage 与文本一起返回：哪怕文本为空，这次调用也已经花出去了
+        return new Generated<>(
+                (text == null || text.isBlank()) ? null : text.trim(), produced.usage());
     }
 }

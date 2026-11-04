@@ -1,6 +1,8 @@
 package com.liusongboyy.chatdata.engine.chat;
 
 import com.liusongboyy.chatdata.engine.agent.DslGenerationException;
+import com.liusongboyy.chatdata.engine.agent.Generated;
+import com.liusongboyy.chatdata.engine.agent.TokenUsage;
 import com.liusongboyy.chatdata.engine.agent.PromptAssembler;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisExecutor;
 import com.liusongboyy.chatdata.engine.analysis.AnalysisPlan;
@@ -53,6 +55,8 @@ public final class AnalysisService {
     private final NarrativeSource narrativeSource;
     /** 上一轮分析记忆的存取；null 表示不做多轮记忆。 */
     private final io.agentscope.core.state.AgentStateStore memoryStore;
+    /** 本域实际使用的模型键，写进审计；null 表示回落到了 yml 配置。 */
+    private final String modelKey;
 
     public AnalysisService(SemanticModel model, SqlDialect dialect, SqlExecutor sqlExecutor,
                            AskAuditRecorder auditRecorder,
@@ -64,6 +68,18 @@ public final class AnalysisService {
                            AskAuditRecorder auditRecorder,
                            AnalysisPlanSource planSource, NarrativeSource narrativeSource,
                            io.agentscope.core.state.AgentStateStore memoryStore) {
+        this(model, dialect, sqlExecutor, auditRecorder, planSource, narrativeSource,
+                memoryStore, null);
+    }
+
+    /**
+     * @param modelKey 本域实际使用的模型键，写进审计；null 表示回落到了 yml 配置
+     */
+    public AnalysisService(SemanticModel model, SqlDialect dialect, SqlExecutor sqlExecutor,
+                           AskAuditRecorder auditRecorder,
+                           AnalysisPlanSource planSource, NarrativeSource narrativeSource,
+                           io.agentscope.core.state.AgentStateStore memoryStore,
+                           String modelKey) {
         this.model = model;
         this.dialect = dialect;
         this.sqlExecutor = sqlExecutor;
@@ -71,6 +87,7 @@ public final class AnalysisService {
         this.planSource = planSource;
         this.narrativeSource = narrativeSource;
         this.memoryStore = memoryStore;
+        this.modelKey = modelKey;
     }
 
     /** 能否做分析。没有计划来源时（例如模型未配置）就退回单查询。 */
@@ -105,8 +122,11 @@ public final class AnalysisService {
             sysPrompt = sysPrompt + memory.toPromptBlock();
         }
 
-        AnalysisPlan plan = planSource.generatePlan(
+        Generated<AnalysisPlan> planned = planSource.generatePlan(
                 request.question(), sysPrompt, request.userId(), request.sessionId());
+        // 一次分析至少两次模型调用（拆解 + 写结论），合计要一起记
+        TokenUsage usage = planned.usage();
+        AnalysisPlan plan = planned.value();
 
         AnalysisExecutor executor = new AnalysisExecutor(model, dialect, sqlExecutor);
         AnalysisResult executed = executor.execute(plan, decision, today, (i, n) ->
@@ -115,7 +135,9 @@ public final class AnalysisService {
 
         progress.accept(new AskEvent.Progress(AskEvent.Stage.SYNTHESIZING,
                 AskEvent.Stage.SYNTHESIZING.label()));
-        String narrative = narrate(plan, executed, request);
+        Generated<String> narrated = narrate(plan, executed, request);
+        usage = usage.plus(narrated.usage());
+        String narrative = narrated.value();
         AnalysisResult analysis = new AnalysisResult(executed.intent(), executed.steps(),
                 executed.findings(), narrative, executed.queryCount(), executed.truncated());
 
@@ -125,22 +147,28 @@ public final class AnalysisService {
 
         long duration = System.currentTimeMillis() - t0;
         AskResult result = toAskResult(analysis, decision, today, duration);
-        record(request, plan, analysis, duration, AskAuditOutcome.SUCCESS, null);
+        record(request, plan, analysis, duration, AskAuditOutcome.SUCCESS, null, usage);
         return result;
     }
 
     /**
      * 写结论。**任何失败都退回确定性文本**，不让"措辞"这一步毁掉整次分析。
      */
-    private String narrate(AnalysisPlan plan, AnalysisResult executed, AskRequest request) {
+    private Generated<String> narrate(AnalysisPlan plan, AnalysisResult executed,
+                                      AskRequest request) {
         if (narrativeSource == null) {
-            return NarrativeGuard.deterministicNarrative(executed.findings());
+            return Generated.of(NarrativeGuard.deterministicNarrative(executed.findings()));
         }
         try {
             String prompt = AnalysisPrompts.narrative(plan.intent(), executed);
-            String text = narrativeSource.narrate(prompt, request.userId(), request.sessionId());
+            Generated<String> produced =
+                    narrativeSource.narrate(prompt, request.userId(), request.sessionId());
+            // **无论结论是否被采纳，这次调用都花了钱**，故 usage 一定带回
+            TokenUsage spent = produced.usage();
+            String text = produced.value();
             if (text == null || text.isBlank()) {
-                return NarrativeGuard.deterministicNarrative(executed.findings());
+                return new Generated<>(
+                        NarrativeGuard.deterministicNarrative(executed.findings()), spent);
             }
             // 数字白名单：结论里的每个数字都必须能在 facts 的 evidence 里找到
             var violation = NarrativeGuard.violation(text, executed.findings(),
@@ -148,13 +176,16 @@ public final class AnalysisService {
             if (violation.isPresent()) {
                 log.warn("结论里出现未经验证的数字，退回确定性文本：user={} 原因={}",
                         request.username(), violation.get());
-                return NarrativeGuard.deterministicNarrative(executed.findings());
+                return new Generated<>(
+                        NarrativeGuard.deterministicNarrative(executed.findings()), spent);
             }
-            return text;
+            return new Generated<>(text, spent);
         } catch (RuntimeException e) {
             log.warn("结论生成失败，退回确定性文本：user={} 原因={}",
                     request.username(), e.getMessage());
-            return NarrativeGuard.deterministicNarrative(executed.findings());
+            // 异常路径拿不到 usage——**但这次调用确实发生了**。
+            // 记 UNKNOWN（写进库是 NULL）而不是 0，免得把失败调用算成免费
+            return Generated.of(NarrativeGuard.deterministicNarrative(executed.findings()));
         }
     }
 
@@ -222,9 +253,9 @@ public final class AnalysisService {
     }
 
     private void record(AskRequest request, AnalysisPlan plan, AnalysisResult analysis,
-                        long duration, AskAuditOutcome outcome, String error) {
+                        long duration, AskAuditOutcome outcome, String error, TokenUsage usage) {
         AskAuditWriter.writeAnalysis(auditRecorder, request, model.domain().id(), plan, analysis,
-                totalRows(analysis), duration, outcome, error);
+                totalRows(analysis), duration, outcome, error, modelKey, usage);
     }
 
     private static Integer totalRows(AnalysisResult analysis) {

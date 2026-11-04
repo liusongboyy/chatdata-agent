@@ -19,11 +19,15 @@ public interface EngineAuditMapper {
             INSERT INTO ask_audit_log
               (username, roles, question, assistant_id, domain_id, dsl_json, sql_text,
                row_count, duration_ms, outcome, error_message, created_at,
-               batch_id, step_no, plan_json, narrative)
+               batch_id, step_no, plan_json, narrative,
+               model_key, input_tokens, output_tokens, cached_tokens,
+               cache_creation_tokens, reasoning_tokens)
             VALUES
               (#{username}, #{roles}, #{question}, #{assistantId}, #{domainId}, #{dslJson}, #{sqlText},
                #{rowCount}, #{durationMs}, #{outcome}, #{errorMessage}, #{createdAt},
-               #{batchId}, #{stepNo}, #{planJson}, #{narrative})
+               #{batchId}, #{stepNo}, #{planJson}, #{narrative},
+               #{modelKey}, #{inputTokens}, #{outputTokens}, #{cachedTokens},
+               #{cacheCreationTokens}, #{reasoningTokens})
             """)
     int insert(AskAuditRecord record);
 }

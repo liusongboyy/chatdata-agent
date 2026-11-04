@@ -26,6 +26,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 按域装配 {@link AskService}。
@@ -67,6 +68,7 @@ public class AskServiceFactory {
     private final org.springframework.beans.factory.ObjectProvider<io.agentscope.core.state.AgentStateStore>
             sessionStore;
 
+
     /**
      * @param dslSource <strong>必须 {@code @Lazy}</strong>：它背后是 LLM 模型，
      *                  而模型需要 api-key。若在此急切注入，没配 key 的环境
@@ -96,12 +98,21 @@ public class AskServiceFactory {
         this.modelPool = modelPool;
     }
 
+    /** 内部/评测调用：不做角色校验，按域绑定或全局默认解析模型。 */
+    public AskFacade forDomain(String domainId) {
+        return forDomain(domainId, null, null);
+    }
+
     /**
      * 为指定域装配服务。
      *
      * @param domainId 域 id；为空时取第一个启用中的域
+     * @param ctx      判定主体。**为 null 表示不做模型角色校验**——只给内部/评测用，
+     *                 因为那些调用没有"用户角色"这个概念。HTTP 入口必须传真实的 ctx
+     * @param requestedModelKey 用户在下拉里选的模型键；null 表示没选
+     * @throws AskDeniedException 模型不可用（不存在 / 停用 / 越权 / 被域锁定）
      */
-    public AskFacade forDomain(String domainId) {
+    public AskFacade forDomain(String domainId, PermissionContext ctx, String requestedModelKey) {
         DomainRow row = loadDomainRow(domainId);
 
         List<DomainTableRow> tables = mapper.selectTablesByDomain(row.id());
@@ -119,17 +130,20 @@ public class AskServiceFactory {
         // **按模式分流**。分流放在装配层，控制器只依赖 AskFacade——
         // 让控制器去 if (mode == RAW) 的话，迟早会漏一处，而漏掉的那一处
         // 一定在权限或审计上
-        // **按域选模型。** 域绑了就用绑的，没绑用全局默认。
-        //
-        // 早先所有域共用一个 askEngineModel 单例。改成按 key 取之后，
-        // 同一进程里不同域可以跑在不同模型上——而 ModelPool 保证
-        // 每个 key 只建一个实例（重复建会泄漏 HTTP 连接池）。
-        io.agentscope.core.model.Model domainModel = modelFor(row);
+        // **按域 + 用户选择解析模型。** 早先所有域共用一个 askEngineModel 单例。
+        // 现在同一进程里不同域、不同用户可以跑在不同模型上——
+        // ModelPool 保证每个 key 只建一个实例（重复建会泄漏 HTTP 连接池）。
+        ResolvedModel resolved = resolveModel(row, ctx, requestedModelKey);
+        io.agentscope.core.model.Model domainModel = resolved.instance();
+        // **审计记的是"实际生效的模型键"**，不是"域绑定的那个"，也不是"用户选的"。
+        // 三者在不同情况下不同，而核算成本时只有生效的那个才是答案。
+        String modelKey = resolved.key();
 
         if (domain.isRaw()) {
             return new RawAskService(domain, domainModel, datasources, rawSchemas, auditRecorder,
                     // 范例与术语一样按 domain 存：跨域照抄 SQL 必然查不到表
-                    mapper.selectSqlExamplesByDomain(row.id()));
+                    mapper.selectSqlExamplesByDomain(row.id()),
+                    modelKey);
         }
 
         SemanticModel model = new SemanticModel(domain);
@@ -143,41 +157,100 @@ public class AskServiceFactory {
                 new com.liusongboyy.chatdata.engine.agent.AnalysisPlanGenerator(
                         domainModel, store, null),
                 new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(domainModel),
-                store);
-        return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder, analysis);
+                store, modelKey);
+        return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder, analysis,
+                modelKey);
     }
 
     /**
-     * 这个域该用哪个模型。
+     * 实际生效的模型：实例 + 键。
      *
-     * <p>域绑了 {@code model_key} 就用绑的那个；没绑用全局默认。
-     *
-     * <p><b>模型不可用时抛异常，不回落默认。</b>回落会让这个域突然用上
-     * 弱模型而没人知道——而"绑定"本来就是刻意的技术约束
-     * （数据量大、弱模型跑不动）。
-     *
-     * <p>找不到默认模型时**回落到注入的 {@code askEngineModel} bean**：
-     * 那是 yml 配置直接建的，是升级前的行为。这样老部署不配
-     * {@code ask_model} 表也能照常工作。
+     * @param key      模型键；null 表示回落到了 yml 配置（没有键）
+     * @param instance agentscope 的模型实例
      */
-    private io.agentscope.core.model.Model modelFor(DomainRow row) {
-        String key = row.modelKey();
-        if (key == null || key.isBlank()) {
-            // 没绑定：用数据库里的默认模型；没有则回落到 yml 那个
-            var def = modelPool.defaultModel();
-            return def != null ? modelPool.get(def.key()) : askEngineModel;
-        }
-        var def = modelPool.byKey(key);
-        if (def == null) {
-            throw new IllegalStateException(
-                    "数据域「" + row.name() + "」绑定的模型「" + key + "」不存在，请联系管理员");
-        }
-        if (!def.enabled()) {
-            throw new IllegalStateException(
-                    "数据域「" + row.name() + "」绑定的模型「" + key + "」已停用，请联系管理员");
-        }
-        return modelPool.get(key);
+    private record ResolvedModel(String key, io.agentscope.core.model.Model instance) {
     }
+
+    /**
+     * 解析这次请求该用哪个模型。
+     *
+     * <h2>三层：用户选择 &gt; 域绑定 &gt; 全局默认</h2>
+     *
+     * <p>判定由 {@link com.liusongboyy.chatdata.engine.model.ModelAccess#resolve} 统一完成，
+     * 与 {@code GET /api/ask/models} 用的是<b>同一个函数</b>。两处各写一遍会漂移，
+     * 而漂移的表现是「下拉里看得见、选了报 403」——两边各自的单测都绿。
+     *
+     * <h2>拒绝时不静默降级</h2>
+     *
+     * <p>用户以为在用强模型、实际用了弱模型，会让他对结果产生错误判断。
+     * 所以越权 / 不存在 / 被域锁定一律拒绝。
+     *
+     * <h2>什么时候回落到 yml</h2>
+     *
+     * <p>只有一种：{@code ask_model} 表里一个模型都没有，而域也没绑。
+     * 那是升级前的部署形态，回落到注入的 {@code askEngineModel} bean 才能继续工作。
+     * 一旦表里有数据，就必须走表——否则「管理员停用了某个模型但还在被使用」
+     * 这种问题会查不出来。
+     */
+    private ResolvedModel resolveModel(DomainRow row, PermissionContext ctx,
+                                       String requestedModelKey) {
+        List<com.liusongboyy.chatdata.engine.model.ModelDef> all = modelPool.all();
+        String bound = row.modelKey() == null || row.modelKey().isBlank()
+                ? null : row.modelKey();
+
+        if (all.isEmpty()) {
+            // 老部署：表里没有任何模型，回落到 yml 配置的那个
+            if (bound != null) {
+                throw new IllegalStateException(
+                        "数据域「" + row.name() + "」绑定的模型「" + bound
+                                + "」不存在（模型表为空），请联系管理员");
+            }
+            if (requestedModelKey != null) {
+                throw new AskDeniedException(
+                        com.liusongboyy.chatdata.engine.permission.PermissionDecision.Reason
+                                .MODEL_NOT_ALLOWED,
+                        "没有配置任何模型，无法按你的选择提问，请联系管理员");
+            }
+            return new ResolvedModel(null, askEngineModel);
+        }
+
+        if (ctx == null) {
+            // 内部调用（评测、能力查询）：没有"用户角色"这个概念，**不做白名单校验**。
+            // 但仍尊重域绑定——那是技术约束而不是权限
+            if (requestedModelKey != null) {
+                throw new IllegalArgumentException(
+                        "内部调用不能指定模型：" + requestedModelKey);
+            }
+            var target = bound == null
+                    ? all.stream().filter(m -> m.isDefault() && m.enabled()).findFirst().orElse(null)
+                    : all.stream().filter(m -> m.key().equals(bound) && m.enabled())
+                            .findFirst().orElse(null);
+            if (target == null) {
+                // 表里有模型但都不是默认/绑定失效——这是配置问题，不是权限问题
+                throw new IllegalStateException(bound == null
+                        ? "没有默认模型，请联系管理员"
+                        : "数据域绑定的模型「" + bound + "」不可用，请联系管理员");
+            }
+            return new ResolvedModel(target.key(), modelPool.get(target.key()));
+        }
+
+        var result = com.liusongboyy.chatdata.engine.model.ModelAccess.resolve(
+                all, ctx.roles(), bound, requestedModelKey);
+
+        if (!result.ok()) {
+            // **不是 IllegalStateException。** 模型不可用是"这个请求不能这么做"，
+            // 属于拒绝而不是服务端故障；用 403 让前端能给出"换一个模型"的指引
+            throw new AskDeniedException(
+                    com.liusongboyy.chatdata.engine.permission.PermissionDecision.Reason
+                            .MODEL_NOT_ALLOWED,
+                    result.denial().message());
+        }
+
+        var def = result.model();
+        return new ResolvedModel(def.key(), modelPool.get(def.key()));
+    }
+
+
 
     /**
      * 域绑定的数据源 id。
@@ -235,6 +308,9 @@ public class AskServiceFactory {
     public Capabilities capabilities(String domainId) {
         // 走 AskFacade：直连模式的 availableFields 是空列表（它没有"登记过的字段"），
         // 界面据此不显示字段引导。若在这里自己建 SemanticModel，直连域会直接建不出来
+        //
+        // 不传 ctx：这个接口只列字段名，与模型选择无关；传真实 ctx 反而会因为
+        // "这个角色没有可用模型"而把字段列表也一起弄空
         AskFacade service = forDomain(domainId);
         return new Capabilities(service.domainName(), service.availableFields());
     }
@@ -271,9 +347,20 @@ public class AskServiceFactory {
      * @param ctx         判定主体
      */
     public AskFacade forAssistant(String assistantId, String domainId, PermissionContext ctx) {
+        return forAssistant(assistantId, domainId, ctx, null);
+    }
+
+    /**
+     * 为指定助理装配服务，并带上用户选择的模型。
+     *
+     * @param modelKey 用户在下拉里选的模型键；null 表示没选。
+     *                 **越权在这里就被拒**（403），不会拖到模型调用时才发现
+     */
+    public AskFacade forAssistant(String assistantId, String domainId, PermissionContext ctx,
+                                  String modelKey) {
         if (assistantId == null || assistantId.isBlank()) {
             // 不经过助理：直连 API 的场景。域层闸门仍会生效
-            return forDomain(domainId);
+            return forDomain(domainId, ctx, modelKey);
         }
 
         AssistantRow row = loadAssistantRow(assistantId);
@@ -308,7 +395,7 @@ public class AskServiceFactory {
                     assistant.name(), assistant.allDomainIds().size(), resolved);
         }
 
-        return forDomain(resolved);
+        return forDomain(resolved, ctx, modelKey);
     }
 
     private AssistantRow loadAssistantRow(String assistantId) {

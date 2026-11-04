@@ -143,8 +143,8 @@ class DslGeneratorSessionRealDbTest {
         String user = "u-" + UUID.randomUUID();
         String session = "s-" + UUID.randomUUID();
 
-        AskDsl first = generator.generate(Q1, "sys", user, session);
-        AskDsl second = generator.generate(Q2, "sys", user, session);
+        AskDsl first = generator.generate(Q1, "sys", user, session).value();
+        AskDsl second = generator.generate(Q2, "sys", user, session).value();
 
         assertThat(first.isEmpty()).isFalse();
         assertThat(second.isEmpty()).isFalse();
