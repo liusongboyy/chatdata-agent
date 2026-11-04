@@ -4,7 +4,7 @@ import { modelingCheck, type ConfigViolation } from '../../api/admin'
 import { errorMessage } from '../../api/http'
 
 /**
- * 域覆盖度：这个域**配得够不够用**。
+ * 建模覆盖度：这个域的建模配置**配得够不够用**。
  *
  * ## 与启动校验的分工
  *
@@ -102,7 +102,7 @@ async function load(): Promise<void> {
   try {
     violations.value = await modelingCheck(props.domainId)
   } catch (e) {
-    error.value = `读取覆盖度失败：${errorMessage(e)}`
+    error.value = `读取建模覆盖度失败：${errorMessage(e)}`
   } finally {
     loading.value = false
   }

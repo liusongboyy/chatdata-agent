@@ -41,6 +41,18 @@ public class HealthService {
     /** 失败原因排行最多返回几个。多了看不出重点。 */
     private static final int TOP_FAILURES = 8;
 
+    /**
+     * 单次查询的行数警戒线。
+     *
+     * <p>这个页面是**实时全量扫描**窗口内的审计行——没有预聚合、没有缓存。
+     * 按现在的数据量（7 天百余行）是毫秒级的，但它会随使用量线性变慢。
+     *
+     * <p>超过这条线时接口会带一个提示，让打开页面的人知道
+     * "现在慢是有原因的"，而不是对着转圈猜。
+     * <b>提醒比优化更重要</b>：没有人会主动怀疑一个健康度页面本身有问题。
+     */
+    private static final long SLOW_ROW_THRESHOLD = 50_000;
+
     private final AskAuditMapper auditMapper;
     private final AdminDomainService domainService;
 
@@ -61,7 +73,7 @@ public class HealthService {
      * @param domains  逐域状态
      */
     public record Overview(Summary summary, List<FailureClassifier.Bucket> failures,
-                           List<DomainHealth> domains) {
+                           List<DomainHealth> domains, String notice) {
     }
 
     /**
@@ -182,7 +194,25 @@ public class HealthService {
 
         return new Overview(
                 new Summary(domains.size(), total, overallRate, unmodeledTotal, 0),
-                topFailures, domains);
+                topFailures, domains, slowNotice(logs.size(), window));
+    }
+
+    /**
+     * 数据量大时给一句提示。
+     *
+     * <p>返回 {@code null} 表示正常。**不返回空串**——前端用 {@code v-if} 判断，
+     * 空串会被当成"有提示"然后渲染一个空白块。
+     *
+     * <p>文案要给出**可执行的下一步**，不只是报告慢：告诉用户缩小时间范围
+     * 能立刻缓解，同时说明长期该做什么。只说"数据量大"等于把问题丢回去。
+     */
+    private static String slowNotice(long rows, int window) {
+        if (rows < SLOW_ROW_THRESHOLD) {
+            return null;
+        }
+        return "最近 " + window + " 天有 " + rows + " 条审计记录，这个页面是实时统计的，"
+                + "会明显变慢。先把时间范围调小能立刻缓解；"
+                + "要长期解决需要改成预聚合（见 .scratch/health-dashboard/spec.md）。";
     }
 
     private static double round(double v) {

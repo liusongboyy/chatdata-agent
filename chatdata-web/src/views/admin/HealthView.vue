@@ -75,7 +75,7 @@ function isUnused(d: DomainHealth): boolean {
   return d.asks === 0 && d.mode !== 'RAW'
 }
 
-/** 覆盖度徽章。null 表示直连域不做这项检查。 */
+/** 建模覆盖度徽章。null 表示直连域不做这项检查。 */
 function coverageTone(d: DomainHealth): string {
   if (d.unmodeled === null) return 'cov-na'
   if (d.unmodeled === 0) return 'cov-ok'
@@ -90,7 +90,7 @@ function coverageTone(d: DomainHealth): string {
         <h1>问数健康度</h1>
         <p class="sub">
           把运行数据（谁在问、成不成功）和配置数据（域建得够不够）放在一起看。
-          两边单独看都会误判：成功率低可能是用户乱问，覆盖度差可能没人用。
+          两边单独看都会误判：成功率低可能是用户乱问，建模覆盖度差可能没人用。
         </p>
       </div>
       <select v-model.number="days" class="range" @change="onRangeChange">
@@ -104,6 +104,12 @@ function coverageTone(d: DomainHealth): string {
     <p v-else-if="error" class="note note-danger">{{ error }}</p>
 
     <template v-else-if="data">
+      <!-- 数据量大时的提示。不显示的话，用户只会看到转圈然后怀疑页面坏了 -->
+      <p v-if="data.notice" class="notice">
+        <strong>这个页面现在比较慢</strong>
+        {{ data.notice }}
+      </p>
+
       <!-- 概览 -->
       <div class="stats">
         <div class="stat">
@@ -168,7 +174,7 @@ function coverageTone(d: DomainHealth): string {
               <th>模式</th>
               <th class="num">提问</th>
               <th class="num">成功率</th>
-              <th class="num">覆盖度</th>
+              <th class="num">建模覆盖度</th>
             </tr>
           </thead>
           <tbody>
@@ -207,6 +213,12 @@ function coverageTone(d: DomainHealth): string {
 .range { padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 9px; font-size: 0.85rem; flex-shrink: 0; }
 
 .note { color: #64748b; font-size: 0.86rem; padding: 12px 0; }
+.notice {
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+  padding: 12px 16px; font-size: 0.83rem; color: #92400e;
+  line-height: 1.65; margin-bottom: 16px;
+}
+.notice strong { display: block; margin-bottom: 2px; }
 .note-danger { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 9px; padding: 10px 14px; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 10px; }

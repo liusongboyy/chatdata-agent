@@ -343,13 +343,42 @@ public final class SemanticModel {
                             + "行级/列级规则里引用的字段必须是域内已注册且启用的列");
         }
         if (candidates.size() > 1) {
+            // **双登记是合法的，行规则要能用它。**
+            //
+            // 维度与指标双登记之后，同一个物理列名会命中多条候选。
+            // 而行级过滤在语义上**一定作用于维度**——「区域 = 华东」筛的是行，
+            // 不是「区域总数 = 华东」。
+            //
+            // 所以：恰好一条维度时直接用它；否则才报歧义。
+            //
+            // 这个判据与问数侧的 requireCandidate 同源（那边按"期望角色"挑），
+            // 只是这里角色是固定的（行过滤 → 维度）。
+            List<Candidate> dimensions = candidates.stream()
+                    .filter(c -> !c.column().isMetric())
+                    .toList();
+            // 只在**同一张表**上有唯一维度时才敢选。跨表多个维度仍然要人介入：
+            // 谓词注到错误的表上，比查询失败危险得多
+            long dimensionTables = dimensions.stream()
+                    .map(c -> c.table().id())
+                    .distinct()
+                    .count();
+            if (dimensions.size() == 1 && dimensionTables == 1) {
+                Candidate dim = dimensions.get(0);
+                return new FieldRef(aliasByTableId.get(dim.table().id()), dim.column().col(),
+                        dim.column().agg(),
+                        dim.column().isMetric() ? FieldKind.METRIC : FieldKind.DIMENSION);
+            }
+
             List<String> names = candidates.stream()
-                    .map(c -> c.table().displayName() + "." + c.column().displayName())
+                    .map(c -> c.table().displayName() + "." + c.column().displayName()
+                            + "（" + c.column().col() + "，"
+                            + (c.column().isMetric() ? "指标" : "维度") + "）")
                     .distinct()
                     .toList();
             throw new SemanticException(SemanticException.Reason.FIELD_AMBIGUOUS,
                     "字段「" + name + "」在本域内匹配到多处：" + names
-                            + "。权限规则无法确定作用在哪张表上，请为其设置唯一的业务名");
+                            + "。行规则需要唯一确定一条维度列，"
+                            + "请检查是否有多张表都注册了同名列");
         }
         Candidate c = candidates.get(0);
         return new FieldRef(aliasByTableId.get(c.table().id()), c.column().col(),

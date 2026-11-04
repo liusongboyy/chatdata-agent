@@ -209,7 +209,7 @@ const roleWarnings = computed(() => {
 })
 
 /**
- * 每个域的覆盖度：严重问题数 / 建议数。
+ * 每个域的建模覆盖度：严重问题数 / 建议数。
  *
  * ## 为什么要在这里显示
  *
@@ -423,7 +423,7 @@ function grantSummary(d: Domain): string {
             <th scope="col" title="访问授权 + 行规则 + 列规则，在「编辑」里配置">策略</th>
             <th scope="col">授权</th>
             <th scope="col" title="建模覆盖度：缺 AVG / 缺去重计数 / 缺时间口径等。点开注册表后切到「覆盖度」看详情">
-              覆盖度
+              建模覆盖度
             </th>
             <th scope="col" class="col-actions">操作</th>
           </tr>

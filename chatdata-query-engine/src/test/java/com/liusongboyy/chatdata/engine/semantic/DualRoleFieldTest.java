@@ -84,10 +84,37 @@ class DualRoleFieldTest {
     }
 
     @Test
-    @DisplayName("不限定角色时（权限字段定位）保持原有严格判定")
-    void roleAgnosticStillStrict() {
-        assertThatThrownBy(() -> twoRoles().resolveAny("年龄"))
-                .as("权限谓词注错表比查询失败危险得多，这里不能择优")
-                .isInstanceOf(SemanticException.class);
+    @DisplayName("★ 权限字段定位：同表内双登记时选维度那条")
+    void roleAgnosticPicksDimensionForRowRules() {
+        // 行级过滤在语义上**一定作用于维度**——「年龄 > 50」筛的是行，
+        // 不是「平均年龄 > 50」。
+        //
+        // 早先这里一律判歧义，理由是"谓词注错表比查询失败危险得多"。
+        // 那个担心在**跨表**时成立，但同表内的维度/指标双登记是刻意的建模手法：
+        // 不解开它，配了双登记的域就再也配不了行规则（实测过）。
+        var ref = twoRoles().resolveAny("年龄");
+
+        assertThat(ref).isNotNull();
+        assertThat(ref.isMetric()).as("行过滤要用维度").isFalse();
+    }
+
+    @Test
+    @DisplayName("★ 但仍然只在同一张表内才敢选：跨表多个维度要人介入")
+    void stillStrictAcrossTables() {
+        // 两张表都有「区域」维度时，谓词注到哪张表上是人的决定，不能猜
+        RegisteredTable t1 = new RegisteredTable("t1", "ins_policy", "保单表",
+                RegisteredTable.Mode.TABLE, null, true, List.of(
+                new ColumnDef("region", "varchar", Aggregation.NONE, "区域", true, null)));
+        RegisteredTable t2 = new RegisteredTable("t2", "ins_claim", "理赔表",
+                RegisteredTable.Mode.TABLE, null, true, List.of(
+                new ColumnDef("region", "varchar", Aggregation.NONE, "区域", true, null)));
+        Domain d = new Domain("d1", "保险域", "ds1", "MYSQL5.7", true, List.of(t1, t2),
+                List.of(), DomainPermission.from(null), List.of(), List.of());
+        SemanticModel m = new SemanticModel(d);
+
+        assertThatThrownBy(() -> m.resolveAny("区域"))
+                .as("跨表的同名列必须人介入——谓词注错表比查询失败危险得多")
+                .isInstanceOf(SemanticException.class)
+                .hasMessageContaining("多处");
     }
 }

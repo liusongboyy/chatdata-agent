@@ -60,7 +60,7 @@ const domainId = Number(route.params['id'])
 /**
  * 当前标签页。
  *
- * 「覆盖度」不另开一个路由：一个域的配置都该在一个地方看完，
+ * 「建模覆盖度」不另开一个路由：一个域的配置都该在一个地方看完，
  * 而且从注册表改完可以立刻切过去看还缺什么。
  */
 const activeTab = ref<'tables' | 'coverage'>('tables')
@@ -324,6 +324,46 @@ function startEdit(t: DomainTable): void {
 
 function addColumn(): void {
   form.value.columns = [...form.value.columns, emptyColumnDraft()]
+}
+
+/**
+ * 同一个物理列在表单里出现了几次。
+ *
+ * 出现多次不是错误——那正是**双登记**：一条维度负责筛选/分组，
+ * 一条指标负责聚合。但必须让管理员看得出这是刻意的，
+ * 否则他会以为自己重复添加了然后删掉一条。
+ */
+function sameColumnCount(col: string): number {
+  if (!col) return 0
+  return form.value.columns.filter((c) => c.col === col && !c.derived).length
+}
+
+/** 这一行是不是同列的续行（用于缩进与连接符）。 */
+function isDupRow(c: ColumnDraft, index: number): boolean {
+  if (!c.col || c.derived) return false
+  const firstIdx = form.value.columns.findIndex((x) => x.col === c.col && !x.derived)
+  return firstIdx >= 0 && firstIdx < index
+}
+
+/**
+ * 为某一列再加一条登记。
+ *
+ * 预填**同一个物理列名**——这是双登记的关键。让管理员重打一遍列名
+ * 很容易打错，而打错的表现是"这条登记指向了不存在的列"，保存时才报。
+ */
+function addDualRegistration(c: ColumnDraft): void {
+  const draft = emptyColumnDraft()
+  draft.col = c.col
+  draft.type = c.type
+  draft.alias = ''
+  // 聚合留空：新增这条通常是补维度，或者补另一条不同的聚合
+  draft.agg = ''
+  const at = form.value.columns.indexOf(c) + 1
+  form.value.columns = [
+    ...form.value.columns.slice(0, at),
+    draft,
+    ...form.value.columns.slice(at),
+  ]
 }
 
 function addCondition(c: ColumnDraft): void {
@@ -820,7 +860,7 @@ async function remove(t: DomainTable): Promise<void> {
         :class="{ active: activeTab === 'coverage' }"
         @click="activeTab = 'coverage'"
       >
-        覆盖度
+        建模覆盖度
       </button>
     </nav>
 
@@ -1180,7 +1220,12 @@ async function remove(t: DomainTable): Promise<void> {
               <span />
             </div>
 
-            <div v-for="(c, i) in form.columns" :key="i" class="col-block">
+            <div
+              v-for="(c, i) in form.columns"
+              :key="i"
+              class="col-block"
+              :class="{ 'col-dup': isDupRow(c, i) }"
+            >
               <div class="col-row">
                 <input
                   v-model="c.col"
@@ -1200,6 +1245,15 @@ async function remove(t: DomainTable): Promise<void> {
                   </option>
                 </select>
                 <input v-model="c.enabled" type="checkbox" />
+                <button
+                  v-if="!c.derived && c.col"
+                  class="btn btn-quiet btn-sm"
+                  type="button"
+                  title="双登记：同一物理列可以有两条——维度负责筛选/分组，指标负责聚合"
+                  @click="addDualRegistration(c)"
+                >
+                  再加一条
+                </button>
                 <button class="btn btn-quiet btn-sm" type="button" @click="removeColumn(i)">
                   移除
                 </button>
@@ -1335,6 +1389,14 @@ async function remove(t: DomainTable): Promise<void> {
                 </template>
                 <p class="derived-formula mono">＝ {{ derivedFormula(c) }}</p>
               </div>
+
+              <!-- 同列多条的提示。不提示的话管理员会以为是重复添加，然后删掉一条 -->
+              <p v-if="sameColumnCount(c.col) > 1" class="dup-note">
+                <strong>「{{ c.col }}」已有多条登记</strong>
+                这是<strong>双登记</strong>：一条维度负责筛选与分组（聚合留空），
+                一条或多条指标负责聚合（SUM / AVG / 去重计数）。
+                只有一种身份时，另一种问法就永远问不出来。
+              </p>
             </div>
 
             <div class="add-col">
@@ -1395,6 +1457,14 @@ async function remove(t: DomainTable): Promise<void> {
 </template>
 
 <style scoped>
+.col-block.col-dup { border-left: 2px solid #c7d2fe; padding-left: var(--space-3); }
+.dup-note {
+  background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px;
+  padding: 8px 12px; font-size: 0.78rem; color: #3730a3; line-height: 1.6;
+  margin: 6px 0 0;
+}
+.dup-note strong { font-weight: 600; }
+
 .tabs {
   display: flex;
   gap: 4px;

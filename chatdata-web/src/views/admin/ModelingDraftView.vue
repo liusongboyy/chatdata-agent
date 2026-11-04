@@ -175,7 +175,7 @@ const aliasEdits = ref<Record<string, string>>({})
  *
  * <p>自动跳走的话，管理员会被弹到一个与刚才操作无关的页面；
  * 而建完那一刻他脑子里还有业务场景（"哦对，我还需要能问平均客单价"），
- * 正是该看覆盖度的时候。过一小时再看，他要先回忆自己当初想配什么。
+ * 正是该看建模覆盖度的时候。过一小时再看，他要先回忆自己当初想配什么。
  */
 const createdDomainId = ref<number | null>(null)
 

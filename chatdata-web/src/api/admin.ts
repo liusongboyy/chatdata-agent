@@ -407,6 +407,8 @@ export interface HealthOverview {
   }
   failures: FailureBucket[]
   domains: DomainHealth[]
+  /** 数据量大时的提示；null 表示正常 */
+  notice: string | null
 }
 
 /**
