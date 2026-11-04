@@ -387,12 +387,44 @@ export interface TypeStat {
   sampleQuestion: string | null
 }
 
+/** 诊断结论类型。 */
+export type DiagnosisKind =
+  | 'MISSING_CONFIG'
+  | 'CONFIG_PRESENT'
+  | 'WRONG_DOMAIN'
+  | 'ENVIRONMENT'
+  | 'UNKNOWN'
+
+/** 指向要改的那一列。 */
+export interface FixTarget {
+  table: string
+  column: string
+  hint: string
+}
+
+/**
+ * 一次失败的诊断。
+ *
+ * 核心不是「能不能修」，而是**为什么**——「配置已有」和「环境问题」
+ * 都不能靠改配置解决，但下一步动作完全不同。
+ */
+export interface Diagnosis {
+  kind: DiagnosisKind
+  summary: string
+  /** 证据。证明系统真的看过配置，而不是甩一句"模型没理解" */
+  evidence: string | null
+  fixTarget: FixTarget | null
+  confidence: 'EXACT' | 'PARTIAL' | 'NONE'
+}
+
 export interface QuestionStat {
   question: string
   asks: number
   failures: number
   successRate: number
   avgMs: number
+  /** 只有失败过的问法才有诊断 */
+  diagnosis: Diagnosis | null
 }
 
 export interface QualityReport {

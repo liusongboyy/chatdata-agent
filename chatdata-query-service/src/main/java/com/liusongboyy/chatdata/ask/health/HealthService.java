@@ -141,7 +141,7 @@ public class HealthService {
         Map<String, long[]> buckets = new LinkedHashMap<>();   // key → [count]
         Map<String, String> bucketLabels = new LinkedHashMap<>();
         Map<String, String> bucketSamples = new LinkedHashMap<>();
-        Map<String, Boolean> bucketFixable = new LinkedHashMap<>();
+        Map<String, FailureClassifier.Fixability> bucketFixable = new LinkedHashMap<>();
         for (AskAuditLog l : logs) {
             if (!"FAILURE".equals(l.getOutcome())) {
                 continue;
@@ -150,12 +150,13 @@ public class HealthService {
             buckets.computeIfAbsent(c.key(), k -> new long[1])[0]++;
             bucketLabels.putIfAbsent(c.key(), c.label());
             bucketSamples.putIfAbsent(c.key(), l.getErrorMessage());
-            bucketFixable.putIfAbsent(c.key(), c.fixable());
+            bucketFixable.putIfAbsent(c.key(), c.fixability());
         }
         List<FailureClassifier.Bucket> failures = new ArrayList<>();
         buckets.forEach((key, cnt) -> failures.add(new FailureClassifier.Bucket(
                 key, bucketLabels.get(key), cnt[0],
-                bucketFixable.getOrDefault(key, false), bucketSamples.get(key))));
+                bucketFixable.getOrDefault(key, FailureClassifier.Fixability.NOT_CONFIG),
+                bucketSamples.get(key))));
         failures.sort(Comparator.comparingLong(FailureClassifier.Bucket::count).reversed());
         List<FailureClassifier.Bucket> topFailures = failures.stream()
                 .limit(TOP_FAILURES).toList();
@@ -236,7 +237,8 @@ public class HealthService {
      * @param question 原问题（已截断，见 {@link #QUESTION_MAX_LEN}）
      */
     public record QuestionStat(String question, long asks, long failures,
-                               double successRate, long avgMs) {
+                               double successRate, long avgMs,
+                               FailureDiagnosis.Diagnosis diagnosis) {
     }
 
     /** 质量报告。 */
@@ -270,16 +272,24 @@ public class HealthService {
         int min = Math.max(1, minSamples);
         LocalDateTime since = LocalDateTime.now().minusDays(window);
 
+        // 每次调用新建缓存：配置改过之后诊断结论必须立刻变
+        fieldCache = new java.util.HashMap<>();
+
         List<AskAuditLog> logs = auditMapper.selectList(
                 new QueryWrapper<AskAuditLog>()
                         .ge("created_at", since)
                         .in("outcome", "SUCCESS", "FAILURE")
-                        .select("question", "dsl_json", "outcome", "duration_ms"));
+                        .select("question", "dsl_json", "outcome", "duration_ms", "domain_id"));
 
         // 按类型聚合
         Map<String, long[]> byType = new LinkedHashMap<>();     // key → [asks, failures, totalMs]
         Map<String, String> labels = new LinkedHashMap<>();
         Map<String, Map<String, long[]>> byQuestion = new LinkedHashMap<>();
+        // 诊断需要「这条问题落在哪个域、失败原因是什么」。
+        // 同一个问法可能跨多个域，取**失败次数最多**的那个域——
+        // 那才是问题所在（问错域的情况本身也是一种诊断结论）
+        Map<String, String> questionDomain = new LinkedHashMap<>();
+        Map<String, String> questionError = new LinkedHashMap<>();
 
         for (AskAuditLog l : logs) {
             var t = QuestionTypeClassifier.classify(l.getDslJson(), l.getQuestion());
@@ -302,6 +312,9 @@ public class HealthService {
                 qc[0]++;
                 if ("FAILURE".equals(l.getOutcome())) {
                     qc[1]++;
+                    // 记下失败时的域与原因
+                    questionDomain.putIfAbsent(key, l.getDomainId());
+                    questionError.putIfAbsent(key, l.getErrorMessage());
                 }
                 qc[2] += Math.max(0, l.getDurationMs());
             }
@@ -334,9 +347,14 @@ public class HealthService {
             List<QuestionStat> list = new ArrayList<>();
             qs.forEach((q, c) -> {
                 if (c[0] >= min) {
+                    // **只给失败过的问法做诊断。** 全成功的问法不需要"怎么办"，
+                    // 而对每条都算一遍诊断会白白拖慢页面
+                    var diag = c[1] > 0
+                            ? diagnoseFor(questionDomain.get(q), questionError.get(q), q)
+                            : null;
                     list.add(new QuestionStat(q, c[0], c[1],
                             c[0] == 0 ? 0 : round(c[1] * 100.0 / c[0]),
-                            c[0] == 0 ? 0 : c[2] / c[0]));
+                            c[0] == 0 ? 0 : c[2] / c[0], diag));
                 }
             });
             // 按次数降序：只出现一次且失败的问题没有统计意义，
@@ -348,6 +366,66 @@ public class HealthService {
         return new QualityReport(window, total, unknown, types, questions,
                 slowNotice(logs.size(), window));
     }
+
+    /**
+     * 域字段清单缓存。
+     *
+     * <p>诊断要拿问题里的词去对域内字段，而每个问法都要这份清单。
+     * 不缓存的话同一个域会被查几十次。
+     *
+     * <p>缓存生命周期 = 一次 {@link #quality} 调用。**不能做成跨请求缓存**——
+     * 配置改了之后诊断结论必须立刻变，缓存过期会给出过时的建议。
+     */
+    private Map<String, List<FailureDiagnosis.Field>> fieldCache;
+
+    /**
+     * 给一条失败问法做诊断。
+     *
+     * @param domainId 失败时所在的域
+     * @param error    审计表里的 error_message
+     * @param question 问题
+     */
+    private FailureDiagnosis.Diagnosis diagnoseFor(String domainId, String error, String question) {
+        List<FailureDiagnosis.Field> fields = List.of();
+        if (domainId != null && !domainId.isBlank() && fieldCache != null) {
+            fields = fieldCache.computeIfAbsent(domainId, this::loadFields);
+        }
+        return FailureDiagnosis.diagnose(error, question, fields);
+    }
+
+    /**
+     * 读一个域的可见字段（表名 + 业务名）。
+     *
+     * <p>读不到时返回空列表——那会让诊断落到「无法判断」，
+     * 而那是安全的方向：不给建议好过给错建议。
+     */
+    private List<FailureDiagnosis.Field> loadFields(String domainId) {
+        try {
+            long id = Long.parseLong(domainId);
+            List<FailureDiagnosis.Field> out = new ArrayList<>();
+            for (var t : domainService.listTables(id)) {
+                if (!t.enabled() || t.columnsJson() == null) {
+                    continue;
+                }
+                // columns_json 是列定义数组。这里只需要业务名，
+                // 不值得为它引入完整的解析器——用正则取 alias 足够，
+                // 取不到就跳过（诊断会因此落到"无法判断"）
+                var m = ALIAS_PATTERN.matcher(t.columnsJson());
+                String tableLabel = t.label() == null || t.label().isBlank() ? t.name() : t.label();
+                while (m.find()) {
+                    out.add(new FailureDiagnosis.Field(tableLabel, m.group(1)));
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            log.debug("读域 {} 的字段清单失败，诊断将退回无法判断：{}", domainId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 从 columns_json 里取业务名。 */
+    private static final java.util.regex.Pattern ALIAS_PATTERN =
+            java.util.regex.Pattern.compile("\"alias\"\\s*:\\s*\"([^\"]+)\"");
 
     private static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max - 1) + "…";

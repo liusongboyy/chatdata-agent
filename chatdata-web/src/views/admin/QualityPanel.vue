@@ -4,6 +4,7 @@ import {
   qualityReport,
   type QualityReport,
   type QuestionStat,
+  type DiagnosisKind,
 } from '../../api/admin'
 import { errorMessage } from '../../api/http'
 
@@ -47,6 +48,32 @@ async function load(): Promise<void> {
 
 function toggle(key: string): void {
   expanded.value = expanded.value === key ? null : key
+}
+
+/** 诊断结论的中文标签与配色。 */
+const DIAG_LABEL: Record<DiagnosisKind, string> = {
+  MISSING_CONFIG: '缺配置',
+  CONFIG_PRESENT: '配置已有',
+  WRONG_DOMAIN: '问错域',
+  ENVIRONMENT: '环境问题',
+  UNKNOWN: '无法判断',
+}
+
+function diagClass(kind: DiagnosisKind): string {
+  switch (kind) {
+    case 'MISSING_CONFIG': return 'diag-fix'
+    case 'CONFIG_PRESENT': return 'diag-present'
+    case 'WRONG_DOMAIN': return 'diag-wrong'
+    case 'ENVIRONMENT': return 'diag-env'
+    default: return 'diag-unknown'
+  }
+}
+
+/** 展开某条问法的诊断详情。同时只展开一条——诊断文案较长，展开多条会很乱。 */
+const diagOpen = ref<string | null>(null)
+
+function toggleDiag(q: string): void {
+  diagOpen.value = diagOpen.value === q ? null : q
 }
 
 function questionsOf(key: string): QuestionStat[] {
@@ -145,24 +172,59 @@ function msClass(ms: number): string {
                       <th class="num">失败</th>
                       <th class="num">成功率</th>
                       <th class="num">平均耗时</th>
+                      <th>诊断</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr
-                      v-for="q in questionsOf(t.key)"
-                      :key="q.question"
-                      :class="{ bad: q.successRate < 70 }"
-                    >
-                      <td>{{ q.question }}</td>
-                      <td class="num">{{ q.asks }}</td>
-                      <td class="num">{{ q.failures }}</td>
-                      <td class="num">
-                        <span :class="rateClass(q.successRate)">{{ q.successRate }}%</span>
-                      </td>
-                      <td class="num" :class="msClass(q.avgMs)">
-                        {{ (q.avgMs / 1000).toFixed(1) }}s
-                      </td>
-                    </tr>
+                    <template v-for="q in questionsOf(t.key)" :key="q.question">
+                      <tr :class="{ bad: q.successRate < 70 }">
+                        <td>{{ q.question }}</td>
+                        <td class="num">{{ q.asks }}</td>
+                        <td class="num">{{ q.failures }}</td>
+                        <td class="num">
+                          <span :class="rateClass(q.successRate)">{{ q.successRate }}%</span>
+                        </td>
+                        <td class="num" :class="msClass(q.avgMs)">
+                          {{ (q.avgMs / 1000).toFixed(1) }}s
+                        </td>
+                        <td>
+                          <button
+                            v-if="q.diagnosis"
+                            type="button"
+                            class="diag-btn"
+                            :class="diagClass(q.diagnosis.kind)"
+                            @click="toggleDiag(q.question)"
+                          >
+                            {{ DIAG_LABEL[q.diagnosis.kind] }}
+                            <span class="diag-caret">{{ diagOpen === q.question ? '▴' : '▾' }}</span>
+                          </button>
+                          <span v-else class="dim">—</span>
+                        </td>
+                      </tr>
+                      <!-- 诊断详情。**证据是关键**：它证明系统真的看过配置 -->
+                      <tr v-if="q.diagnosis && diagOpen === q.question" class="diag-row">
+                        <td colspan="6">
+                          <div class="diag-body">
+                            <p class="diag-summary">{{ q.diagnosis.summary }}</p>
+                            <p v-if="q.diagnosis.evidence" class="diag-evidence">
+                              {{ q.diagnosis.evidence }}
+                            </p>
+                            <p v-if="q.diagnosis.fixTarget" class="diag-target">
+                              <span class="target-chip">
+                                {{ q.diagnosis.fixTarget.table }}.{{ q.diagnosis.fixTarget.column }}
+                              </span>
+                              {{ q.diagnosis.fixTarget.hint }}
+                            </p>
+                            <p
+                              v-if="q.diagnosis.confidence === 'NONE' && q.diagnosis.kind === 'WRONG_DOMAIN'"
+                              class="diag-hint"
+                            >
+                              如果这个问题本来就该走别的数据域，换一个助理再问一次。
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
                     <tr v-if="questionsOf(t.key).length === 0">
                       <td colspan="5" class="empty-cell">
                         这个类型里没有出现 5 次以上的问法（样本太少看不出规律）。
@@ -222,6 +284,32 @@ function msClass(ms: number): string {
 .questions .num { text-align: right; font-variant-numeric: tabular-nums; }
 .questions tr.bad td { background: #fef2f2; }
 .empty-cell { color: #94a3b8; font-size: 0.78rem; text-align: center; padding: 14px; }
+
+.diag-btn {
+  background: none; border: 1px solid; border-radius: 6px;
+  padding: 2px 8px; font-size: 0.74rem; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.diag-caret { font-size: 0.7rem; opacity: 0.7; }
+.diag-fix { border-color: #fbbf24; background: #fffbeb; color: #b45309; }
+.diag-present { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
+.diag-wrong { border-color: #c7d2fe; background: #eef2ff; color: #4338ca; }
+.diag-env { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.diag-unknown { border-color: #e2e8f0; background: #fff; color: #94a3b8; }
+
+.diag-row td { padding: 0 0 8px 24px; background: #f8fafc; }
+.diag-body {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 11px 14px; font-size: 0.79rem; line-height: 1.65;
+}
+.diag-summary { margin: 0 0 6px; font-weight: 600; color: #334155; }
+.diag-evidence { margin: 0 0 6px; color: #64748b; }
+.diag-target { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.target-chip {
+  font-family: ui-monospace, monospace; font-size: 0.74rem;
+  background: #eef2ff; color: #4338ca; border-radius: 5px; padding: 2px 8px;
+}
+.diag-hint { margin: 6px 0 0; color: #4338ca; font-size: 0.78rem; }
 
 .rate-good { color: #047857; font-weight: 600; }
 .rate-warn { color: #b45309; font-weight: 600; }
