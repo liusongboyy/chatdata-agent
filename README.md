@@ -20,10 +20,15 @@
 
 这个项目的做法不同：**模型只产出结构化的查询意图（DSL），SQL 由我们渲染。**
 
-```
-中文问题 → 问数 DSL（指标/维度/时间/筛选）→ 我们渲染 SQL → 注入权限 → 执行
-                    ↑                                        ↓
-              可校验、可审计                          行级规则、列脱敏
+```mermaid
+flowchart LR
+    Q["中文问题"] --> D["问数 DSL<br/>指标 / 维度 / 时间 / 筛选<br/><i>可校验 · 可审计</i>"]
+    D --> R["我们渲染 SQL"]
+    R --> P["注入权限<br/><i>行级规则 · 列脱敏</i>"]
+    P --> E["执行"]
+
+    style D fill:#e0e7ff,stroke:#6366f1
+    style P fill:#dcfce7,stroke:#16a34a
 ```
 
 带来三个直接后果：
@@ -106,20 +111,59 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 
 ## 架构
 
-```
-  浏览器 ──→ gateway (8080) ──┐         唯一入口：路由、BFF 会话、令牌中继
-                             │
-                             ├──→ ask (8081) ──→ ask-engine
-                             │        │            语义模型 → DSL → SQL 渲染
-  飞书 ────→ channel (20000) ┘        │              → 权限注入 → 执行 → 审计
-   (webhook)      │                   │ 内省令牌
-                  └──换代表用户的令牌──┴──→ iam (9000)
-                                            身份 / 角色 / 功能权限
+```mermaid
+flowchart TB
+    subgraph entry["入口层 · 四条鉴权路径"]
+        direction LR
+        B["浏览器<br/>Vue 3"]
+        F["飞书 IM"]
+        A["其他 agent<br/>A2A"]
+        S["agentscope<br/>管理台"]
+    end
 
-  其他 agent ──A2A──────┐
-                        ├──→ mesh (20001) ──换代表用户的令牌──→ ask
-  agentscope 管理台 ──aistio──┘                 （mesh 自己不做权限判断）
+    subgraph edge["接入层"]
+        direction LR
+        GW["gateway :8080<br/>BFF 会话 · 令牌中继"]
+        CH["channel :20000<br/>验签 · 卡片渲染"]
+        MSH["mesh :20001<br/>A2A · aistio"]
+    end
+
+    ASK["<b>ask 问数服务 :8081</b><br/>令牌内省 · 会话 · 管理台 API · SSE"]
+    IAM["<b>iam 身份服务 :9000</b><br/>用户 · 组织 · 角色 · 功能权限 · OAuth 2.1"]
+
+    subgraph engine["引擎层 ask-engine · 模型只产 DSL，不产 SQL"]
+        direction LR
+        SM["语义模型<br/>指标 / 维度"] --> DSL["模型产出 DSL"]
+        DSL --> CK["DSL 校验<br/>枚举 · 角色"]
+        CK --> RD["SQL 渲染<br/>确定性 · 逐字节相同"]
+        RD --> PG["权限注入<br/>行级规则 · 列脱敏"]
+    end
+
+    subgraph data["数据层"]
+        direction LR
+        DB[("业务库<br/>MySQL · Doris · StarRocks<br/>PostgreSQL · Oracle · SQL Server<br/>Hive · Trino")]
+        CFG[("chatdata_ask<br/>配置 · 审计 · 会话")]
+        IDS[("chatdata_iam<br/>身份 · 授权")]
+    end
+
+    B --> GW
+    F --> CH
+    A --> MSH
+    S --> MSH
+
+    GW -->|"用户令牌"| ASK
+    CH -->|"代表用户的令牌"| ASK
+    MSH -->|"代表用户的令牌"| ASK
+
+    ASK <-->|"内省 / 读角色"| IAM
+    ASK --> engine
+    engine -->|"执行"| DB
+    ASK -.-> CFG
+    IAM -.-> IDS
 ```
+
+**关键设计：模型只产 DSL，不产 SQL。** 所以权限能固定在渲染器里注入——
+一旦 SQL 由模型自由生成，就没有安全的注入点。
 
 三个入口，三条鉴权路径，最后都汇到 ask 由它统一判权限：
 
