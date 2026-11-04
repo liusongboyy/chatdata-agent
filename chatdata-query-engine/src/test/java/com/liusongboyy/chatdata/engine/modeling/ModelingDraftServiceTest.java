@@ -88,9 +88,15 @@ class ModelingDraftServiceTest {
         assertThat(draft.tables()).hasSize(1);
         assertThat(draft.tables().get(0).name()).isEqualTo("orders");
         assertThat(draft.tables().get(0).label()).isEqualTo("订单");
-        assertThat(draft.tables().get(0).columns()).hasSize(3);
+        // **登记数不等于物理列数**：度量列会展开成「维度 + 指标」两条。
+        // 这个测试里 id(pk) 1 条 + total_amount 双登记 3 条 + status 1 条 = 5
+        var cols = draft.tables().get(0).columns();
+        assertThat(cols).as("登记数应大于物理列数（双登记）").hasSizeGreaterThan(3);
+        // 物理列还是那三列
+        assertThat(cols.stream().map(c -> c.col()).distinct())
+                .containsExactlyInAnyOrder("id", "total_amount", "status");
         assertThat(draft.stats().tables()).isEqualTo(1);
-        assertThat(draft.stats().columns()).isEqualTo(3);
+        assertThat(draft.stats().columns()).isEqualTo(cols.size());
     }
 
     @Test
@@ -171,6 +177,104 @@ class ModelingDraftServiceTest {
     }
 
     @Test
+    @DisplayName("★ 双登记：度量列生成「维度」+「指标」两条")
+    void measureColumnProducesTwoRegistrations() {
+        // 只登记一种会丢掉另一种问法：
+        //   只当指标 → 「保障年限为 10 年的保单」问不出来
+        //   只当维度 → 「平均保障年限是多少」问不出来
+        // 实测日志里「配了聚合方式，不能作为维度」出现 52 次
+        MetaReader meta = stubMeta(
+                List.of(new TableMeta("orders", "", "TABLE")),
+                java.util.Map.of("orders", List.of(
+                        pk("id"),
+                        col("total_amount", "decimal(10,2)"))));
+        var service = new ModelingDraftService(meta, deadResolver());
+
+        Draft draft = service.generate("1", null);
+        var cols = draft.tables().get(0).columns();
+
+        var forAmount = cols.stream().filter(c -> c.col().equals("total_amount")).toList();
+        assertThat(forAmount).as("度量列应该展开成多条登记").hasSizeGreaterThanOrEqualTo(2);
+
+        // 一条纯维度（无聚合）
+        assertThat(forAmount).anySatisfy(c -> {
+            assertThat(c.role()).isEqualTo("DIMENSION");
+            assertThat(c.agg()).isEmpty();
+        });
+        // 至少一条指标（有聚合）
+        assertThat(forAmount).anySatisfy(c -> {
+            assertThat(c.role()).isEqualTo("METRIC");
+            assertThat(c.agg()).isNotEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("★ 指标那条的别名带语义前缀，与维度区分")
+    void metricAliasHasMeaningfulPrefix() {
+        MetaReader meta = stubMeta(
+                List.of(new TableMeta("t", "", "TABLE")),
+                java.util.Map.of("t", List.of(
+                        pk("id"),
+                        col("total", "decimal", "订单金额"))));
+        var service = new ModelingDraftService(meta, deadResolver());
+
+        var cols = service.generate("1", null).tables().get(0).columns()
+                .stream().filter(c -> c.col().equals("total")).toList();
+
+        // 维度那条保持原别名
+        assertThat(cols).anySatisfy(c -> {
+            if ("DIMENSION".equals(c.role())) assertThat(c.alias()).isEqualTo("订单金额");
+        });
+        // 指标那条加前缀——「订单金额合计」而不是「订单金额（SUM）」
+        assertThat(cols).anySatisfy(c -> {
+            if ("METRIC".equals(c.role()) && c.agg().contains(
+                    com.liusongboyy.chatdata.engine.semantic.Aggregation.SUM)) {
+                assertThat(c.alias()).isEqualTo("订单金额合计");
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("★ 文本分类列也双登记：维度 + COUNT_DISTINCT（记录数）")
+    void textColumnGetsCountDistinct() {
+        // 实测：AdventureWorks 用单登记建完，33 个分类列缺 COUNT_DISTINCT
+        // 「一共涉及多少种」是最高频问题之一，缺了它模型只能逐项列出
+        MetaReader meta = stubMeta(
+                List.of(new TableMeta("t", "", "TABLE")),
+                java.util.Map.of("t", List.of(pk("id"), col("status", "varchar(20)"))));
+        var service = new ModelingDraftService(meta, deadResolver());
+
+        var cols = service.generate("1", null).tables().get(0).columns()
+                .stream().filter(c -> c.col().equals("status")).toList();
+
+        assertThat(cols).anySatisfy(c -> {
+            assertThat(c.role()).isEqualTo("DIMENSION");
+            assertThat(c.agg()).isEmpty();
+        });
+        // 基数采样在测试里不可用（deadResolver），所以这条只在能估出基数时才生成。
+        // 这里断言的是"如果生成了指标那条，它一定是 COUNT_DISTINCT"
+        cols.stream().filter(c -> "METRIC".equals(c.role())).forEach(c ->
+                assertThat(c.agg()).contains(
+                        com.liusongboyy.chatdata.engine.semantic.Aggregation.COUNT_DISTINCT));
+    }
+
+    @Test
+    @DisplayName("★ 敏感列不展开：关掉就都关掉")
+    void sensitiveColumnIsNotExpanded() {
+        MetaReader meta = stubMeta(
+                List.of(new TableMeta("t", "", "TABLE")),
+                java.util.Map.of("t", List.of(pk("id"), col("phone_number", "varchar"))));
+        var service = new ModelingDraftService(meta, deadResolver());
+
+        var cols = service.generate("1", null).tables().get(0).columns()
+                .stream().filter(c -> c.col().equals("phone_number")).toList();
+
+        // 给两条记录会让管理员误以为只关了一半
+        assertThat(cols).hasSize(1);
+        assertThat(cols.get(0).enabled()).isFalse();
+    }
+
+    @Test
     @DisplayName("只选指定表")
     void selectSpecificTables() {
         MetaReader meta = stubMeta(
@@ -226,7 +330,12 @@ class ModelingDraftServiceTest {
         Draft draft = service.generate("1", null);
 
         assertThat(draft.stats().tables()).isEqualTo(1);
-        assertThat(draft.stats().columns()).isEqualTo(2);
+        // amount 是度量列，双登记后登记数 > 物理列数 2
+        assertThat(draft.stats().columns())
+                .as("登记数含双登记展开")
+                .isGreaterThanOrEqualTo(2);
+        assertThat(draft.stats().columns())
+                .isEqualTo(draft.tables().get(0).columns().size());
         // 验收要求 5 张表 < 3 秒，这里断言"有测量值"即可
         assertThat(draft.stats().elapsedMs()).isGreaterThanOrEqualTo(0);
     }

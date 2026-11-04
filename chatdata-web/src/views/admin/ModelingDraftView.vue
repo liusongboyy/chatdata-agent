@@ -235,12 +235,23 @@ async function generate(): Promise<void> {
 }
 
 /** 某列的当前业务名（用户改过就用改的）。 */
+/**
+ * 别名编辑的键。
+ *
+ * **必须带 role**：同一个物理列会有「维度」和「指标」两条登记，
+ * 只按 `表.列` 做键的话改一条会把另一条也改掉——而它们的别名本就该不同
+ * （「保障年限」vs「平均保障年限」）。
+ */
+function aliasKey(table: DraftTable, col: DraftColumn): string {
+  return `${table.name}.${col.col}.${col.role ?? ''}`
+}
+
 function aliasOf(table: DraftTable, col: DraftColumn): string {
-  return aliasEdits.value[`${table.name}.${col.col}`] ?? col.alias
+  return aliasEdits.value[aliasKey(table, col)] ?? col.alias
 }
 
 function setAlias(table: DraftTable, col: DraftColumn, value: string): void {
-  aliasEdits.value = { ...aliasEdits.value, [`${table.name}.${col.col}`]: value }
+  aliasEdits.value = { ...aliasEdits.value, [aliasKey(table, col)]: value }
 }
 
 /**
@@ -249,7 +260,7 @@ function setAlias(table: DraftTable, col: DraftColumn, value: string): void {
  * 改过就算确认——用户看过并认可了这个名字，那是我们要的。
  */
 function aliasConfirmed(table: DraftTable, col: DraftColumn): boolean {
-  const edited = aliasEdits.value[`${table.name}.${col.col}`]
+  const edited = aliasEdits.value[aliasKey(table, col)]
   return col.aliasConfirmed || (edited != null && edited.trim() !== '')
 }
 
@@ -332,6 +343,38 @@ async function confirmAndSave(): Promise<void> {
     error.value = `保存失败：${errorMessage(e)}`
   } finally {
     loading.value = false
+  }
+}
+
+/** 这一行是不是同一物理列的续行（用于画连接符）。 */
+function isGrouped(col: DraftColumn, idx: number, all: DraftColumn[]): boolean {
+  return idx > 0 && all[idx - 1]?.col === col.col
+}
+
+/**
+ * 身份的中文名。
+ *
+ * 双登记是这一版新增的：同一列会有「维度」和「指标」两条，
+ * 不标出来管理员会以为是重复项，然后删掉其中一条。
+ */
+function roleLabel(role?: string): string {
+  switch (role) {
+    case 'DIMENSION': return '维度'
+    case 'METRIC': return '指标'
+    case 'DIMENSION_AND_METRIC': return '维度+指标'
+    case 'TEMPORAL': return '时间'
+    case 'SENSITIVE': return '敏感'
+    default: return '—'
+  }
+}
+
+function roleClass(role?: string): string {
+  switch (role) {
+    case 'DIMENSION': return 'role-dim'
+    case 'METRIC': return 'role-metric'
+    case 'TEMPORAL': return 'role-time'
+    case 'SENSITIVE': return 'role-sensitive'
+    default: return ''
   }
 }
 
@@ -507,6 +550,7 @@ function aggText(c: DraftColumn): string {
             <tr>
               <th class="w-on">启用</th>
               <th>列</th>
+              <th title="同一列可能有多条登记：维度用于筛选/分组，指标用于聚合">身份</th>
               <th>类型</th>
               <th>建议聚合</th>
               <th>业务名（可改）</th>
@@ -515,11 +559,20 @@ function aggText(c: DraftColumn): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="col in table.columns" :key="col.col" :class="{ off: !col.enabled }">
+            <tr
+              v-for="(col, ci) in table.columns"
+              :key="`${col.col}-${col.role ?? ''}-${ci}`"
+              :class="{ off: !col.enabled, grouped: ci > 0 && table.columns[ci - 1]?.col === col.col }"
+            >
               <td class="w-on">
                 <input v-model="col.enabled" type="checkbox" />
               </td>
-              <td class="mono">{{ col.col }}</td>
+              <td class="mono">
+                <span v-if="isGrouped(col, ci, table.columns)" class="dup-mark" title="同列的另一条登记">↳</span>{{ col.col }}
+              </td>
+              <td>
+                <span class="role" :class="roleClass(col.role)">{{ roleLabel(col.role) }}</span>
+              </td>
               <td class="mono dim">{{ col.type }}</td>
               <td>
                 <span v-if="col.agg.length" class="agg">{{ aggText(col) }}</span>
@@ -678,7 +731,14 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .conf-high { color: #047857; background: #d1fae5; }
 .conf-mid { color: #b45309; background: #fef3c7; }
 .conf-low { color: #b91c1c; background: #fee2e2; }
-.reason-col { width: 34%; }
+.reason-col { width: 30%; }
+.role { font-size: 0.72rem; border-radius: 5px; padding: 1px 7px; white-space: nowrap; }
+.role-dim { background: #e0e7ff; color: #3730a3; }
+.role-metric { background: #dcfce7; color: #166534; }
+.role-time { background: #fce7f3; color: #9d174d; }
+.role-sensitive { background: #fee2e2; color: #b91c1c; }
+.dup-mark { color: #94a3b8; margin-right: 4px; font-size: 0.8rem; }
+tr.grouped td { border-top: none; padding-top: 1px; }
 .reason { color: #64748b; font-size: 0.76rem; line-height: 1.45; }
 .footer-bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 12px 16px; background: #fffffff2; backdrop-filter: blur(4px); border-top: 1px solid #e2e8f0; }
 .warn-inline { color: #b45309; font-size: 0.83rem; }

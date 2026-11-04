@@ -297,6 +297,13 @@ export interface DraftColumn {
   enabled: boolean
   confidence: 'HIGH' | 'MEDIUM' | 'LOW'
   reason: string
+  /**
+   * 这一条登记的身份：DIMENSION（维度）/ METRIC（指标）。
+   *
+   * 同一个物理列可能有多条：一条维度负责筛选与分组，
+   * 一条或多条指标负责聚合。只登记一种就会丢掉另一种问法。
+   */
+  role?: 'DIMENSION' | 'METRIC' | 'DIMENSION_AND_METRIC' | 'TEMPORAL' | 'SENSITIVE'
 }
 
 export interface DraftTable {

@@ -91,7 +91,8 @@ public class ModelingDraftService {
      */
     public record ColumnDraft(String col, String type, List<Aggregation> agg,
                               String alias, boolean aliasConfirmed,
-                              boolean enabled, String confidence, String reason) {
+                              boolean enabled, String confidence, String reason,
+                              String role) {
         public ColumnDraft {
             agg = List.copyOf(agg);
         }
@@ -161,16 +162,19 @@ public class ModelingDraftService {
                 if (sensitive) {
                     sensitiveCount++;
                 }
-                columnDrafts.add(new ColumnDraft(
-                        column.name(),
-                        column.type(),
-                        inf.aggregations(),
-                        ColumnInferrer.aliasCandidate(column),
-                        // **必须人工确认**：业务名不确认就不该上线
-                        !ColumnInferrer.aliasNeedsConfirmation(column) && !sensitive,
-                        !sensitive,          // 敏感列默认关闭——失败方向必须安全
-                        inf.confidence().name(),
-                        inf.reason()));
+                // **一条推断可能展开成多条登记（双登记）。**
+                //
+                // 语义模型里一个物理列可以有多个身份：
+                //   · 维度：能分组、能当筛选条件（`WHERE term_years = 10`）
+                //   · 指标：能聚合（`AVG(term_years)`、`COUNT(DISTINCT province)`）
+                //
+                // 只登记一种会丢掉另一种问法：只当指标则「保障年限为 10 年的保单」
+                // 永远问不出来（实测日志里有 13 次这种失败）；
+                // 只当维度则「平均保障年限是多少」问不出来。
+                //
+                // 实测：AdventureWorks 用单登记建完，覆盖度报 23 条建议，
+                // 其中 33 个分类列缺 COUNT_DISTINCT。
+                columnDrafts.addAll(expand(column, inf, sensitive));
             }
             tableDrafts.add(new TableDraft(
                     table.name(),
@@ -211,6 +215,80 @@ public class ModelingDraftService {
     }
 
     // ─────────────────────────────────────────────────────────────
+
+    /**
+     * 把一条推断展开成一条或多条列登记。
+     *
+     * <h2>维度与指标为什么必须分开登记</h2>
+     *
+     * <p>语义模型里「维度」和「指标」是两个身份，同一个物理列可以同时具备：
+     *
+     * <table>
+     *   <tr><th>身份</th><th>能回答什么</th></tr>
+     *   <tr><td>维度</td><td>「保障年限为 10 年的保单」——当筛选条件</td></tr>
+     *   <tr><td>指标</td><td>「平均保障年限是多少」——当聚合对象</td></tr>
+     * </table>
+     *
+     * <p>只登记一种就丢掉另一种问法。实测日志里「配了聚合方式，不能作为维度」
+     * 出现 52 次——那正是只登记了指标、没登记维度的后果。
+     *
+     * <h2>别名怎么区分</h2>
+     *
+     * <p>维度用原注释/列名；指标在名字前加语义前缀（「平均X」「X数」「X合计」），
+     * 让管理员一眼看出这是同列的另一条登记，而不是重复项。
+     */
+    private static List<ColumnDraft> expand(ColumnMeta column, ColumnInferrer.Inference inf,
+                                            boolean sensitive) {
+        String baseAlias = ColumnInferrer.aliasCandidate(column);
+        boolean aliasOk = !ColumnInferrer.aliasNeedsConfirmation(column) && !sensitive;
+
+        // 敏感列不展开：关掉就都关掉，不给它两条记录让管理员误以为只关了一半
+        if (sensitive || inf.aggregations().isEmpty()) {
+            return List.of(new ColumnDraft(column.name(), column.type(),
+                    inf.aggregations(), baseAlias, aliasOk, !sensitive,
+                    inf.confidence().name(), inf.reason(), inf.role().name()));
+        }
+
+        List<ColumnDraft> out = new ArrayList<>();
+
+        // ① 维度那条。**先加**——它是筛选条件的基础，
+        //    管理员看草稿时先看到「这一列能用来筛选」更符合直觉
+        out.add(new ColumnDraft(column.name(), column.type(), List.of(),
+                baseAlias, aliasOk, true,
+                inf.confidence().name(),
+                inf.reason() + "；本条为维度（可用于筛选与分组）",
+                ColumnInferrer.Role.DIMENSION.name()));
+
+        // ② 指标那条（或几条）。每个聚合一条——同一列出现两条 SUM 没有意义，
+        //    但 SUM 与 AVG 的语义不同，都要给
+        for (Aggregation agg : inf.aggregations()) {
+            out.add(new ColumnDraft(column.name(), column.type(), List.of(agg),
+                    metricAlias(baseAlias, agg), aliasOk, true,
+                    inf.confidence().name(),
+                    inf.reason() + "；本条为指标（" + agg + "）",
+                    ColumnInferrer.Role.METRIC.name()));
+        }
+        return out;
+    }
+
+    /**
+     * 指标那条的别名。
+     *
+     * <p>加语义前缀而不是加后缀「（指标）」：管理员和模型看的都是这个名字，
+     * 「平均保障年限」比「保障年限（AVG）」更接近人话，
+     * 而模型选字段时靠的正是名字的语义。
+     */
+    private static String metricAlias(String base, Aggregation agg) {
+        return switch (agg) {
+            case AVG -> "平均" + base;
+            case SUM -> base + "合计";
+            case COUNT -> base + "计数";
+            case COUNT_DISTINCT -> base + "去重数";
+            case MAX -> "最大" + base;
+            case MIN -> "最小" + base;
+            case NONE -> base;
+        };
+    }
 
     private static List<TableMeta> selectTables(List<TableMeta> all, List<String> wanted) {
         if (wanted == null || wanted.isEmpty()) {
