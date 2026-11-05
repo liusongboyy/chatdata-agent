@@ -1,29 +1,36 @@
-/# chat-data-agent
+# chat-data-agent
 
-**一个不让模型写 SQL 的问数系统。**
+**模型只产出查询意图，SQL 由确定性渲染器生成。**
 
-业务人员用中文提问，得到表格、图表与结论。模型只产出**结构化的查询意图（DSL）**——
-查什么指标、按什么维度、什么时间范围——SQL 由确定性渲染器生成。结果是：
-答案可校验、权限可控、同一份配置永远生成同样的 SQL。
+业务人员用中文提问，得到表格、图表与结论。模型负责理解「查什么指标、按什么维度、
+什么时间范围」，把它写成结构化的 DSL；SQL 由代码渲染，权限在渲染时固定注入。
+
+> 模型碰不到 SQL，所以幻觉进不来，权限绕不过去，同一份配置永远生成同一句 SQL。
 
 [![Java](https://img.shields.io/badge/Java-21-blue)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-green)](https://spring.io/projects/spring-boot)
 [![agentscope-java](https://img.shields.io/badge/agentscope--java-2.0.4-orange)](https://github.com/agentscope-ai/agentscope-java)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
+![问数结果](docs/screenshots/ask-result.png)
+
+问一句「各区域的保费合计是多少」，得到图、数、SQL，以及**系统实际理解成了什么**
+（指标、维度、时间、筛选、数据范围）。最后那一行是刻意放的——静默的语义错误是
+这类系统最危险的失败方式，所以要让人一眼看见。
+
 ---
 
-## 这个项目解决什么问题
+## 为什么不直接让模型写 SQL
 
-企业里的业务人员想问数据，但只有分析师会写 SQL。市面上多数 NL2SQL 产品让模型
-**直接写 SQL**——快，但错了不报错，只是数字不对，而用户没法察觉。
+市面上多数 NL2SQL 让模型直接生成 SQL。快，但错了不报错，只是数字不对，
+而用户无从察觉。
 
-这个项目的做法不同：**模型只产出结构化的查询意图（DSL），SQL 由我们渲染。**
+这个项目在中间插了一层 DSL：
 
 ```mermaid
 flowchart LR
     Q["中文问题"] --> D["问数 DSL<br/>指标 / 维度 / 时间 / 筛选<br/><i>可校验 · 可审计</i>"]
-    D --> R["我们渲染 SQL"]
+    D --> R["渲染 SQL"]
     R --> P["注入权限<br/><i>行级规则 · 列脱敏</i>"]
     P --> E["执行"]
 
@@ -31,13 +38,65 @@ flowchart LR
     style P fill:#dcfce7,stroke:#16a34a
 ```
 
-带来三个直接后果：
+三个直接后果：
 
 | | 让模型写 SQL | 本项目 |
 |---|---|---|
-| 模型能不能算错 | 能，且静默 | 不能——它只说"查什么"，不说"怎么查" |
+| 模型能不能算错 | 能，且静默 | 不能——它只说「查什么」，不说「怎么查」 |
 | 权限能不能保证 | 难以保证（SQL 是模型自由生成的） | 能——渲染器固定注入行级/列级规则 |
 | 同一个问题两次结果 | 可能不同 | 同一份配置生成逐字节相同的 SQL |
+
+还有一条不那么明显但很实用的：**DSL 让答案可复算**。口径改了之后，
+拿历史 DSL 用新口径重跑一遍，就知道哪些旧结论会变。SQL 做不到这一点——
+SQL 里没有「保费」这个概念，只有一个列名。
+
+## 权限：五个账号，同一个问题，五个答案
+
+这是最容易验证、也最难伪造的一件事。`demo/` 里有一套组织树，便利店订单落在门店级，
+门店是叶子节点：
+
+```
+便利群 /1/100/        admin2     → 16800
+├─ 华东子公司 /1/100/110/   zhangsan   → 3600
+│  └─ …/120/ → …/130/
+│     ├─ 上海门店1 …/140/   reviewer   → 1000   （分析师，精确匹配）
+│     └─ 上海门店2 …/141/
+└─ 华北子公司 /1/100/111/   auditor    → 4600
+```
+
+五个账号问**同一个问题**，得到的行数各不相同——而他们看到的是同一个域、
+同一个助理、同一句话。权限不是在应用层过滤结果，是在**渲染 SQL 时**注入谓词：
+
+```sql
+-- reviewer（分析师，只到门店 140）实际执行的 SQL
+SELECT … FROM order_detail t1
+WHERE t1.org_code_path LIKE '/1/100/110/120/130/140/%'
+```
+
+有三条设计取向贯穿其中：
+
+- **fail-closed**：动态变量取不到（比如没配 orgCode）时**拒绝查询**，
+  而不是跳过规则放行。厂商在这里是跳过——那等于权限静默失效
+- **权限不来自客户端**：角色与组织路径都从令牌内省结果解析。
+  中文角色名走 HTTP 头会乱码，而乱码的表现是规则匹配不上 → 静默放行
+- **渠道和 A2A 不判权限**：它们只负责「换一张代表该用户的令牌」，
+  判定点只有一个。多一个判定点就多一处可能不一致的地方
+
+## 管理台
+
+<p>
+  <img src="docs/screenshots/admin-models.png" width="49%" alt="模型管理" />
+  <img src="docs/screenshots/admin-token-usage.png" width="49%" alt="token 用量" />
+</p>
+
+左边是模型管理：多个模型、不同厂商、按角色白名单收敛、单价可配、连通性可测。
+右边是 token 用量：每次提问花了多少、缓存命中率、折成多少钱。
+
+两个设计上的取舍值得一提：
+
+- **密钥只进不出**——保存后连密文都不回显，界面只有一个「已配置」
+- **算不出钱时不写 0**——没配单价的模型显示「未配单价」，因为 0 元是「免费」，
+  而这里是「不知道」，两者会让管理员得出相反的结论
 
 ## 功能
 
@@ -56,7 +115,7 @@ flowchart LR
 - **多数据源**：MySQL / Doris / StarRocks / PostgreSQL / Oracle / SQL Server；
   Hive 与 Trino 通过 `-Pbigdata` 启用
 - **A2A**：注册到 Nacos 供其他 agent 发现；接入 agentscope 管理台可编排
-- **评测基线**：199 条用例，分数据集报告通过率与失败原因
+- **评测基线**：203 条用例，分数据集报告通过率与失败原因
 
 ## 快速开始
 
@@ -81,7 +140,8 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/14-ask-sql-example.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
-         sql/21-channel.sql
+         sql/21-channel.sql sql/22-channel-subscription.sql \
+         sql/23-audit-health-index.sql sql/24-model-cost.sql
 do mysql -uroot -p chatdata_ask < "$f"; done
 mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql   # 演示数据（可选）
 
@@ -91,6 +151,7 @@ mysql -uroot -p chatdata_iam < sql/iam/01-schema.sql
 mysql -uroot -p chatdata_iam < sql/iam/07-role-permission.sql
 mysql -uroot -p chatdata_iam < sql/iam/02-seed-dev.sql   # 建 admin / admin123
 mysql -uroot -p chatdata_iam < sql/iam/08-bootstrap.sql  # 会打印角色与超管核对报告
+mysql -uroot -p chatdata_iam < sql/25-ask-model-permission.sql  # 模型管理页的功能权限
 
 # 4) 构建并启动
 mvn -DskipTests package
@@ -205,19 +266,62 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 | [sql/README.md](sql/README.md) | 库的划分与建表顺序 |
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
 | [demo/adventureworks/](demo/adventureworks/) | 复杂业务域：28 表 / 172 列 / 30 关联的销售分析场景 |
-| [.scratch/](.scratch/) | 设计过程：每轮的 spec、取舍、被否决的方案 |
 | [AGENTS.md](AGENTS.md) | 给 AI agent 的工作约定 |
+
+`.scratch/` 里是设计过程：每一轮功能的 spec、当时权衡的取舍、以及**被否决的方案**。
+它不适合当入门材料读，但如果你想知道「为什么不做自动拆解路由」「为什么敏感列默认关闭」
+这类问题，答案在那里。
 
 ## 开发
 
 ```bash
-mvn test                                    # 844 个测试
+mvn test                                    # 1082 个测试
 npm --prefix chatdata-web run build   # 前端（产物要一起提交，见下）
 ```
 
 **前端产物必须提交。** Maven 不构建前端（没有 frontend-maven-plugin），
 `src/main/resources/static/**` 里的文件是 `npm run build` 生成的。
 删掉它们，clone 下来就是白屏。改了前端要重新 build 再提交。
+
+## 工程证据
+
+讲「可信」的系统很多，能拿出数字的少。这里是可核对的：
+
+| 指标 | 数值 |
+|---|---|
+| 测试 | 1082 个，0 失败 |
+| 引擎行覆盖率 | 71%（分支 58%） |
+| 评测用例 | 203 条，分四个数据集 |
+| 架构决策记录 | 11 份 ADR，每份写清**被否决的方案** |
+
+其中几条测试是刻意连真库、真 agent 的，因为它们验的东西单测验不了：
+
+- `UsageRealAgentTest` —— 真跑一遍 `ReActAgent`，确认 token 用量真的能采到。
+  框架某次升级改了用量字段的落点，这条会红
+- `EngineAuditMapperRealDbTest` —— 手写的 fake mapper 不解析 SQL，列序错了照样绿；
+  只有真库能发现
+- `ModelConfigReachesAskRealDbTest` —— **管理页配的模型真的出现在问数下拉里**。
+  两侧各自的测试都绿，但中间那一环没人测，而它出错的方式都很安静
+- `WebAppRouteCoverageTest` —— 解析前端 `router.ts`，断言每条静态路由都有 SPA 转发。
+  漏一条的表现是「点进去正常、刷新 404」
+
+## 一个真实的失败案例
+
+问「上个月华东的**有效**保单保费合计」，系统返回空。
+
+不是 bug——是「我理解成了」那块起了作用：
+
+```
+筛选  区域 = 华东  且  状态 = 有效
+```
+
+而库里 `status` 的取值是 `生效 / 已过期 / 退保`，**没有「有效」**。
+
+这个例子说明了两件事：一是模型确实会按用户的措辞造值（`有效` 而不是 `生效`），
+二是系统把它摊开在界面上，而不是安静地返回一个 0。
+
+修法有两个方向：在语义层给 `status` 配同义词（`有效 → 生效`），
+或者让模型看见列的真实取值。后者正是「列画像」在做的。
 
 ## 设计取向
 
