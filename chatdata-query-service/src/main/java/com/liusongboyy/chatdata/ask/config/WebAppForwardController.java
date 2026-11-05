@@ -20,6 +20,10 @@ import org.springframework.web.bind.annotation.GetMapping;
  * 表现为"页面白屏，控制台报 MIME 类型错误"。列具体路由没有这个风险。
  *
  * <p>新增前端路由时**必须在这里补一行**，否则该路由刷新即 404。
+ * 这条约束由 {@code WebAppRouteCoverageTest} 兜住——它读前端的 {@code router.ts}
+ * 提取全部静态路径，断言每一条都在这里。漏一行就是测试失败，
+ * 而不是等到有人刷新页面才发现（{@code /app/admin/models} 与
+ * {@code /app/admin/cost} 就是这么漏掉的）。
  */
 @Controller
 public class WebAppForwardController {
@@ -33,6 +37,8 @@ public class WebAppForwardController {
             // 下面这条带路径参数的用 {id} 通配——它落在最后一段，
             // 不会像 /app/** 那样把 assets 也吞掉。
             "/app/admin",
+            "/app/admin/models",
+            "/app/admin/cost",
             "/app/admin/datasources",
             "/app/admin/domains",
             "/app/admin/modeling",
