@@ -82,7 +82,14 @@ async function doLogout(): Promise<void> {
         :username="session.user.value?.username"
         :meta="roleLabel"
         @logout="doLogout"
-      />
+      >
+        <!--
+          「我的账号」放在用户菜单里而不是顶部导航：
+          导航那排是**管理别人的**（用户/组织/角色），
+          这一项是看自己的。混在一起会让人以为它也是一个管理功能。
+        -->
+        <RouterLink to="/account" class="user-pop-item">我的账号</RouterLink>
+      </UserMenu>
     </header>
 
     <main class="content">

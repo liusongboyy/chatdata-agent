@@ -8,6 +8,12 @@ import { session } from '../composables/useSession'
  * 而弹回的目标又是 `/admin/users` —— 来回跳，界面看起来像坏了。
  *
  * 这里给一句能读懂的话和一条出路，而不是空白页。
+ *
+ * ## 为什么这里要给「我的账号」的入口
+ *
+ * 没有管理权限的用户进不来管理台，而「我的账号」（渠道绑定/解绑）
+ * **恰恰是给他们用的**。如果只在管理台的用户菜单里放入口，
+ * 这批人就永远看不到它——而他们是绑定出错时最需要自助解绑的人。
  */
 </script>
 
@@ -29,7 +35,10 @@ import { session } from '../composables/useSession'
         >{{ r }}</span>
         <span v-if="(session.user.value?.roles ?? []).length === 0" class="sub">（无角色）</span>
       </div>
-      <a class="btn btn-primary" href="/app/ask">去问数</a>
+      <div class="acts">
+        <a class="btn btn-primary" href="/app/ask">去问数</a>
+        <RouterLink to="/account" class="btn btn-quiet">我的账号</RouterLink>
+      </div>
     </div>
   </section>
 </template>
@@ -52,6 +61,16 @@ import { session } from '../composables/useSession'
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   text-align: center;
+}
+
+/* 两个出口并排。窄屏换行——"去问数"与"我的账号"都是主动作，
+   不该有一个被挤掉 */
+.acts {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--space-4);
 }
 
 .mark {

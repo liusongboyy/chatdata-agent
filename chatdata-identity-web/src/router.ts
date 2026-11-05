@@ -8,6 +8,7 @@ import OrgListView from './views/OrgListView.vue'
 import RoleListView from './views/RoleListView.vue'
 import NoAccessView from './views/NoAccessView.vue'
 import BindView from './views/BindView.vue'
+import AccountView from './views/AccountView.vue'
 
 /**
  * 管理页清单：路径、名称、标题、以及**进入它需要的权限**。
@@ -38,6 +39,15 @@ export const router = createRouter({
     { path: '/no-access', name: 'no-access', component: NoAccessView, meta: { requiresAuth: true } },
     // 渠道绑定页。要求登录：绑定到谁由会话决定，未登录时页面自己会跳登录页
     { path: '/bind', name: 'bind', component: BindView, meta: { requiresAuth: true } },
+    /*
+     * 我的账号。**不在 /admin 下**，也不要求任何权限码——
+     * 判据只有"登录了"。绑定/解绑是每个人自己的事，而最需要这一页的
+     * 恰恰是没有任何管理权限的普通用户。
+     *
+     * 放进 /admin 的话，路由守卫会因为他们没有 IAM_USERS 之类的码
+     * 把人弹到 /no-access——那就等于这页不存在。
+     */
+    { path: '/account', name: 'account', component: AccountView, meta: { requiresAuth: true } },
     {
       path: '/admin',
       component: AdminLayout,

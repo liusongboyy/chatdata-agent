@@ -23,6 +23,9 @@ public class WebAppForwardController {
             "/iam/app",
             "/iam/app/",
             "/iam/app/login",
+            // 无权限落地页。**一直漏着**——无管理权限的用户刷新那页就是 404，
+            // 而那正是他们唯一能看到的页面。由 IamWebRouteCoverageTest 发现的
+            "/iam/app/no-access",
             "/iam/app/admin",
             "/iam/app/admin/users",
             "/iam/app/admin/orgs",
@@ -30,6 +33,8 @@ public class WebAppForwardController {
             "/iam/app/admin/policies",
             // 渠道绑定页。不加这行，用户从飞书点进来后按刷新就是 404
             "/iam/app/bind",
+            // 我的账号。用户从用户菜单进来后按刷新同样是 404
+            "/iam/app/account",
     })
     public String forwardToApp() {
         return "forward:/iam/app/index.html";

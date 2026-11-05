@@ -151,4 +151,70 @@ class BindServiceTest {
 
         verify(users).updateExternalIdentity(7L, null, null);
     }
+
+    @Test
+    @DisplayName("★ 解绑是幂等的——重复点不报错")
+    void unbindIsIdempotent() {
+        // 用户点了两次、或网络重试。第二次不该得到「你还没绑定」这种错误：
+        // 他的目的（解除绑定）已经达成，报错只会让人以为没成功
+        service.unbind(ME);
+        service.unbind(ME);
+
+        verify(users, org.mockito.Mockito.times(2)).updateExternalIdentity(7L, null, null);
+    }
+
+    @Test
+    @DisplayName("★ 未登录不能解绑")
+    void unbindRequiresAuthentication() {
+        assertThatThrownBy(() -> service.unbind(null))
+                .isInstanceOf(BindService.BindFailedException.class)
+                .hasMessageContaining("登录");
+
+        // 未认证时**不能**落到 updateExternalIdentity——那会把某个用户的绑定清掉，
+        // 而调用方根本没有身份
+        verify(users, never()).updateExternalIdentity(anyLong(), any(), any());
+    }
+
+    // ── 状态查询（「我的账号」页依赖它） ──
+
+    @Test
+    @DisplayName("★ 未登录时状态返回 authenticated=false，不抛异常")
+    void statusUnauthenticatedIsNotAnError() {
+        // 页面在登录跳转前会先调一次。抛异常的话，用户看到的是
+        // 「读取失败」而不是「去登录」
+        var status = service.status(null);
+
+        assertThat(status.get("authenticated")).isEqualTo(false);
+        assertThat(status).doesNotContainKeys("username", "externalProvider");
+    }
+
+    @Test
+    @DisplayName("★ 已绑定时返回渠道与**掩码**的 id")
+    void statusShowsMaskedIdOnly() {
+        when(users.selectExternalIdentity(7L)).thenReturn(
+                java.util.Map.of("provider", "feishu", "externalId", "ou_1234567890abcdef"));
+
+        var status = service.status(ME);
+
+        assertThat(status.get("authenticated")).isEqualTo(true);
+        assertThat(status.get("username")).isEqualTo("zhangsan");
+        assertThat(status.get("externalProvider")).isEqualTo("feishu");
+        // **完整 id 不能出现在响应里**：它是一份可被冒用的标识，
+        // 而用户需要确认的只是「绑的是不是我」
+        assertThat(String.valueOf(status.get("externalIdMasked")))
+                .as("完整 open_id 不该原样返回")
+                .doesNotContain("ou_1234567890abcdef");
+    }
+
+    @Test
+    @DisplayName("未绑定时 provider 为空，页面据此显示「未绑定」")
+    void statusUnboundHasNoProvider() {
+        when(users.selectExternalIdentity(7L)).thenReturn(null);
+
+        var status = service.status(ME);
+
+        assertThat(status.get("authenticated")).isEqualTo(true);
+        assertThat(status.get("externalProvider")).isNull();
+        assertThat(status.get("externalIdMasked")).isNull();
+    }
 }
