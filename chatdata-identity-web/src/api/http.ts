@@ -72,6 +72,31 @@ async function send<T>(method: string, url: string, body?: unknown): Promise<T> 
   return (await response.json()) as T
 }
 
+/**
+ * 发一个 GET，返回**原样的响应体**。
+ *
+ * ⚠️ **不自动解包信封。** IAM 的响应有两种格式：
+ *
+ *   - `Result<T>` 信封：`{code, message, data}` —— 管理面与渠道接口
+ *   - 裸对象：`/iam/me`、`/iam/auth/csrf`
+ *
+ * 自动解包就得猜是哪一种，而猜错的表现是**字段全变 undefined**，
+ * 界面显示成"没有数据"而不是报错——实测踩过：`bindStatus()` 把信封
+ * 当 `BindStatus` 用，页面永远显示「未绑定」，而数据库里明明绑着。
+ *
+ * 所以调用方必须显式写清楚自己期望哪种：
+ *
+ * ```ts
+ * // 信封
+ * return (await get<Envelope<BindStatus>>('/iam/channel/bind/status')).data
+ * // 裸对象
+ * return await get<Principal>('/iam/me')
+ * ```
+ *
+ * 类型参数就是那份"写清楚"——写成 `get<BindStatus>` 时 TS 会放行，
+ * 但那正是 bug 的样子。**审阅时看到 `get<X>` 而 X 不是 `Envelope<...>`，
+ * 就该确认这个端点确实返回裸对象。**
+ */
 export function get<T>(url: string): Promise<T> {
   return send<T>('GET', url)
 }

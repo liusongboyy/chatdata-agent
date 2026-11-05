@@ -1,4 +1,4 @@
-import { get, post } from './http'
+import { get, post, type Envelope } from './http'
 
 /**
  * 渠道自助绑定。
@@ -28,9 +28,20 @@ export interface BindStatus {
   externalIdMasked?: string | null
 }
 
-/** 预览绑定：会绑到哪个渠道账号，当前登录的是谁。不消费票据。 */
+/**
+ * 预览绑定：会绑到哪个渠道账号，当前登录的是谁。不消费票据。
+ *
+ * ⚠️ **要解包信封。** 这些接口返回 `Result<T>`（`{code, message, data}`），
+ * 与 `/iam/me` 不同——那个返回裸 Map。把信封直接当 `BindPreview` 用的话，
+ * 所有字段都是 undefined：页面显示「票据无效」，而真实原因是读取方式错了。
+ *
+ * 这个坑实测踩过：`bindStatus()` 一直返回空，页面永远显示「未绑定」，
+ * 而数据库里明明绑着。
+ */
 export async function previewBind(ticket: string): Promise<BindPreview> {
-  return await get<BindPreview>(`/iam/channel/bind?ticket=${encodeURIComponent(ticket)}`)
+  return (await get<Envelope<BindPreview>>(
+    `/iam/channel/bind?ticket=${encodeURIComponent(ticket)}`,
+  )).data
 }
 
 /** 确认绑定。票据在这一步被消费（一次性）。 */
@@ -38,9 +49,9 @@ export async function confirmBind(ticket: string): Promise<void> {
   await post<void>('/iam/channel/bind', { ticket })
 }
 
-/** 当前用户的绑定状态。 */
+/** 当前用户的绑定状态。**要解包信封**，理由见 {@link previewBind}。 */
 export async function bindStatus(): Promise<BindStatus> {
-  return await get<BindStatus>('/iam/channel/bind/status')
+  return (await get<Envelope<BindStatus>>('/iam/channel/bind/status')).data
 }
 
 /** 解除绑定。只作用于当前登录用户。 */
