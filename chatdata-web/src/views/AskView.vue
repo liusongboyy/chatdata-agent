@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import {
   askStream,
   deleteConversation,
@@ -31,7 +30,6 @@ import { session } from '../composables/useSession'
 import { usePermissions } from '../composables/usePermissions'
 import { P } from '../permissions'
 
-const router = useRouter()
 const { can } = usePermissions()
 
 /** 当前域能问的字段。用于空状态直接回答"你能问哪些数据"。 */
@@ -648,13 +646,9 @@ function cancel(): void {
 }
 
 async function logout(): Promise<void> {
-  // 会话在网关，必须让网关清（只清本地状态的话，刷新一次又"登录"回来了）
-  try {
-    await bffLogout()
-  } finally {
-    session.clear()
-    await router.replace({ name: 'login' })
-  }
+  // 会话在网关，必须让网关清（只清本地状态的话，刷新一次又"登录"回来了）。
+  // **不做跳转**：logout() 内部一步直达 IAM 登录页，见它的说明
+  await bffLogout()
 }
 </script>
 

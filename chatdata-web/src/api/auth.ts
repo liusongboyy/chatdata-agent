@@ -72,10 +72,32 @@ function iamCsrfToken(): string | null {
 }
 
 /**
- * 退出：先清 IAM 的 SSO 会话，再清网关会话。
+ * 退出：先清 IAM 的 SSO 会话，再清网关会话，最后**一步直达** IAM 登录页。
+ *
+ * <h2>为什么清两处</h2>
  *
  * 只清网关的话，登录页自动跳 `/bff/login` 时 IAM 仍认得 `IAM_SESSION`，
- * 会静默重新登录——用户看起来“退不出去”。
+ * 会静默重新登录——用户看起来"退不出去"。
+ *
+ * <h2>为什么跳转也放在这里，而不是让调用方 router.replace({ name: 'login' })</h2>
+ *
+ * 那样会多绕一圈：`/app/login` 是本地的一个页面，它挂载后**再**跳
+ * `/bff/login`，网关再 302 到 IAM。用户看到的是
+ *
+ *   点退出 → 白屏闪一下"正在跳转登录…" → IAM 登录页
+ *
+ * 中间那次本地渲染没有任何信息量，只增加一次往返和一次闪烁。
+ * 这里直接 `location.replace('/bff/login')`：
+ *
+ * - **replace 不是 assign**：登出后按"后退"不该回到已失效的页面，
+ *   那会显示一屏加载失败的空白
+ * - 跳转在 `finally` 里做：即使网关登出失败，也必须离开当前页面——
+ *   停在原地只会让用户对着一个"已登出"的界面反复点击
+ *
+ * <h2>调用方要做什么</h2>
+ *
+ * 只调 `await logout()` 即可，**不要再自己 router.replace**。
+ * 本函数不返回（页面已经在跳转）。
  */
 export async function logout(): Promise<void> {
   const csrf = iamCsrfToken()
@@ -86,7 +108,32 @@ export async function logout(): Promise<void> {
       headers: csrf ? { 'X-XSRF-TOKEN': csrf } : {},
     })
   } catch {
-    // IAM 不可达时不阻断网关登出，否则用户会卡在“已登录”状态
+    // IAM 不可达时不阻断网关登出，否则用户会卡在"已登录"状态
   }
-  await post<void>('/bff/logout', {})
+
+  try {
+    await post<void>('/bff/logout', {})
+  } catch {
+    // 网关登出失败也要往下走：至少离开当前页面。
+    // 停在这里比"会话没清干净"更糟——用户会以为按钮坏了
+  }
+
+  // 清前端内存里的身份，避免跳转前那一瞬间还显示着旧用户名
+  identityCleared?.()
+
+  // replace：登出后按后退不该回到已失效的页面
+  window.location.replace('/bff/login')
+}
+
+/**
+ * 身份清理回调。
+ *
+ * `api/auth` 不认识 `useSession`（那会形成 api ← composables 的循环依赖，
+ * 而 session 本身依赖 api）。用回调把"清身份"这件事交给上层注册。
+ */
+let identityCleared: (() => void) | null = null
+
+/** 注册身份清理。由 `useSession` 在模块加载时调用一次。 */
+export function onLogout(handler: () => void): void {
+  identityCleared = handler
 }

@@ -10,12 +10,26 @@ import { bffLoginUrl } from '../api/auth'
  *
  * 为什么删掉表单而不是留着：留一个"本应用的登录框"会让人以为有两套账号，
  * 而实际上密码只存在 IAM 一处。
+ *
+ * ## 用 replace 而不是 assign
+ *
+ * 这一页是个**空转页**：它没有内容，唯一的作用是触发跳转。
+ * 用 assign 会在历史里留一条记录，用户登录后按"后退"就会回到这里，
+ * 而它又会立刻再跳一次——表现是"后退键失灵，一直弹回登录"。
+ *
+ * ## 为什么在 onMounted 之前就跳
+ *
+ * 放在 `setup` 里同步执行，能省掉一次挂载与首屏渲染（虽然只有一帧）。
+ * 但那样"跳转被拦"时页面还没渲染，用户看不到那个手动按钮。
+ * 折中：仍在 onMounted 里跳，但**不依赖**渲染结果——用户看到的是
+ * 一个干净的跳转态，而不是先闪一下内容再跳。
  */
 const failed = ref(false)
 
 onMounted(() => {
   try {
-    window.location.assign(bffLoginUrl())
+    // replace：这一页不该留在历史里
+    window.location.replace(bffLoginUrl())
   } catch {
     failed.value = true
   }

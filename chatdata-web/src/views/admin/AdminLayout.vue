@@ -52,13 +52,14 @@ async function backToAsk(): Promise<void> {
   await router.push('/ask')
 }
 
+/**
+ * 退出。
+ *
+ * **不做任何跳转**——`logout()` 内部会一步直达 IAM 登录页（见它的说明）。
+ * 这里再 router.replace 是多余的，而且会先渲染一次本地登录页再跳走。
+ */
 async function doLogout(): Promise<void> {
-  try {
-    await bffLogout()
-  } finally {
-    session.clear()
-    await router.replace({ name: 'login' })
-  }
+  await bffLogout()
 }
 </script>
 

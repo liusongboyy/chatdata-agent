@@ -1,5 +1,5 @@
 import { ref, readonly } from 'vue'
-import { fetchCurrentUser, type CurrentUser } from '../api/auth'
+import { fetchCurrentUser, onLogout, type CurrentUser } from '../api/auth'
 
 /**
  * 当前会话。
@@ -51,3 +51,9 @@ export const session = {
   setUser,
   clear,
 }
+
+// 登出时由 `api/auth` 回调这里清身份。
+// 不在调用方各写一遍 `session.clear()`：两个登出入口（问数页、管理台）
+// 各写一遍，迟早漏一处，而漏掉的表现是"跳转前那一瞬间还显示着旧用户名"，
+// 或者更糟——身份没清、页面又跳回来，看起来像登出失败
+onLogout(clear)
