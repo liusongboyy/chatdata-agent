@@ -2,7 +2,7 @@
 -- 自研问数引擎：数据源 / 语义域 / 域内注册表
 --
 -- 依据：docs/adr/0006-self-build-ask-engine-supersedes-integration.md
---       .scratch/self-built-chatbi/spec.md §6
+--       chatdata-agent-design/self-built-chatbi/spec.md §6
 --
 -- ⚠️ 表前缀 ask_，与厂商的 chat2bi_* 完全隔离。
 --    理由：ADR-0006 决定两者并行运行、切换方式另行决策。

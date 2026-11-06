@@ -11,7 +11,7 @@ import org.springframework.session.data.redis.config.annotation.web.server.Enabl
  * **任何"这个人能不能看这个域"的判断都不在这里**——那属于 IAM 的策略层
  * 与 ask 引擎的执行点（ADR-0002）。
  *
- * <p>见 docs/adr/0008 与 .scratch/iam-platform/spec.md §9。
+ * <p>见 docs/adr/0008 与 chatdata-agent-design/iam-platform/spec.md §9。
  *
  * <h2>为什么必须 {@code @EnableRedisWebSession}</h2>
  *

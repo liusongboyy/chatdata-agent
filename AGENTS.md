@@ -2,7 +2,9 @@
 
 ### Issue tracker
 
-Issues 和 specs 作为 markdown 文件存放在本 repo 的 `.scratch/<feature>/` 下。见 `docs/agents/issue-tracker.md`。
+Issues 和 specs 作为 markdown 文件存放在 `.scratch/<feature>/` 下（**不提交**，见 `.gitignore`）。
+长期有价值的设计文档同步到 [chatdata-agent-design](https://github.com/liusongboyy/chatdata-agent-design)。
+见 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 

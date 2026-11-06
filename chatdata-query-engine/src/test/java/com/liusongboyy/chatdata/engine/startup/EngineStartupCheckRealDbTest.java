@@ -38,7 +38,7 @@ class EngineStartupCheckRealDbTest {
     private static final String URL =
             "jdbc:mysql://127.0.0.1:3306/chatdata_ask?useUnicode=true&characterEncoding=UTF-8"
                     + "&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";
-    /** 角色清单在 IAM 库里（`sys_role` 已退役，见 `.scratch/iam-platform/spec.md`）。 */
+    /** 角色清单在 IAM 库里（`sys_role` 已退役，见 `chatdata-agent-design/iam-platform/spec.md`）。 */
     private static final String IAM_URL =
             "jdbc:mysql://127.0.0.1:3306/chatdata_iam?useUnicode=true&characterEncoding=UTF-8"
                     + "&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";

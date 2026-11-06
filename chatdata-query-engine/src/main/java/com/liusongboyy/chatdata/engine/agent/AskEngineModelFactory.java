@@ -7,7 +7,7 @@ import io.agentscope.extensions.model.openai.OpenAIChatModel;
 /**
  * 模型装配。**这里的每一行参数都是 P0/P0.5 spike 实测换来的，改动前请先读原因。**
  *
- * <p>见 {@code .scratch/self-built-chatbi/spike-p0-results.md}。
+ * <p>见 {@code chatdata-agent-design/self-built-chatbi/spike-p0-results.md}。
  */
 public final class AskEngineModelFactory {
 

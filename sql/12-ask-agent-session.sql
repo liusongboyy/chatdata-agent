@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 问数引擎：多轮会话状态
 --
--- 依据：.scratch/self-built-chatbi/spec.md §5 FR-5.2（多轮追问）
+-- 依据：chatdata-agent-design/self-built-chatbi/spec.md §5 FR-5.2（多轮追问）
 --
 -- ⚠️ 这张表**不是**我们设计的，是 agentscope 的 `AgentStateStore` 契约。
 --

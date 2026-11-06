@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 问数使用的模型
 --
--- 依据：.scratch/model-cost/spec.md
+-- 依据：chatdata-agent-design/model-cost/spec.md
 --
 -- ## 为什么放数据库而不是 yml
 --

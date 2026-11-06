@@ -48,3 +48,4 @@ Thumbs.db
 
 # ── 评测本地产物 ──
 eval/fixture/*.local.sql
+.scratch/

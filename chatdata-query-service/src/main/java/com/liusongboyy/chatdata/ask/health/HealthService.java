@@ -213,7 +213,7 @@ public class HealthService {
         }
         return "最近 " + window + " 天有 " + rows + " 条审计记录，这个页面是实时统计的，"
                 + "会明显变慢。先把时间范围调小能立刻缓解；"
-                + "要长期解决需要改成预聚合（见 .scratch/health-dashboard/spec.md）。";
+                + "要长期解决需要改成预聚合（见 chatdata-agent-design/health-dashboard/spec.md）。";
     }
 
     // ─────────────────────────────────────────────────────────────

@@ -268,7 +268,8 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 | [demo/adventureworks/](demo/adventureworks/) | 复杂业务域：28 表 / 172 列 / 30 关联的销售分析场景 |
 | [AGENTS.md](AGENTS.md) | 给 AI agent 的工作约定 |
 
-`.scratch/` 里是设计过程：每一轮功能的 spec、当时权衡的取舍、以及**被否决的方案**。
+设计过程单独放在 [chatdata-agent-design](https://github.com/liusongboyy/chatdata-agent-design)：
+每一轮功能的 spec、当时权衡的取舍、以及**被否决的方案**。
 它不适合当入门材料读，但如果你想知道「为什么不做自动拆解路由」「为什么敏感列默认关闭」
 这类问题，答案在那里。
 

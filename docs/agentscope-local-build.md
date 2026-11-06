@@ -127,5 +127,5 @@ curl -s -H "Authorization: Bearer $JWT" \
 
 ## 相关
 
-- `.scratch/agent-mesh/spec.md` §13 —— aistio 接入的设计与踩过的坑
+- `chatdata-agent-design/agent-mesh/spec.md` §13 —— aistio 接入的设计与踩过的坑
 - `docs/local-dev.md` § 接入 agentscope service 管理台

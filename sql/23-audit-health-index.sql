@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 审计表加索引：给健康度看板的查询用
 --
--- 依据：.scratch/health-dashboard/spec.md
+-- 依据：chatdata-agent-design/health-dashboard/spec.md
 --
 -- 健康度看板每次打开都要做一次：
 --   SELECT domain_id, outcome, error_message

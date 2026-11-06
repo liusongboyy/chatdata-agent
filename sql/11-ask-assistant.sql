@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 问数引擎：助理
 --
--- 依据：.scratch/self-built-chatbi/spec.md §5 FR-4
+-- 依据：chatdata-agent-design/self-built-chatbi/spec.md §5 FR-4
 --
 -- ⚠️ 助理层**不是数据保护点**。
 --

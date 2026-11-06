@@ -2,6 +2,13 @@
 
 这个 repo 的 issues 和 specs 作为 markdown 文件存放在 `.scratch/` 中。
 
+> ⚠️ **`.scratch/` 不提交进本仓库。** 设计过程（spec、被否决的方案、判断依据）
+> 单独放在 [chatdata-agent-design](https://github.com/liusongboyy/chatdata-agent-design)。
+> 本仓库只留代码与对外文档——第一次来的人不该在几百个源文件里翻内部 spec。
+>
+> 本地开发时 `.scratch/` 已经在 `.gitignore` 里；写完一个功能后，
+> 把其中有长期价值的 spec 挑出来同步到 design 仓库。
+
 ## 约定
 
 - 每个 feature 一个目录：`.scratch/<feature-slug>/`

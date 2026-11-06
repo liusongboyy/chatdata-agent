@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * <p>agentscope 提供 {@code agent.call(msgs, AskDsl.class, ctx)}，看起来更方便：
  * 直接把 Java 类型交给它，schema 自动生成、结果自动反序列化。**但不能用。**
  *
- * <p>P0.5 spike 实测（见 {@code .scratch/self-built-chatbi/spike-p0-results.md}）：
+ * <p>P0.5 spike 实测（见 {@code chatdata-agent-design/self-built-chatbi/spike-p0-results.md}）：
  * 走 {@code call(msgs, Class<?>, ctx)} 时，**{@code filters} 字段被系统性丢弃**——
  * 问题「上个月<strong>华东</strong>的<strong>有效</strong>保单保费合计」翻译出的 DSL 里，
  * 两个核心约束凭空消失。解析成功、无异常，直接渲染 SQL 会退化成「全量保费合计」，

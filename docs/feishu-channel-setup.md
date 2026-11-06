@@ -1,6 +1,6 @@
 # 飞书渠道接入：操作指南
 
-> 代码已经写好（`.scratch/feishu-channel/spec.md`），这份文档是**让它在真实飞书里跑起来**的步骤。
+> 代码已经写好（`chatdata-agent-design/feishu-channel/spec.md`），这份文档是**让它在真实飞书里跑起来**的步骤。
 > 全部做完大约 40 分钟，其中 20 分钟是等飞书审核权限。
 
 ## 0. 你会得到什么

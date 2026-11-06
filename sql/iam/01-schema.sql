@@ -2,7 +2,7 @@
 -- IAM 库表（chatdata_iam）
 --
 -- 与 ask 业务库**物理隔离**：IAM 的表不 join 业务表，业务库也不保存用户与角色。
--- 见 docs/adr/0008 与 .scratch/iam-platform/spec.md。
+-- 见 docs/adr/0008 与 chatdata-agent-design/iam-platform/spec.md。
 --
 -- 执行：
 --   mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS chatdata_iam DEFAULT CHARSET utf8mb4"

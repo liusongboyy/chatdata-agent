@@ -58,7 +58,7 @@ Status: accepted
 ## 后果
 
 - ~~**`sql/02-role-seed.sql` 中的清理语句不可删除。**~~ 该脚本随 `sys_role` 退役一并删除
-  （2026-10-22，角色改由 IAM 管理，见 `.scratch/iam-platform/spec.md`）。它当初清掉的
+  （2026-10-22，角色改由 IAM 管理，见 `chatdata-agent-design/iam-platform/spec.md`）。它当初清掉的
   错误 `chat2bi` 授权属于旧 `sys_role` 数据；迁移前若未跑过它，需要单独确认。
 - **角色来源已改**：角色码以 IAM 的 `iam_role.code` 为准，`sys_role` / `sys_user_role` 不再被读取。
 - **登录后按角色分流落点**：有管理台角色进管理台，否则进聊天页。这不是为了好看——

@@ -128,7 +128,7 @@ IAM **不再**：
 - ADR-0004：角色码稳定、数据权限角色逐字符匹配。**继续有效**。
 - ADR-0009：功能权限与数据权限正交。功能权限仍归 IAM；其中"数据权限存
   `iam_policy`"的表述由本 ADR 修订。
-- `.scratch/iam-platform/spec.md` §5.4：原"策略文档存 IAM"的设计由本 ADR 取代；
+- `chatdata-agent-design/iam-platform/spec.md` §5.4：原"策略文档存 IAM"的设计由本 ADR 取代；
   身份、角色、功能权限部分继续有效。
 
 ## 实施状态（2026-10-23）

@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 问数引擎：业务术语 / 查询主题
 --
--- 依据：.scratch/self-built-chatbi/spec.md §5 FR-3.5 / FR-3.6
+-- 依据：chatdata-agent-design/self-built-chatbi/spec.md §5 FR-3.5 / FR-3.6
 --
 -- ⚠️ apply_kind 目前只用到 'none'（仅释义）。
 --

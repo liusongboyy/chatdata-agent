@@ -7,7 +7,7 @@ Status: decision superseded by ADR-0006; findings retained
 > ——没有厂商能力可复用了，改写层必须自建。
 >
 > 但本文**实测出来的权限语义**仍是新实现的规格来源，已全文迁入
-> [`.scratch/self-built-chatbi/spec.md`](../../.scratch/self-built-chatbi/spec.md) §7：
+> [`chatdata-agent-design/self-built-chatbi/spec.md`]((https://github.com/liusongboyy/chatdata-agent-design/blob/main/self-built-chatbi/spec.md) §7：
 > 两层闸门的不同判据、两处「默认放行」缺口、角色名不可经 HTTP 头传递、
 > 「被拒绝返回 HTTP 200」的审计陷阱、等价字段脱敏遗漏。
 > **自研的目标之一正是把这两处默认放行改成默认拒绝。**

@@ -18,7 +18,7 @@ package com.liusongboyy.chatdata.engine.agent;
  * </ul>
  *
  * <p>详见 {@code com.liusongboyy.chatdata.engine.model.Cost} 与
- * {@code .scratch/model-cost/spec.md} §3.2。
+ * {@code chatdata-agent-design/model-cost/spec.md} §3.2。
  *
  * @param inputTokens         输入总量（含缓存命中部分）
  * @param outputTokens        输出总量（含推理部分）

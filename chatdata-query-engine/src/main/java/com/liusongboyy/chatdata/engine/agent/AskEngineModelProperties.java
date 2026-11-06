@@ -34,7 +34,7 @@ public class AskEngineModelProperties {
     /**
      * 单次生成上限。**必须显式设置**：不设时输出可能被截断，
      * 表现为「结构化 JSON 只出了一半、末尾字段凭空消失」。
-     * 见 .scratch/self-built-chatbi/spike-p0-results.md。
+     * 见 chatdata-agent-design/self-built-chatbi/spike-p0-results.md。
      */
     private Integer maxTokens = 16384;
 

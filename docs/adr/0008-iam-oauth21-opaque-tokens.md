@@ -4,7 +4,7 @@ Status: accepted
 
 # IAM 独立化：OAuth 2.1 + 不透明令牌，网关作为唯一入口
 
-> 本 ADR 是 [`.scratch/iam-platform/spec.md`](../../.scratch/iam-platform/spec.md) 的决策摘要。
+> 本 ADR 是 [`chatdata-agent-design/iam-platform/spec.md`]((https://github.com/liusongboyy/chatdata-agent-design/blob/main/iam-platform/spec.md) 的决策摘要。
 > 接受后，ADR-0005（临时密码认证）标记为 superseded。
 
 ## 背景
@@ -63,7 +63,7 @@ ADR-0002 的结论仍然有效且是硬约束：**行级/列级权限必须在�
 
 ## 参考
 
-- 设计全文：`.scratch/iam-platform/spec.md`
+- 设计全文：`chatdata-agent-design/iam-platform/spec.md`
 - ADR-0002：数据权限执行点
 - ADR-0004：角色模型
 - ADR-0007：直连模式的表级授权

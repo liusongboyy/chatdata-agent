@@ -23,7 +23,7 @@ import java.util.List;
  * 唯一差别是 schema 内容。
  *
  * <p>详见 {@link com.liusongboyy.chatdata.engine.nlsql.AskDslSchema} 的说明与
- * {@code .scratch/self-built-chatbi/spike-p0-results.md}。
+ * {@code chatdata-agent-design/self-built-chatbi/spike-p0-results.md}。
  *
  * <h2>产出后必须做语义校验</h2>
  *

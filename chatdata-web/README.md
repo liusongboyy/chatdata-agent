@@ -1,6 +1,6 @@
 # chatdata-web
 
-问数 Agent 的前端。见 [`.scratch/self-built-chatbi/spec.md`](../.scratch/self-built-chatbi/spec.md) §8「前端」。
+问数 Agent 的前端。见 [`chatdata-agent-design/self-built-chatbi/spec.md`]((https://github.com/liusongboyy/chatdata-agent-design/blob/main/self-built-chatbi/spec.md) §8「前端」。
 
 Vue 3 + Vite + TypeScript。**独立工程，不是 Maven module**——让 Java 构建依赖 node
 是得不偿失的耦合。

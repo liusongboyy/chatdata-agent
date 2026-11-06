@@ -132,7 +132,7 @@ ADR-0004 的结论（`chat2bi` 只授予管理员、问数不依赖它）**继�
 - ~~**`EngineStartupCheck` / `RoleReferenceValidator` 校验的仍不是生效策略**——~~
   已在 2026-10-22 修掉：启动校验改按 `PolicyProvider` 取生效文档，角色清单来自
   IAM 角色目录（`GET /iam/policy/roles`）。IAM 不可用时跳过并记 WARNING。
-  详见 `.scratch/iam-platform/spec.md` 的「P2 阶段三」。
+  详见 `chatdata-agent-design/iam-platform/spec.md` 的「P2 阶段三」。
 - **关闭功能权限的开关（`chatdata.iam.functional-permissions.enabled`）会退回旧的
   `hasRole("chat2bi")` 行为**。它是回滚闸：没有它，IAM 一旦回滚（不再返回权限），
   ask 的管理面会整体 403。
