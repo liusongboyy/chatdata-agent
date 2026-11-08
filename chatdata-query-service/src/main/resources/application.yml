@@ -17,6 +17,19 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 chatdata:
+  # 嵌入式问数。
+  #
+  # allowed-origins 是**宿主系统的域名白名单**——只有这里列出的站点
+  # 才能用 iframe 嵌 /app/embed。
+  #
+  # **留空 = 谁都不能嵌**（不是"谁都能嵌"）。失败方向必须安全：
+  # 一个配置疏漏就变成任何网站都能嵌，包括钓鱼站。
+  #
+  # 逗号分隔，带协议与端口，如：
+  #   allowed-origins: https://crm.example.com,https://oa.example.com:8443
+  embed:
+    allowed-origins: ${EMBED_ALLOWED_ORIGINS:}
+
   # IAM：ask 不再自己签发令牌，只校验 IAM 发的（不透明令牌 + 内省）
   iam:
     base-url: ${IAM_ISSUER:http://127.0.0.1:9000}

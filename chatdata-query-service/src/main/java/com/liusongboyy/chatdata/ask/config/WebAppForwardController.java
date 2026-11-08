@@ -33,6 +33,8 @@ public class WebAppForwardController {
             "/app/",
             "/app/login",
             "/app/ask",
+            // 嵌入用的精简问数页。宿主 iframe 直接访问它，刷新同样是 404
+            "/app/embed",
             // 管理面。**每条前端路由都要在这里列出来**，否则该路由刷新即 404。
             // 下面这条带路径参数的用 {id} 通配——它落在最后一段，
             // 不会像 /app/** 那样把 assets 也吞掉。

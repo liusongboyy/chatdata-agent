@@ -52,6 +52,12 @@ public class AskSecurityConfig {
                     // 它调用的 /api/ask/** 与 /sys/** 各有自己的鉴权。
                     auth.requestMatchers("/app/**").permitAll();
 
+                    // 可嵌入问数的 Web Component 脚本（/embed/v1/chatdata-embed.js）。
+                    // **必须放行**：它是宿主页面用 <script src> 直接引的，
+                    // 带不了任何令牌。而它本身不含数据——真正的鉴权在
+                    // /api/ask/engine 的 Bearer 上
+                    auth.requestMatchers("/embed/**").permitAll();
+
                     // 健康检查。探针没有令牌，也不该需要令牌——
                     // 它要回答的是"进程与关键依赖活着吗"，与"你是谁"无关。
                     // 只暴露 health 本身（见 application.yml 的 management 段），

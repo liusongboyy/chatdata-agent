@@ -3,6 +3,7 @@ import { session } from './composables/useSession'
 import { P } from './permissions'
 import LoginView from './views/LoginView.vue'
 import AskView from './views/AskView.vue'
+import EmbedAskView from './views/EmbedAskView.vue'
 import AdminLayout from './views/admin/AdminLayout.vue'
 import DatasourceListView from './views/admin/DatasourceListView.vue'
 import ModelListView from './views/admin/ModelListView.vue'
@@ -125,6 +126,17 @@ export const router = createRouter({
     { path: '/', redirect: '/ask' },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/ask', name: 'ask', component: AskView, meta: { requiresAuth: true } },
+    /*
+     * 嵌入用的精简问数页。
+     *
+     * **不需要 requiresAuth**：它靠 URL fragment 里的短时令牌，
+     * 而不是网关的 BFF 会话。走 requiresAuth 会触发 `session.ensureResolved()`
+     * → 请求 `/api/ask/me` → 没 Cookie → 被弹到登录页，
+     * 而宿主页面里弹一个登录页毫无意义。
+     *
+     * 令牌的有效性由服务端判（Bearer），页面自己不做鉴权。
+     */
+    { path: '/embed', name: 'embed', component: EmbedAskView },
     {
       // 管理面。**与"能问数"是两回事**，见 ADR-0004：早期给所有用户都授了 chat2bi，
       // 结果是每个能问数的人都能进管理台配数据源与指标口径。
