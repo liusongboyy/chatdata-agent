@@ -1,5 +1,6 @@
 package com.liusongboyy.chatdata.iam.web;
 
+import com.liusongboyy.chatdata.iam.embed.EmbedGrantAuthenticationProvider;
 import com.liusongboyy.chatdata.iam.security.IamUserDetails;
 import com.liusongboyy.chatdata.iam.security.IamUserDetailsService;
 import org.slf4j.Logger;
@@ -108,6 +109,26 @@ public class PrincipalController {
         // 功能权限（页面/按钮/tab）。**必须与 @perm 的判定同源**——
         // 两处算法不一致会得到"界面有按钮、点了全 403"（见 PermissionChecker）
         out.put("permissions", user.permissionCodes());
+
+        // ── 令牌级约束 ──
+        //
+        // 有些约束**不属于用户**，属于这张令牌：embed 换出来的令牌只能问一个助理。
+        // 用户本人可能有 12 个域的权限，而宿主系统只能用它看自己那个域。
+        //
+        // 所以这些从令牌的属性里读，不从用户读——按用户读会得到"权限一点不少"，
+        // 而那正是 embed 要防的。
+        // **显式声明成 Object。** 写成 var / 直接内联的话，String.valueOf 会
+        // 按泛型推断选中 char[] 重载，运行时抛 ClassCastException
+        // （实测踩到：500 且堆栈指向 String.valueOf，与真实原因相距甚远）
+        Object embedAssistant =
+                auth.getAttribute(EmbedGrantAuthenticationProvider.ATTR_ASSISTANT);
+        if (embedAssistant != null) {
+            // **只在这个键存在时才放**：普通令牌不该有这个字段，
+            // 放一个 null 会让 ask 侧难以区分"没有约束"与"约束是空"
+            Object embedClient = auth.getAttribute(EmbedGrantAuthenticationProvider.ATTR_CLIENT);
+            out.put("embedAssistant", String.valueOf(embedAssistant));
+            out.put("embedClient", embedClient == null ? null : String.valueOf(embedClient));
+        }
         out.put("tokenVersion", user.tokenVersion());
         out.put("scope", auth.getAuthorizedScopes());
         // 返回 client_id 字符串而不是客户端主键：调用方认的是前者

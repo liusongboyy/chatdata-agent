@@ -26,6 +26,8 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
         "com.liusongboyy.chatdata.iam.policy",
         // 角色的功能权限（iam_role_permission）
         "com.liusongboyy.chatdata.iam.permission",
+        // 嵌入式问数：宿主系统与助理的授权关系（iam_embed_client_assistant）
+        "com.liusongboyy.chatdata.iam.embed",
 })
 public class IamApplication {
 

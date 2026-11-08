@@ -363,6 +363,17 @@ public class AskServiceFactory {
             return forDomain(domainId, ctx, modelKey);
         }
 
+        // ⓪ embed 约束：**在助理层之前**。
+        //
+        // 宿主系统换出来的令牌只能问一个助理（见 EmbedGrantAuthenticationProvider）。
+        // 这个约束来自令牌，不是用户权限——用户本人可能有 12 个域，
+        // 而宿主只能看它自己那个。
+        //
+        // 校验放在最前面，因为它是"这张令牌能做什么"的上限：
+        // 先判它，被拒时给出的原因是"这个令牌不允许"，而不是"你没有权限"——
+        // 后者会让宿主系统的开发者去查用户权限，方向完全错了。
+        enforceEmbedScope(assistantId, ctx);
+
         AssistantRow row = loadAssistantRow(assistantId);
         Assistant assistant = loadAssistant(row);
 
@@ -396,6 +407,43 @@ public class AskServiceFactory {
         }
 
         return forDomain(resolved, ctx, modelKey);
+    }
+
+    /**
+     * 强制 embed 令牌的助理约束。
+     *
+     * <h2>为什么在这里而不是控制器</h2>
+     *
+     * <p>{@code forAssistant} 是**唯一**进入助理的入口（三处调用点都走它）。
+     * 放在控制器意味着要改三处，而漏掉任何一处都是一个越权通道。
+     *
+     * <h2>为什么失败方向是拒绝</h2>
+     *
+     * <p>如果 {@code embedAssistant} 存在但和请求的助理不一致，
+     * 说明宿主在试图越过授权范围。**明确拒绝并记日志**，
+     * 而不是"忽略这个字段继续走"——后者等于约束形同虚设。
+     *
+     * <p>助理 id 为空时也拒绝：embed 令牌必须指定助理才能用。
+     */
+    static void enforceEmbedScope(String assistantId, PermissionContext ctx) {
+        if (ctx == null) {
+            return;
+        }
+        Object bound = ctx.dynamicVars().get("embedAssistant");
+        if (bound == null) {
+            // 普通令牌：没有约束
+            return;
+        }
+        String expected = String.valueOf(bound);
+        if (assistantId == null || assistantId.isBlank()) {
+            throw new AskDeniedException(PermissionDecision.Reason.ASSISTANT_NOT_GRANTED,
+                    "这个嵌入令牌限定了助理，必须指定 assistantId");
+        }
+        if (!expected.equals(assistantId.trim())) {
+            log.warn("embed 令牌越权：令牌限定助理={} 请求助理={}", expected, assistantId);
+            throw new AskDeniedException(PermissionDecision.Reason.ASSISTANT_NOT_GRANTED,
+                    "这个嵌入令牌只能使用助理「" + expected + "」");
+        }
     }
 
     private AssistantRow loadAssistantRow(String assistantId) {

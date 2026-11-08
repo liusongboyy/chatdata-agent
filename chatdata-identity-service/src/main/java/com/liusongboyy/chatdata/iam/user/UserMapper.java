@@ -62,6 +62,31 @@ public interface UserMapper {
                                  @Param("provider") String provider);
 
     /**
+     * 按外部身份反查本系统用户。embed 换令牌时用。
+     *
+     * <p>与 {@link #selectBoundToChannel} 的区别在<b>查询方向</b>：
+     * 那个是「已知本系统用户，验证他绑定了某渠道」，这个是
+     * 「已知外部系统的用户标识，找出对应哪个本系统账号」。
+     *
+     * <p>embed 必须用这个方向——宿主系统只知道它自己的 user id，
+     * 不知道本系统的 username。
+     *
+     * <p>查不到返回 null（未映射），调用方据此拒绝。
+     * <b>绝不自动建号</b>：那会让第三方凭空造出一个有权限的账号。
+     */
+    @Select("""
+            SELECT id, username, password_hash AS passwordHash, display_name AS displayName,
+                   status, token_version AS tokenVersion
+            FROM iam_user
+            WHERE tenant_id = #{tenant}
+              AND external_provider = #{provider}
+              AND external_id = #{externalId}
+            """)
+    UserRow selectByExternalIdentity(@Param("tenant") String tenant,
+                                     @Param("provider") String provider,
+                                     @Param("externalId") String externalId);
+
+    /**
      * 按「用户 + agent」查用户，**同时要求存在未撤销的代理授权**。
      *
      * <p>这是 agent 代理的准入判据，与 {@link #selectBoundToChannel} 的

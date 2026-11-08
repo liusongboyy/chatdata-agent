@@ -4,6 +4,9 @@ import com.liusongboyy.chatdata.iam.agentproxy.AgentProxyAuthenticationProvider;
 import com.liusongboyy.chatdata.iam.agentproxy.AgentProxyGrantAuthenticationConverter;
 import com.liusongboyy.chatdata.iam.channel.ChannelGrantAuthenticationConverter;
 import com.liusongboyy.chatdata.iam.channel.ChannelGrantAuthenticationProvider;
+import com.liusongboyy.chatdata.iam.embed.EmbedClientMapper;
+import com.liusongboyy.chatdata.iam.embed.EmbedGrantAuthenticationConverter;
+import com.liusongboyy.chatdata.iam.embed.EmbedGrantAuthenticationProvider;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.liusongboyy.chatdata.iam.config.IamProperties;
@@ -58,6 +61,7 @@ public class AuthorizationServerSecurityConfig {
             OAuth2TokenGenerator<?> tokenGenerator,
             SecurityContextRepository securityContextRepository,
             UserMapper userMapper,
+            EmbedClientMapper embedClientMapper,
             IamProperties iamProperties) throws Exception {
 
         OAuth2AuthorizationServerConfigurer configurer = new OAuth2AuthorizationServerConfigurer();
@@ -84,7 +88,14 @@ public class AuthorizationServerSecurityConfig {
                                 // Agent 代理：判据是 iam_agent_grant（用户授权某个 agent），
                                 // 与渠道的 external_id 绑定是两回事，所以两个 provider
                                 .authenticationProvider(new AgentProxyAuthenticationProvider(
-                                        authorizations, tokenGenerator, userMapper, iamProperties))))
+                                        authorizations, tokenGenerator, userMapper, iamProperties))
+                                // 嵌入式问数：宿主系统替它的用户换令牌。
+                                // 判据是「宿主被授权问哪个助理」+「user_ref 能映射到本系统账号」，
+                                // 与渠道的 external_id 绑定、agent 的用户授权都不同
+                                .accessTokenRequestConverter(new EmbedGrantAuthenticationConverter())
+                                .authenticationProvider(new EmbedGrantAuthenticationProvider(
+                                        authorizations, tokenGenerator, userMapper,
+                                        embedClientMapper, iamProperties))))
                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository))
