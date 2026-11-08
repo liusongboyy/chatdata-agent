@@ -5,7 +5,10 @@ import com.liusongboyy.chatdata.channel.ask.AskClient;
 import com.liusongboyy.chatdata.channel.ask.AskResult;
 import com.liusongboyy.chatdata.channel.identity.ChannelIdentityService;
 import com.liusongboyy.chatdata.channel.identity.ChannelTokenService;
-import com.liusongboyy.chatdata.channel.render.FeishuCardRenderer;
+import com.liusongboyy.chatdata.channel.spi.ChannelCard;
+import com.liusongboyy.chatdata.channel.render.FeishuChannelRenderer;
+import com.liusongboyy.chatdata.channel.spi.ChannelRegistry;
+import com.liusongboyy.chatdata.channel.spi.ChannelRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -39,16 +42,20 @@ public class CardActionHandler {
     private static final Logger log = LoggerFactory.getLogger(CardActionHandler.class);
 
     private final AnswerStore answers;
-    private final FeishuCardRenderer renderer;
+    /**
+     * 渠道实现。卡片回调的载荷里带渠道标识，按它取渲染器——
+     * 这样翻页时用的一定是「这张卡片原本所属渠道」的渲染器。
+     */
+    private final ChannelRegistry channels;
     private final ChannelIdentityService identities;
     private final ChannelTokenService tokens;
     private final AskClient ask;
 
-    public CardActionHandler(AnswerStore answers, FeishuCardRenderer renderer,
+    public CardActionHandler(AnswerStore answers, ChannelRegistry channels,
                              ChannelIdentityService identities, ChannelTokenService tokens,
                              AskClient ask) {
         this.answers = answers;
-        this.renderer = renderer;
+        this.channels = channels;
         this.identities = identities;
         this.tokens = tokens;
         this.ask = ask;
@@ -100,16 +107,32 @@ public class CardActionHandler {
         };
     }
 
-    /** 翻页：查库重渲染，直接把新卡片放回响应体里（客户端原地替换）。 */
+    /**
+     * 翻页：查库重渲染，直接把新卡片放回响应体里（客户端原地替换）。
+     *
+     * <h2>这里为什么仍然认飞书</h2>
+     *
+     * <p>这个类就是<b>飞书的卡片回调端点</b>——它解析的是飞书的 action 载荷，
+     * 返回的是飞书的 {@code {"card":{"type":"raw"}}} 响应格式。
+     * 把它抽象成"通用卡片回调"没有意义：每个渠道的回调协议完全不同，
+     * 抽出来的接口只会是一个参数更多的空壳。
+     *
+     * <p>所以这里显式取飞书的实现。**这是刻意的例外**，不是漏抽。
+     * 将来接钉钉，会有另一个 {@code DingtalkCardActionHandler}，
+     * 它同样认自己的协议，而 {@code MessageHandler} 一行都不用改。
+     */
     private Map<String, Object> handlePage(AnswerStore.StoredAnswer answer, int page) {
         AskResult result = new AskResult(
                 answer.columns(), answer.rows(), answer.rowCount(),
                 answer.sql(), answer.maskedColumns(), null, 0, answer.domainId(), null, null);
-        String card = renderer.renderResult(answer.question(), result, answer.id(),
+
+        ChannelRenderer renderer = channels.renderer(FeishuChannelRenderer.CHANNEL)
+                .orElseThrow(() -> new IllegalStateException("飞书渲染器未注册"));
+        ChannelCard card = renderer.renderResult(answer.question(), result, answer.id(),
                 Math.max(0, page));
 
         Map<String, Object> resp = new LinkedHashMap<>();
-        resp.put("card", Map.of("type", "raw", "data", parseCard(card)));
+        resp.put("card", Map.of("type", "raw", "data", parseCard((String) card.payload())));
         return resp;
     }
 

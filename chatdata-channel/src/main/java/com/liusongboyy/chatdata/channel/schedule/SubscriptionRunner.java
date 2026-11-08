@@ -3,8 +3,10 @@ package com.liusongboyy.chatdata.channel.schedule;
 import com.liusongboyy.chatdata.channel.ask.AskClient;
 import com.liusongboyy.chatdata.channel.ask.AskResult;
 import com.liusongboyy.chatdata.channel.identity.ChannelTokenService;
-import com.liusongboyy.chatdata.channel.render.FeishuCardRenderer;
-import com.liusongboyy.chatdata.channel.render.FeishuSender;
+import com.liusongboyy.chatdata.channel.spi.ChannelCard;
+import com.liusongboyy.chatdata.channel.spi.ChannelRegistry;
+import com.liusongboyy.chatdata.channel.spi.ChannelRenderer;
+import com.liusongboyy.chatdata.channel.spi.ChannelSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -61,17 +63,20 @@ public class SubscriptionRunner {
     private final JdbcTemplate jdbc;
     private final ChannelTokenService tokens;
     private final AskClient ask;
-    private final FeishuCardRenderer renderer;
-    private final FeishuSender sender;
+    /**
+     * 渠道实现。
+     *
+     * <p>按 {@code Subscription.channel()} 取——订阅本身就带渠道标识，
+     * 所以这个类也不该认识任何具体渠道。
+     */
+    private final ChannelRegistry channels;
 
     public SubscriptionRunner(JdbcTemplate jdbc, ChannelTokenService tokens,
-                              AskClient ask, FeishuCardRenderer renderer,
-                              FeishuSender sender) {
+                              AskClient ask, ChannelRegistry channels) {
         this.jdbc = jdbc;
         this.tokens = tokens;
         this.ask = ask;
-        this.renderer = renderer;
-        this.sender = sender;
+        this.channels = channels;
     }
 
     /** 一条订阅的只读视图。 */
@@ -160,8 +165,7 @@ public class SubscriptionRunner {
             if (result.empty()) {
                 outcome = new Outcome(Status.EMPTY, 0, "没有符合条件的数据");
             } else {
-                String card = renderer.subscriptionCard(sub.question(), result);
-                sender.sendCard(receiveIdType(sub.chatKey()), sub.chatKey(), card);
+                send(sub, rendererFor(sub).renderSubscription(sub.question(), result));
                 outcome = new Outcome(Status.OK, result.rowCount(), null);
             }
         } catch (ChannelTokenService.TokenUnavailableException e) {
@@ -181,6 +185,32 @@ public class SubscriptionRunner {
     }
 
     /**
+     * 取订阅所属渠道的渲染器。
+     *
+     * <p>找不到就抛异常——**不回落默认渠道**。回落的后果是"钉钉的订阅
+     * 用飞书的卡片格式发出去"，而那个失败要到用户说"我收到的东西不对"才暴露。
+     */
+    private ChannelRenderer rendererFor(Subscription sub) {
+        return channels.renderer(sub.channel()).orElseThrow(() ->
+                new IllegalStateException(
+                        "订阅 " + sub.id() + " 的渠道「" + sub.channel()
+                                + "」没有渲染器（已注册：" + channels.channels() + "）"));
+    }
+
+    /** 发送。失败只记日志——**订阅执行不能因为发送失败而回滚记录**。 */
+    private void send(Subscription sub, ChannelCard card) {
+        ChannelSender sender = channels.sender(sub.channel()).orElse(null);
+        if (sender == null) {
+            log.warn("订阅 {} 的渠道「{}」没有发送器，跳过发送", sub.id(), sub.channel());
+            return;
+        }
+        String id = sender.send(receiveIdType(sub.chatKey()), sub.chatKey(), card);
+        if (id == null) {
+            log.warn("订阅 {} 的卡片发送失败（渠道返回 null）", sub.id());
+        }
+    }
+
+    /**
      * 失败时给订阅人发一条说明。
      *
      * <p>EMPTY 不发（问的是"每天发销售额"，当天真没有时发"没有数据"是噪音）；
@@ -191,8 +221,7 @@ public class SubscriptionRunner {
             return;
         }
         try {
-            String card = renderer.subscriptionFailureCard(sub.question(), outcome.message());
-            sender.sendCard(receiveIdType(sub.chatKey()), sub.chatKey(), card);
+            send(sub, rendererFor(sub).renderSubscriptionFailure(sub.question(), outcome.message()));
         } catch (RuntimeException e) {
             // 连失败通知都发不出去，只能记日志
             log.warn("订阅 {} 的失败通知发送失败：{}", sub.id(), e.getMessage());

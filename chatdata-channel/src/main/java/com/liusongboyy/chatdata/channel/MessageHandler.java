@@ -8,8 +8,10 @@ import com.liusongboyy.chatdata.channel.identity.ChannelIdentityService;
 import com.liusongboyy.chatdata.channel.identity.ChannelTokenService;
 import com.liusongboyy.chatdata.channel.inbound.InboundMessage;
 import com.liusongboyy.chatdata.channel.inbound.InboundQueue;
-import com.liusongboyy.chatdata.channel.render.FeishuCardRenderer;
-import com.liusongboyy.chatdata.channel.render.FeishuSender;
+import com.liusongboyy.chatdata.channel.spi.ChannelCard;
+import com.liusongboyy.chatdata.channel.spi.ChannelRegistry;
+import com.liusongboyy.chatdata.channel.spi.ChannelRenderer;
+import com.liusongboyy.chatdata.channel.spi.ChannelSender;
 import com.liusongboyy.chatdata.channel.session.ChannelSessionService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -42,15 +44,24 @@ public class MessageHandler {
     private final ChannelTokenService tokens;
     private final ChannelSessionService sessions;
     private final AskClient ask;
-    private final FeishuCardRenderer renderer;
-    private final FeishuSender sender;
+    /**
+     * 渠道实现。
+     *
+     * <p><b>这里不持有具体渠道的类型。</b>它处理的是"一条已经进来的消息"，
+     * 而消息自己带着渠道标识（{@code msg.channel()}）——按标识去注册表取实现即可。
+     *
+     * <p>早先这里直接注入 {@code FeishuCardRenderer} 与 {@code FeishuSender}，
+     * 于是"收消息 → 查身份 → 调问数 → 回卡片"这套与渠道无关的逻辑被迫认识了飞书。
+     * 接第二个渠道时就得改这个类，而那正是抽象没做成的证据。
+     */
+    private final ChannelRegistry channels;
     private final InboundQueue queue;
 
     public MessageHandler(AnswerStore answers,
                           ChannelIdentityService identities, BindTicketIssuer bindTickets,
                           ChannelTokenService tokens,
                           ChannelSessionService sessions, AskClient ask,
-                          FeishuCardRenderer renderer, FeishuSender sender,
+                          ChannelRegistry channels,
                           InboundQueue queue) {
         this.answers = answers;
         this.identities = identities;
@@ -58,8 +69,7 @@ public class MessageHandler {
         this.tokens = tokens;
         this.sessions = sessions;
         this.ask = ask;
-        this.renderer = renderer;
-        this.sender = sender;
+        this.channels = channels;
         this.queue = queue;
     }
 
@@ -73,6 +83,17 @@ public class MessageHandler {
         String question = msg.text();
         log.info("渠道消息：channel={} user={} group={} q={}",
                 msg.channel(), msg.senderId(), msg.fromGroup(), question);
+
+        // 按消息自带的渠道标识取实现。
+        // 取不到说明这个渠道没配置（比如飞书没启用）——**明确说出来**，
+        // 而不是拿一个默认渠道硬发。后者会让消息发到错误的地方，
+        // 而日志里看起来一切正常
+        ChannelRenderer renderer = channels.renderer(msg.channel()).orElse(null);
+        if (renderer == null) {
+            log.error("收到未知渠道的消息，无法回复：channel={}（已注册：{}）",
+                    msg.channel(), channels.channels());
+            return;
+        }
 
         // 「新话题」「重置」：显式开新会话。放在身份校验之前——
         // 它不查数据，只动本地的会话映射
@@ -189,7 +210,7 @@ public class MessageHandler {
             body.put("analyze", true);
         }
 
-        String card;
+        ChannelCard card;
         try {
             AskResult result = ask.ask(token, body);
             // 先落库再渲染：卡片里的翻页与反馈按钮要带 answerId。
@@ -353,15 +374,23 @@ public class MessageHandler {
      *
      * @return 新消息 id（用于后续更新）；发送失败返回 null
      */
-    private String reply(InboundMessage msg, String cardJson) {
+    private String reply(InboundMessage msg, ChannelCard card) {
+        ChannelSender sender = channels.sender(msg.channel()).orElse(null);
+        if (sender == null) {
+            // 渲染器在但发送器不在 = 配置不完整（比如只注册了一半）。
+            // 说出来，别让用户对着"正在查询…"干等
+            log.error("渠道「{}」没有发送器，无法回复", msg.channel());
+            return null;
+        }
+
         if (msg.fromGroup() && msg.messageId() != null) {
-            return sender.replyCard(msg.messageId(), cardJson);
+            return sender.reply(msg.messageId(), card);
         }
         // 私聊：用 chat_id 发（有的话），否则 open_id
         String receiveId = msg.chatId() != null && !msg.chatId().isBlank()
                 ? msg.chatId() : msg.senderId();
         String type = msg.chatId() != null && !msg.chatId().isBlank() ? "chat_id" : "open_id";
-        return sender.sendCard(type, receiveId, cardJson);
+        return sender.send(type, receiveId, card);
     }
 
     /**
@@ -379,8 +408,10 @@ public class MessageHandler {
      * <p>所以是"尽力更新 + 失败兜底发送"：更新成功是最好，失败退回到
      * 原来的行为，最多是刷屏。两个方向的失败代价都不致命。
      */
-    private void sendCardUpdate(InboundMessage msg, String pendingId, String cardJson) {
-        if (pendingId != null && !pendingId.isBlank() && sender.updateCard(pendingId, cardJson)) {
+    private void sendCardUpdate(InboundMessage msg, String pendingId, ChannelCard card) {
+        ChannelSender sender = channels.sender(msg.channel()).orElse(null);
+        if (sender != null && pendingId != null && !pendingId.isBlank()
+                && sender.update(pendingId, card)) {
             // 用 info 而不是 debug：这条日志是**判断"卡片是否原地更新"的唯一依据**。
             // 飞书里两条消息和一张卡片变化的视觉差异有时不明显（尤其在群里刷得快时），
             // 而 debug 在默认级别下不输出，等于没有证据。
@@ -390,6 +421,6 @@ public class MessageHandler {
         // 更新不可用（未启用 / 消息过期 / 接口失败）——退回到"再发一条"
         log.info("原地更新不可用，改为发送新消息：pendingId={} reason={}",
                 pendingId, pendingId == null || pendingId.isBlank() ? "占位消息未发出" : "更新接口失败");
-        reply(msg, cardJson);
+        reply(msg, card);
     }
 }
