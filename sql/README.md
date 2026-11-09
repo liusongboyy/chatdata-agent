@@ -35,7 +35,8 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
          sql/21-channel.sql sql/22-channel-subscription.sql \
-         sql/23-audit-health-index.sql sql/24-model-cost.sql
+         sql/23-audit-health-index.sql sql/24-model-cost.sql \
+         sql/26-ask-report.sql
 do
   mysql -uroot -p chatdata_ask < "$f"
 done
@@ -99,6 +100,21 @@ NULL 与"还没配"无法区分，而两者含义相反。
 
 模型配置从 `application.yml` 迁到这张表之后**以表为准**——改 yml 不再同步。
 首次启动时表为空才会用 yml 种一条，启动日志会明说。
+
+## 分析报告（`26-ask-report.sql`）
+
+| 表 | 用途 |
+|---|---|
+| `ask_report` | 从多轮问答拼成的报告。正文整份存 JSON |
+
+**正文存 JSON 而不是拆表**：报告是**快照**。拆表意味着正文结构一改就要迁移，
+而报告一旦生成就不该跟着变——三个月后有人打开它，看到的必须还是当时那份。
+
+这与 `ask_message.result_json` 同一个理由。
+
+`source_message_ids` 记的是**去重后真正进了报告的那些**消息 id。
+一个真实会话里 4 轮是同一句话（刷新、重试），去重后只留 1 条——
+记全部会让"来源"与"内容"对不上。
 
 ## 不要执行的历史脚本
 

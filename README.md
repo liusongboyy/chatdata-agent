@@ -105,6 +105,9 @@ WHERE t1.org_code_path LIKE '/1/100/110/120/130/140/%'
   支持同一物理列的**双登记**（维度管筛选、指标管聚合）
 - **问数**：一句话得到表格 / 图表 / 结论；「我理解成了」回显系统实际理解的口径
 - **分析编排**：把"为什么下降"这类问题拆成多步取数，再由 Java 算出确定性结论
+- **分析报告**：勾选几轮问答 → 拼成一份可打印的文档（结论 / 图表 / 数据 / 口径）。
+  带**口径冲突检测**——不同时间范围或筛选条件的数据并排时会显式提示，
+  避免读者把两张不同范围的图当对比看
 - **权限**：行级规则（支持组织层级动态变量）、列级脱敏、fail-closed
 - **审计**：每次提问、每步查询、每句 SQL 都可追溯
 - **IM 渠道**：接入飞书，群里 @ 机器人即可问数；权限与 Web 端完全一致。
@@ -141,7 +144,8 @@ for f in sql/04-audit.sql sql/08-ask-engine.sql sql/10-ask-term-topic.sql \
          sql/16-ask-feedback.sql sql/17-ask-conversation.sql \
          sql/19-ask-audit-analysis.sql sql/20-ask-table-base-filter.sql \
          sql/21-channel.sql sql/22-channel-subscription.sql \
-         sql/23-audit-health-index.sql sql/24-model-cost.sql
+         sql/23-audit-health-index.sql sql/24-model-cost.sql \
+         sql/26-ask-report.sql
 do mysql -uroot -p chatdata_ask < "$f"; done
 mysql -uroot -p chatdata_ask < sql/09-ask-engine-seed.sql   # 演示数据（可选）
 
