@@ -134,6 +134,22 @@ public class AskEngineConfiguration {
                 modelService, modelMapper, askEngineModelProperties);
     }
 
+    /**
+     * 报告标题生成器。
+     *
+     * <p><b>惰性</b>：与 {@code dslSource} 同一个理由——它依赖模型，
+     * 而模型需要 api-key。没配 key 的环境（开发、CI）不该因此起不来。
+     *
+     * <p>用 {@code ObjectProvider} 注入到 {@code ReportService}：
+     * 没配模型时它拿到 null，报告照常生成，标题用 intent 降级。
+     */
+    @Bean
+    @Lazy
+    public com.liusongboyy.chatdata.engine.report.ReportTitler.TitleSource
+            reportTitleSource(Model askEngineModel) {
+        return new com.liusongboyy.chatdata.engine.agent.ReportTitleGenerator(askEngineModel);
+    }
+
     /** 数据源管理。密码走 {@link PasswordCipher}，普通更新不碰密码。 */
     @Bean
     public AdminDatasourceService adminDatasourceService(SemanticConfigMapper readMapper,

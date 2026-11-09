@@ -41,11 +41,50 @@ public class ReportService {
 
     private final ReportMapper reports;
     private final ConversationMapper conversations;
+    /**
+     * 标题生成器。**可为 null**（没配模型的环境）。
+     *
+     * <p>为 null 时报告照常生成，标题用 intent 降级——
+     * 报告的核心是数据与结论，标题只是门面。
+     */
+    /**
+     * 标题生成器的 provider。**保存 provider 而不是解析后的 bean。**
+     *
+     * <p>在构造器里调 {@code getIfAvailable()} 会**立刻触发创建**——
+     * 而它是个 {@code @Lazy} bean，背后需要 api-key。没配 key 的环境
+     * （开发、CI）会因此在启动时失败，且报错指向 {@code reportService}
+     * 的构造器，看不出真实原因是"缺 api-key"。
+     *
+     * <p>这与 {@code AskServiceFactory} 的 {@code @Lazy} 注入是同一个教训：
+     * 惰性必须保留到**真正调用**的那一刻。
+     */
+    private final org.springframework.beans.factory.ObjectProvider<
+            com.liusongboyy.chatdata.engine.report.ReportTitler.TitleSource> titlerProvider;
     private final ObjectMapper json = new ObjectMapper();
 
-    public ReportService(ReportMapper reports, ConversationMapper conversations) {
+    public ReportService(ReportMapper reports, ConversationMapper conversations,
+                         org.springframework.beans.factory.ObjectProvider<
+                                 com.liusongboyy.chatdata.engine.report.ReportTitler.TitleSource>
+                                 titlerProvider) {
         this.reports = reports;
         this.conversations = conversations;
+        this.titlerProvider = titlerProvider;
+    }
+
+    /**
+     * 取标题生成器。**每次现取**——这样 {@code @Lazy} 才真的惰性。
+     *
+     * @return 没配模型时返回 null
+     */
+    private com.liusongboyy.chatdata.engine.report.ReportTitler.TitleSource titler() {
+        try {
+            return titlerProvider.getIfAvailable();
+        } catch (RuntimeException e) {
+            // 模型建不起来（缺 api-key）→ 当作"没有标题生成器"，报告照常生成。
+            // **不能让它冒泡**：报告的核心是数据与结论，标题只是门面
+            log.debug("标题生成器不可用，使用降级标题：{}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -141,7 +180,8 @@ public class ReportService {
             throw new IllegalArgumentException("选中的问答里没有可用的数据");
         }
 
-        Report report = ReportBuilder.build(conversationId, username, sources);
+        Report report = withTitles(
+                ReportBuilder.build(conversationId, username, sources), username);
         persist(report);
         log.info("生成报告：id={} conv={} user={} 节数={} 口径冲突={}",
                 report.id(), conversationId, username,
@@ -178,6 +218,52 @@ public class ReportService {
         int n = reports.softDelete(reportId, username);
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "报告不存在");
+        }
+    }
+
+    /**
+     * 用模型改写标题与章节名。
+     *
+     * <p>**任何失败都退回降级值**——报告必须能生成，标题难看可以接受。
+     * 数字约束由 {@code ReportTitler} 里的 {@code TitleGuard} 保证：
+     * 标题里出现数字就整条拒绝。
+     *
+     * <p>它只改 {@code title} 与各节的 {@code title}，**不动正文、不动数据**。
+     * 模型在这里的权限小到只剩措辞。
+     */
+    private Report withTitles(Report report, String username) {
+        var titler = titler();
+        if (titler == null) {
+            return report;
+        }
+        try {
+            // 报告标题：给它意图 + 各节的 label
+            var labels = report.body().sections().stream()
+                    .map(com.liusongboyy.chatdata.engine.report.ReportSection::title)
+                    .toList();
+            var titled = com.liusongboyy.chatdata.engine.report.ReportTitler.title(
+                    titler, report.intent(), labels, username, report.id());
+
+            // 章节标题：逐节改
+            var sections = new ArrayList<com.liusongboyy.chatdata.engine.report.ReportSection>();
+            for (var sec : report.body().sections()) {
+                var st = com.liusongboyy.chatdata.engine.report.ReportTitler.sectionTitle(
+                        titler, report.intent(), sec.title(), username, report.id());
+                sections.add(new com.liusongboyy.chatdata.engine.report.ReportSection(
+                        sec.kind(), st.value(), sec.purpose(), sec.steps(), sec.findings()));
+            }
+
+            var body = new com.liusongboyy.chatdata.engine.report.ReportBody(
+                    report.body().conclusion(), sections, report.body().dataSections(),
+                    report.body().scopeConflict(), report.body().scopeGroups());
+
+            return new Report(report.id(), report.conversationId(), report.username(),
+                    titled.value(), report.intent(), body,
+                    report.sourceMessageIds(), "model", report.generatedAt());
+        } catch (RuntimeException e) {
+            // 生成标题失败不该让报告失败。记日志，用降级标题
+            log.warn("报告标题生成失败，使用降级标题：id={} 原因={}", report.id(), e.getMessage());
+            return report;
         }
     }
 

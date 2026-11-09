@@ -55,7 +55,11 @@ class ReportServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ReportService(reports, conversations);
+        // 传一个没有标题生成器的 provider：本类验的是取数与存取，
+        // 标题生成由 ReportTitlerTest 覆盖
+        service = new ReportService(reports, conversations,
+                new org.springframework.beans.factory.support.DefaultListableBeanFactory()
+                        .getBeanProvider(com.liusongboyy.chatdata.engine.report.ReportTitler.TitleSource.class));
     }
 
     private static ConversationRow conv(String owner) {
