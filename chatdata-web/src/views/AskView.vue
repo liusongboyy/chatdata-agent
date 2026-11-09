@@ -24,6 +24,7 @@ import {
 import { errorMessage } from '../api/http'
 import { logout as bffLogout } from '../api/auth'
 import ResultView from '../components/chart/ResultView.vue'
+import ReportDialog from '../components/report/ReportDialog.vue'
 import UserMenu from '../components/UserMenu.vue'
 import UnderstandingBlock from '../components/understanding/UnderstandingBlock.vue'
 import { session } from '../composables/useSession'
@@ -213,6 +214,8 @@ function resetSession(): void {
 
 const HISTORY_PAGE_SIZE = 20
 const historyOpen = ref(false)
+/** 正在为哪个会话生成报告。null 表示弹窗关闭。 */
+const reportConversationId = ref<string | null>(null)
 const history = ref<ConversationSummary[]>([])
 const historyTotal = ref(0)
 const historyPage = ref(1)
@@ -737,6 +740,15 @@ async function logout(): Promise<void> {
             <span class="history-item-time">{{ formatTime(c.updatedAt) }}</span>
             <p class="history-item-preview">{{ c.preview || '—' }}</p>
             <button
+              class="history-report"
+              type="button"
+              aria-label="生成报告"
+              title="把这段会话拼成一份分析报告"
+              @click.stop="reportConversationId = c.id"
+            >
+              报告
+            </button>
+            <button
               class="history-del"
               type="button"
               aria-label="删除会话"
@@ -1208,6 +1220,13 @@ async function logout(): Promise<void> {
     </footer>
       </div>
     </div>
+    <!-- 生成报告：勾选要合并的轮次 -->
+    <ReportDialog
+      v-if="reportConversationId"
+      :conversation-id="reportConversationId"
+      :open="true"
+      @close="reportConversationId = null"
+    />
   </div>
 </template>
 
@@ -1262,6 +1281,33 @@ async function logout(): Promise<void> {
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--ink-soft);
+}
+
+/* 「报告」按钮：与删除按钮同一行，但语义完全不同——
+   删除是破坏性的，报告是产出。所以不用同一个视觉重量 */
+.history-report {
+  position: absolute;
+  right: 30px;
+  top: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.history-item:hover .history-report,
+.history-item:focus-within .history-report {
+  opacity: 1;
+}
+
+.history-report:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
 }
 
 .history-new {
