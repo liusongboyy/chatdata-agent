@@ -50,7 +50,12 @@ public final class ReportBuilder {
         List<ReportScope> allScopes = new ArrayList<>();
 
         // 逐轮切章节：有分析的进「分析」，没有的进「数据」
-        for (ReportSource src : sources) {
+        //
+        // **先去重。** 真实会话里用户会重复问同一个问题（刷新、重试、
+        // 忘了问过）。实测一个 6 轮会话里有 4 轮是同一句「按客户等级看保费」，
+        // 不去重的话报告里会有 4 张一模一样的表——那不是分析，是噪音。
+        List<ReportSource> kept = dedup(sources);
+        for (ReportSource src : kept) {
             if (src.hasAnalysis()) {
                 ReportSource.AnalysisPayload a = src.analysis();
                 List<StepSnapshot> steps = a.steps().stream()
@@ -94,11 +99,11 @@ public final class ReportBuilder {
         boolean conflict = groups.size() > 1;
 
         // 汇总结论：优先用各轮 narrative，按顺序拼
-        String conclusion = mergeNarratives(sources);
+        String conclusion = mergeNarratives(kept);
 
         ReportBody body = new ReportBody(conclusion, sections, dataSections, conflict, groups);
 
-        String intent = firstIntent(sources);
+        String intent = firstIntent(kept);
 
         return new Report(
                 UUID.randomUUID().toString().replace("-", ""),
@@ -109,9 +114,52 @@ public final class ReportBuilder {
                 null,
                 intent,
                 body,
-                sources.stream().map(ReportSource::messageId).toList(),
+                // **记去重后的**：报告里只包含这些轮次，
+                // 记全部会让"来源"与"内容"对不上
+                kept.stream().map(ReportSource::messageId).toList(),
                 null,       // 还没调模型
                 LocalDateTime.now());
+    }
+
+    /**
+     * 去掉内容重复的轮次。
+     *
+     * <h2>什么算重复</h2>
+     *
+     * <p>**问题文本相同 且 结果列相同**。只比问题不比结果是不够的：
+     * 同一句话在不同时间问，数据可能不同（那是两次有价值的快照）。
+     * 但两次结果连列都一样、行数也一样时，几乎必然是重复提问。
+     *
+     * <p>保守起见只比「问题 + 列 + 行数」——不比行内容。
+     * 比内容需要逐行比较，而大结果集那样做的代价不值得；
+     * 而"同一问题、同样的列、同样的行数"在真实会话里已经足够判重。
+     *
+     * <h2>保留第一个</h2>
+     *
+     * <p>保留最早的那次。报告是"分析过程"的记录，先问的那次更接近原始意图。
+     */
+    private static List<ReportSource> dedup(List<ReportSource> sources) {
+        List<ReportSource> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (ReportSource src : sources) {
+            String key = dedupKey(src);
+            if (seen.add(key)) {
+                out.add(src);
+            }
+        }
+        return out;
+    }
+
+    /** 去重键：问题 + 结果列 + 行数。 */
+    private static String dedupKey(ReportSource src) {
+        String question = src.question() == null ? "" : src.question().trim();
+        if (src.hasAnalysis()) {
+            // 分析轮：用意图 + 步数 + 第一步的列
+            ReportSource.AnalysisPayload a = src.analysis();
+            String cols = a.steps().isEmpty() ? "" : String.join(",", a.steps().get(0).columns());
+            return "A|" + a.intent() + "|" + a.steps().size() + "|" + cols;
+        }
+        return "S|" + question + "|" + String.join(",", src.columns()) + "|" + src.rows().size();
     }
 
     /**

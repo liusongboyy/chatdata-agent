@@ -24,7 +24,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         // 数据域/助理策略变更审计
         "com.liusongboyy.chatdata.ask.policy.mapper",
         // 模型配置（问数用什么模型、单价、角色白名单）
-        "com.liusongboyy.chatdata.engine.model.mapper"
+        "com.liusongboyy.chatdata.engine.model.mapper",
+        // 分析报告
+        "com.liusongboyy.chatdata.ask.report.mapper"
 })
 @EnableScheduling
 public class AskApplication {

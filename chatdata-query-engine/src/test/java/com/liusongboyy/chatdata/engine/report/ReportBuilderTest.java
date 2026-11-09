@@ -100,6 +100,75 @@ class ReportBuilderTest {
     }
 
     @Nested
+    @DisplayName("去重")
+    class Dedup {
+
+        @Test
+        @DisplayName("★ 同一个问题问了 4 次 → 报告里只留 1 张表")
+        void repeatedQuestionKeptOnce() {
+            // 真实场景：一个 6 轮会话里 4 轮是同一句「按客户等级看保费」
+            // （刷新、重试、忘了问过）。不去重的话报告里会有 4 张一模一样的表
+            var report = ReportBuilder.build("c1", "u1", List.of(
+                    single("m1", "按客户等级看保费", scope("今年")),
+                    single("m2", "按客户等级看保费", scope("今年")),
+                    single("m3", "按客户等级看保费", scope("今年")),
+                    single("m4", "按客户等级看保费", scope("今年"))));
+
+            assertThat(report.body().dataSections()).hasSize(1);
+            assertThat(report.sourceMessageIds())
+                    .as("只记去重后真正进了报告的那条")
+                    .containsExactly("m1");
+        }
+
+        @Test
+        @DisplayName("★ 保留最早那次——报告是分析过程的记录")
+        void keepsFirst() {
+            var report = ReportBuilder.build("c1", "u1", List.of(
+                    single("m1", "问 A", scope("今年")),
+                    single("m2", "问 A", scope("今年"))));
+
+            assertThat(report.sourceMessageIds()).containsExactly("m1");
+        }
+
+        @Test
+        @DisplayName("★ 不同问题不去重")
+        void differentQuestionsKept() {
+            var report = ReportBuilder.build("c1", "u1", List.of(
+                    single("m1", "按客户等级看保费", scope("今年")),
+                    single("m2", "按区域看保费", scope("今年"))));
+
+            assertThat(report.body().dataSections()).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("★ 同问题但结果行数不同 → 不去重（是两次有价值的快照）")
+        void sameQuestionDifferentResultKept() {
+            ReportSource a = new ReportSource("m1", "看保费", null,
+                    List.of("区域", "保费"),
+                    List.of(List.of("华东", 1000)),
+                    ChartSpec.table("t"), "SQL", scope("今年"));
+            ReportSource b = new ReportSource("m2", "看保费", null,
+                    List.of("区域", "保费"),
+                    List.of(List.of("华东", 1000), List.of("华南", 2000)),
+                    ChartSpec.table("t"), "SQL", scope("今年"));
+
+            var report = ReportBuilder.build("c1", "u1", List.of(a, b));
+
+            assertThat(report.body().dataSections()).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("去重后全空 → 仍能出报告（只剩一条）")
+        void dedupToOneStillWorks() {
+            var report = ReportBuilder.build("c1", "u1", List.of(
+                    single("m1", "同一句", scope("今年")),
+                    single("m2", "同一句", scope("今年"))));
+
+            assertThat(report.body().sectionCount()).isEqualTo(1);
+        }
+    }
+
+    @Nested
     @DisplayName("口径冲突")
     class ScopeConflict {
 
