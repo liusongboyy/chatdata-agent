@@ -65,9 +65,16 @@ public final class ReportBuilder {
 
                 sections.add(new ReportSection(
                         ReportSection.Kind.ANALYSIS,
-                        // 降级标题：用 intent（"保费自 3 月起逐月下降，需要定位下降的原因"）。
-                        // 模型生成标题时会被替换掉
-                        a.intent(),
+                        // 降级标题：用**第一步的 label**，不是 intent。
+                        //
+                        // 实测：intent 常常是一整句分析目标——
+                        // 「看除「西南」外其他区域里各客户等级的保费构成，
+                        // 找出还有哪些区域偏离整体水平」——当章节名太长，
+                        // 而且它说的是"要做什么"，不是"这节讲什么"。
+                        //
+                        // label 是查询的简短描述（「各区域中客户等级的保费占比」），
+                        // 更接近章节名。模型生成标题时会被替换掉
+                        sectionTitle(a),
                         // purpose 取第一步的——它是"为什么开始查这个"，
                         // 比 intent 更具体
                         steps.isEmpty() ? null : steps.get(0).purpose(),
@@ -100,6 +107,14 @@ public final class ReportBuilder {
 
         // 汇总结论：优先用各轮 narrative，按顺序拼
         String conclusion = mergeNarratives(kept);
+
+        // 跨节去重 findings。
+        //
+        // 实测：一个会话里两轮分析都在讲「普通客户占 33.9%」——那是同一个事实，
+        // 因为两轮的基准数据相同。在报告里重复两遍，读者会以为是两件不同的事。
+        //
+        // **保留第一次出现的那条**：它属于先做的那一步分析。
+        dedupFindings(sections);
 
         ReportBody body = new ReportBody(conclusion, sections, dataSections, conflict, groups);
 
@@ -148,6 +163,52 @@ public final class ReportBuilder {
             }
         }
         return out;
+    }
+
+    /**
+     * 跨节去重 findings。
+     *
+     * <p>按 {@code text} 判重——那是给人看的那句话，两个事实文本相同就是同一个事实。
+     * 不比 {@code evidence}：同一个事实在不同轮次里可能带不同的证据字段
+     * （比如一轮有 changePct、另一轮只有 value），但读者看到的句子是一样的。
+     *
+     * <p>保留第一次出现的——它属于先做的那一步分析。
+     */
+    private static void dedupFindings(List<ReportSection> sections) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (int i = 0; i < sections.size(); i++) {
+            ReportSection sec = sections.get(i);
+            List<FindingView> kept = new ArrayList<>();
+            for (FindingView f : sec.findings()) {
+                String key = f.text() == null ? "" : f.text().trim();
+                if (seen.add(key)) {
+                    kept.add(f);
+                }
+            }
+            if (kept.size() != sec.findings().size()) {
+                sections.set(i, new ReportSection(sec.kind(), sec.title(), sec.purpose(),
+                        sec.steps(), kept));
+            }
+        }
+    }
+
+    /**
+     * 分析节的降级标题。
+     *
+     * <p>优先用第一步的 {@code label}——它是查询的简短描述。
+     * 没有 label 才退回 {@code intent}。
+     *
+     * <p>为什么不是 intent：实测 intent 常常是一整句分析目标
+     * （「看除西南外其他区域里各客户等级的保费构成，找出还有哪些区域偏离整体水平」），
+     * 当章节名太长，且它说的是"要做什么"而不是"这节讲什么"。
+     */
+    private static String sectionTitle(ReportSource.AnalysisPayload a) {
+        for (StepSnapshot step : a.steps()) {
+            if (step.label() != null && !step.label().isBlank()) {
+                return step.label();
+            }
+        }
+        return a.intent();
     }
 
     /** 去重键：问题 + 结果列 + 行数。 */

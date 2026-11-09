@@ -100,6 +100,104 @@ class ReportBuilderTest {
     }
 
     @Nested
+    @DisplayName("事实去重")
+    class FindingDedup {
+
+        @Test
+        @DisplayName("★ 两节都提到同一个事实 → 只在第一节保留")
+        void sameFactAcrossSectionsKeptOnce() {
+            // 实测：一个会话里两轮分析都在讲「普通客户占 33.9%」——
+            // 同一个事实重复两遍，读者会以为是两件不同的事
+            var f = new FindingView("CONTRIBUTION", "整体上「普通」的保费占 33.9%",
+                    java.util.Map.of("pct", 33.9));
+
+            StepSnapshot s1 = new StepSnapshot("第一步", null, List.of("a","b"),
+                    List.of(List.of("x", 1)), ChartSpec.table("t"), "SQL", scope("今年"), 1);
+            StepSnapshot s2 = new StepSnapshot("第二步", null, List.of("a","b"),
+                    List.of(List.of("y", 2)), ChartSpec.table("t"), "SQL", scope("今年"), 1);
+
+            ReportSource a1 = new ReportSource("m1", "q1",
+                    new ReportSource.AnalysisPayload("意图一", List.of(s1), List.of(f), "n1"),
+                    List.of(), List.of(), null, null, scope("今年"));
+            ReportSource a2 = new ReportSource("m2", "q2",
+                    new ReportSource.AnalysisPayload("意图二", List.of(s2), List.of(f), "n2"),
+                    List.of(), List.of(), null, null, scope("今年"));
+
+            var report = ReportBuilder.build("c1", "u1", List.of(a1, a2));
+
+            assertThat(report.body().sections().get(0).findings()).hasSize(1);
+            assertThat(report.body().sections().get(1).findings())
+                    .as("第二节的同一个事实应当被去掉")
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("不同事实都保留")
+        void differentFactsKept() {
+            var f1 = new FindingView("TREND", "保费下降 46.7%", java.util.Map.of());
+            var f2 = new FindingView("CONTRIBUTION", "普通客户占 33.9%", java.util.Map.of());
+
+            StepSnapshot s1 = new StepSnapshot("一", null, List.of("a","b"),
+                    List.of(List.of("x", 1)), ChartSpec.table("t"), "SQL", scope("今年"), 1);
+            StepSnapshot s2 = new StepSnapshot("二", null, List.of("a","b"),
+                    List.of(List.of("y", 2)), ChartSpec.table("t"), "SQL", scope("今年"), 1);
+
+            ReportSource a1 = new ReportSource("m1", "q1",
+                    new ReportSource.AnalysisPayload("i1", List.of(s1), List.of(f1), null),
+                    List.of(), List.of(), null, null, scope("今年"));
+            ReportSource a2 = new ReportSource("m2", "q2",
+                    new ReportSource.AnalysisPayload("i2", List.of(s2), List.of(f2), null),
+                    List.of(), List.of(), null, null, scope("今年"));
+
+            var report = ReportBuilder.build("c1", "u1", List.of(a1, a2));
+
+            assertThat(report.body().sections().get(0).findings()).hasSize(1);
+            assertThat(report.body().sections().get(1).findings()).hasSize(1);
+        }
+    }
+
+    @Nested
+    @DisplayName("章节标题降级")
+    class SectionTitle {
+
+        @Test
+        @DisplayName("★ 用第一步的 label，不用 intent")
+        void usesStepLabelNotIntent() {
+            // 实测：intent 常常是一整句分析目标
+            // （「看除西南外其他区域里各客户等级的保费构成，找出还有哪些区域偏离整体水平」），
+            // 当章节名太长，而且说的是"要做什么"不是"这节讲什么"
+            String longIntent = "看除「西南」外其他区域里各客户等级的保费构成，找出还有哪些区域偏离整体水平";
+            StepSnapshot step = new StepSnapshot("各区域中客户等级的保费占比", "对比各区域",
+                    List.of("区域", "客户等级", "保费"),
+                    List.of(List.of("华东", "普通", 100)),
+                    ChartSpec.table("t"), "SQL", scope("今年"), 1);
+            ReportSource src = new ReportSource("m1", "问题", 
+                    new ReportSource.AnalysisPayload(longIntent, List.of(step), List.of(), null),
+                    List.of(), List.of(), null, null, scope("今年"));
+
+            var report = ReportBuilder.build("c1", "u1", List.of(src));
+
+            assertThat(report.body().sections().get(0).title())
+                    .isEqualTo("各区域中客户等级的保费占比");
+        }
+
+        @Test
+        @DisplayName("没有 label 才退回 intent")
+        void fallsBackToIntent() {
+            StepSnapshot step = new StepSnapshot(null, null,
+                    List.of("a", "b"), List.of(List.of("x", 1)),
+                    ChartSpec.table("t"), "SQL", scope("今年"), 1);
+            ReportSource src = new ReportSource("m1", "问题",
+                    new ReportSource.AnalysisPayload("这是意图", List.of(step), List.of(), null),
+                    List.of(), List.of(), null, null, scope("今年"));
+
+            var report = ReportBuilder.build("c1", "u1", List.of(src));
+
+            assertThat(report.body().sections().get(0).title()).isEqualTo("这是意图");
+        }
+    }
+
+    @Nested
     @DisplayName("去重")
     class Dedup {
 

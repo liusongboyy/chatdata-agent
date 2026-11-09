@@ -4,6 +4,7 @@ import { P } from './permissions'
 import LoginView from './views/LoginView.vue'
 import AskView from './views/AskView.vue'
 import EmbedAskView from './views/EmbedAskView.vue'
+import ReportView from './views/ReportView.vue'
 import AdminLayout from './views/admin/AdminLayout.vue'
 import DatasourceListView from './views/admin/DatasourceListView.vue'
 import ModelListView from './views/admin/ModelListView.vue'
@@ -137,6 +138,14 @@ export const router = createRouter({
      * 令牌的有效性由服务端判（Bearer），页面自己不做鉴权。
      */
     { path: '/embed', name: 'embed', component: EmbedAskView },
+    /*
+     * 分析报告。**只读快照**，没有输入框。
+     *
+     * 需要登录：报告属于某个人，接口会校验归属。
+     * 路由守卫在这里只做"有没有登录"这一道——
+     * 具体的归属判定在服务端（不是自己的返回 404）。
+     */
+    { path: '/report/:id', name: 'report', component: ReportView, meta: { requiresAuth: true } },
     {
       // 管理面。**与"能问数"是两回事**，见 ADR-0004：早期给所有用户都授了 chat2bi，
       // 结果是每个能问数的人都能进管理台配数据源与指标口径。
