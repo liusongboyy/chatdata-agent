@@ -271,6 +271,7 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 | [eval/README.md](eval/README.md) | 评测基线：夹具、用例、指标口径、能力缺口 |
 | [demo/adventureworks/](demo/adventureworks/) | 复杂业务域：28 表 / 172 列 / 30 关联的销售分析场景 |
 | [AGENTS.md](AGENTS.md) | 给 AI agent 的工作约定 |
+| [TODO.md](TODO.md) | 已知但还没做的事，以及**为什么没做** |
 
 设计过程单独放在 [chatdata-agent-design](https://github.com/liusongboyy/chatdata-agent-design)：
 每一轮功能的 spec、当时权衡的取舍、以及**被否决的方案**。
