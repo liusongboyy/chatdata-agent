@@ -98,6 +98,9 @@ WHERE t1.org_code_path LIKE '/1/100/110/120/130/140/%'
 - **算不出钱时不写 0**——没配单价的模型显示「未配单价」，因为 0 元是「免费」，
   而这里是「不知道」，两者会让管理员得出相反的结论
 
+管理台还有：建模覆盖度（这个域缺什么配置）、问数健康度（成功率、失败原因排行、
+没人用的域）、质量分析（哪类问题在拖后腿）、失败诊断（能不能修、改哪里）。
+
 ## 功能
 
 - **语义建模**：把物理表抽象成业务可理解的指标与维度，口径在建模层定死
@@ -111,7 +114,13 @@ WHERE t1.org_code_path LIKE '/1/100/110/120/130/140/%'
 - **权限**：行级规则（支持组织层级动态变量）、列级脱敏、fail-closed
 - **审计**：每次提问、每步查询、每句 SQL 都可追溯
 - **IM 渠道**：接入飞书，群里 @ 机器人即可问数；权限与 Web 端完全一致。
-  支持**定时推送**（每天 9 点自动发数据）与卡片原地更新
+  支持**定时推送**（每天 9 点自动发数据）与卡片原地更新。
+  渠道是**可插拔**的（`ChannelRenderer` / `ChannelSender`），接第二个渠道不用改核心逻辑
+- **可嵌入问数**：宿主系统（CRM、工单系统…）引一行 script、写一个标签，
+  就有了一个问数框。`embed` 令牌 5 分钟、绑助理、必须能映射到本系统账号；
+  用 iframe 隔离样式与令牌，`frame-ancestors` 白名单控制哪些站点能嵌
+- **多模型**：管理员配多个模型（可来自不同厂商），按**角色白名单**收敛用户能选的范围；
+  每次提问记录模型与 token 消耗，按配置的单价折算费用
 - **运维可见性**：建模覆盖度（这个域缺什么配置）、健康度看板（整体成功率、
   失败原因排行、没人用的域）、质量分析（哪类问题在拖后腿）、
   **失败诊断**（能不能修、改哪里、或者为什么改配置也没用）
@@ -167,7 +176,10 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 # java -jar chatdata-channel/target/chatdata-channel-*-SNAPSHOT.jar &
 ```
 
-打开 <http://127.0.0.1:8080/app/>，默认账号 `admin` / `admin123`。
+打开 <http://127.0.0.1:8082/app/>，默认账号 `admin` / `admin123`。
+
+> **端口是 8082 不是 8080。** 8080 是很常见的占用端口（本机若有别的
+> 容器/服务占着，gateway 会启动失败）。需要改就设环境变量 `GATEWAY_PORT`。
 
 > `08-bootstrap.sql` 最后会打印一份核对报告。**确认「超级管理员持有者数」>= 1**——
 > 为 0 的话没人能进管理台。生产部署不要用 `02-seed-dev.sql` 里的固定密码。
@@ -178,17 +190,18 @@ java -jar chatdata-gateway/target/chatdata-gateway-*-SNAPSHOT.jar &
 
 ```mermaid
 flowchart TB
-    subgraph entry["入口层 · 四条鉴权路径"]
+    subgraph entry["入口层 · 五条鉴权路径"]
         direction LR
         B["浏览器<br/>Vue 3"]
         F["飞书 IM"]
         A["其他 agent<br/>A2A"]
         S["agentscope service<br/>管理台"]
+        E["宿主系统<br/>可嵌入"]
     end
 
     subgraph edge["接入层"]
         direction LR
-        GW["gateway :8080<br/>BFF 会话 · 令牌中继"]
+        GW["gateway :8082<br/>BFF 会话 · 令牌中继"]
         CH["channel :20000<br/>验签 · 卡片渲染"]
         MSH["mesh :20001<br/>A2A · aistio"]
     end
@@ -215,6 +228,7 @@ flowchart TB
     F --> CH
     A --> MSH
     S --> MSH
+    E -.->|"embed 令牌<br/>5 分钟 · 绑助理"| ASK
 
     GW -->|"用户令牌"| ASK
     CH -->|"代表用户的令牌"| ASK
@@ -230,13 +244,18 @@ flowchart TB
 **关键设计：模型只产 DSL，不产 SQL。** 所以权限能固定在渲染器里注入——
 一旦 SQL 由模型自由生成，就没有安全的注入点。
 
-三个入口，三条鉴权路径，最后都汇到 ask 由它统一判权限：
+五个入口，五种鉴权方式，最后都汇到 ask 由它统一判权限：
 
 | 入口 | 怎么证明「我是谁」 |
 |---|---|
 | 浏览器 | 会话 Cookie + 网关 BFF |
 | 飞书 | 事件验签，再换一张"代表该用户"的令牌 |
 | 其他 agent / 管理台 | A2A 请求里的 `userId`，再按授权表换一张"代表该用户"的令牌 |
+| **宿主系统（可嵌入）** | `client_secret` + `user_ref`，换一张**5 分钟、绑助理**的令牌 |
+
+最后一行的约束最紧：宿主只能问它被授权的那个助理，令牌 5 分钟过期。
+`user_ref` 映射不到本系统账号就拒绝——**绝不自动建号**，
+那会让第三方凭空造出一个有权限的账号。
 
 **渠道和 mesh 都不判断权限。** 渠道只做「哪个用户问了什么 → 拿他的令牌去问 → 把结果排版回去」；
 mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
@@ -281,7 +300,7 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 ## 开发
 
 ```bash
-mvn test                                    # 1082 个测试
+mvn test                                    # 1172 个测试
 npm --prefix chatdata-web run build   # 前端（产物要一起提交，见下）
 ```
 
@@ -295,7 +314,7 @@ npm --prefix chatdata-web run build   # 前端（产物要一起提交，见下�
 
 | 指标 | 数值 |
 |---|---|
-| 测试 | 1082 个，0 失败 |
+| 测试 | 1172 个，0 失败 |
 | 引擎行覆盖率 | 71%（分支 58%） |
 | 评测用例 | 203 条，分四个数据集 |
 | 架构决策记录 | 11 份 ADR，每份写清**被否决的方案** |
@@ -310,6 +329,17 @@ npm --prefix chatdata-web run build   # 前端（产物要一起提交，见下�
   两侧各自的测试都绿，但中间那一环没人测，而它出错的方式都很安静
 - `WebAppRouteCoverageTest` —— 解析前端 `router.ts`，断言每条静态路由都有 SPA 转发。
   漏一条的表现是「点进去正常、刷新 404」
+- `MapperScanCoverageTest` —— 扫出所有 `@Mapper` 接口，断言每个都被 `@MapperScan` 覆盖。
+  这个坑踩过**两次**（`engine.model.mapper`、`ask.report.mapper`），
+  症状都是 `No qualifying bean`，而报错指向依赖它的 Service 构造参数
+- `MessageHandlerChannelRoutingTest` —— 用一个假渠道跑完整链路。
+  它是唯一能证明「接第二个渠道不用改 `MessageHandler`」的测试：
+  如果实现里还残留「总是用飞书」的假设，它会红
+- `EmbedScopeTest` —— embed 令牌只能问它绑定的那个助理。
+  这是嵌入功能唯一的安全边界，越权必须被拒
+- `ResultJsonReaderTest` —— 用**从真实库里抄出来的** JSON 做样例，
+  而不是手工构造。手工样例只能证明「我理解的格式能被解析」，
+  真实数据能证明「线上存的格式能被解析」
 
 ## 一个真实的失败案例
 
