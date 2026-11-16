@@ -34,6 +34,13 @@ export type FailureCode =
   | 'EXECUTION_FAILED'
   /** 引擎没配置好（模型密钥缺失等）。**重试不会成功**，与可重试的失败分开。 */
   | 'ENGINE_NOT_READY'
+  /**
+   * 模型服务不可用：供应商欠费、密钥失效、限流…
+   *
+   * **与 ENGINE_NOT_READY 分开**：那个是「我们没配好」，这个是「我们配好了，
+   * 供应商那边不行」。也与兜底的 DSL_FAILED 分开——欠费时重试永远不会成功。
+   */
+  | 'MODEL_UNAVAILABLE'
 
 export interface AskStartedEvent {
   type: 'started'

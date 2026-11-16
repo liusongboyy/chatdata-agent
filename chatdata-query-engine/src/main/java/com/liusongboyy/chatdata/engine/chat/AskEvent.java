@@ -120,6 +120,18 @@ public sealed interface AskEvent {
         /** 语义配置有问题（字段找不到、多表连不通等）。 */
         public static final String SEMANTIC_ERROR = "SEMANTIC_ERROR";
 
+        /**
+         * 模型服务不可用：供应商拒了请求（欠费、密钥失效、限流…）。
+         *
+         * <p><b>与 {@link #ENGINE_NOT_READY} 分开</b>：那个是"我们没配好"，
+         * 这个是"我们配好了，供应商那边不行"。两者的下一步不同——
+         * 前者要改密钥，后者要续费或等一会儿。
+         *
+         * <p>也与兜底的 {@link #DSL_FAILED} 分开：那个说"处理失败，请稍后重试"，
+         * 而欠费时重试永远不会成功，那句话是误导。
+         */
+        public static final String MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE";
+
         /** 执行失败（连接不可用、SQL 报错、超时）。 */
         public static final String EXECUTION_FAILED = "EXECUTION_FAILED";
     }

@@ -465,6 +465,20 @@ public class AskEngineStreamController {
             fail(emitter, conversation.id(), AskEvent.FailureCode.EXECUTION_FAILED,
                     "查询失败，请稍后重试或联系管理员");
 
+        } catch (com.liusongboyy.chatdata.engine.agent.ModelUnavailableException e) {
+            // **供应商那边不行，不是我们配错了。**
+            //
+            // 实测踩到：方舟订阅过期，用户看到「处理失败，请稍后重试」，
+            // 排查时先去看应用日志、数据库、权限，花了不少时间才翻到
+            // 真正的 InvalidSubscription。
+            //
+            // 错误消息已经由分类器写好（"模型服务已欠费或订阅过期，请联系管理员"），
+            // 直接透出——它是写给用户看的
+            log.error("模型服务不可用：user={} 供应商错误码={} 可重试={}",
+                    username, e.providerCode(), e.retryable());
+            fail(emitter, conversation.id(), AskEvent.FailureCode.MODEL_UNAVAILABLE,
+                    e.getMessage());
+
         } catch (EngineNotConfiguredException e) {
             // **不能说"稍后重试"。**重试永远不会成功，真实原因是服务端缺配置，
             // 用户重试只会白等，而运维也收不到"去配密钥"这个信号

@@ -5,6 +5,7 @@ import com.liusongboyy.chatdata.engine.agent.AskDeniedException;
 import com.liusongboyy.chatdata.engine.agent.DslGenerationException;
 import com.liusongboyy.chatdata.engine.agent.DslSource;
 import com.liusongboyy.chatdata.engine.agent.EngineNotConfiguredException;
+import com.liusongboyy.chatdata.engine.agent.ModelFailureClassifier;
 import com.liusongboyy.chatdata.engine.agent.Generated;
 import com.liusongboyy.chatdata.engine.agent.TokenUsage;
 import com.liusongboyy.chatdata.engine.agent.PromptAssembler;
@@ -412,6 +413,16 @@ public class AskService implements AskFacade {
             throw new EngineNotConfiguredException(
                     "问数引擎的模型未配置成功：" + rootMessage(e)
                             + "。这是服务端配置问题，重试不会成功", e);
+        } catch (RuntimeException e) {
+            // **模型服务不可用要单独分出来。**
+            //
+            // 实测踩到：火山方舟订阅过期，所有问数都失败，而用户看到的是
+            // 「处理失败，请稍后重试」——那句话让人以为是我们的系统坏了，
+            // 排查时先去看应用日志、数据库、权限，花了不少时间才翻到
+            // 真正的 InvalidSubscription。
+            //
+            // 分类不出来就原样抛出，走原来的兜底——**不要猜**。
+            throw ModelFailureClassifier.classify(e).orElseThrow(() -> e);
         }
     }
 
