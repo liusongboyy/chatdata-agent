@@ -50,7 +50,6 @@ public class AskServiceFactory {
     private static final Logger log = LoggerFactory.getLogger(AskServiceFactory.class);
 
     private final SemanticConfigMapper mapper;
-    private final DslSource dslSource;
     private final SqlExecutor sqlExecutor;
     private final AskAuditRecorder auditRecorder;
     /** 直连模式要模型**自己写 SQL**，故工厂需要直接持有它。同样是惰性代理。 */
@@ -67,18 +66,14 @@ public class AskServiceFactory {
      */
     private final org.springframework.beans.factory.ObjectProvider<io.agentscope.core.state.AgentStateStore>
             sessionStore;
-
-
     /**
-     * @param dslSource <strong>必须 {@code @Lazy}</strong>：它背后是 LLM 模型，
-     *                  而模型需要 api-key。若在此急切注入，没配 key 的环境
-     *                  （开发、CI）会**整个应用起不来**——但管理面、语义建模
-     *                  这些功能根本不需要模型。
-     *                  <p>只在 Bean 定义上标 {@code @Lazy} 不够：构造器注入是急切解析，
-     *                  会把惰性绕过去。惰性必须标在注入点上。
+     * 会话配置。用于现场构造 {@link com.liusongboyy.chatdata.engine.agent.DslGenerator}
+     * 时决定要不要挂状态存储、用什么冲突策略。
      */
+    private final com.liusongboyy.chatdata.engine.agent.AskSessionProperties sessionProps;
+
+
     public AskServiceFactory(SemanticConfigMapper mapper,
-                             @Lazy DslSource dslSource,
                              SqlExecutor sqlExecutor,
                              AskAuditRecorder auditRecorder,
                              @Lazy io.agentscope.core.model.Model askEngineModel,
@@ -86,9 +81,9 @@ public class AskServiceFactory {
                              com.liusongboyy.chatdata.engine.raw.RawSchemaBuilder rawSchemas,
                              org.springframework.beans.factory.ObjectProvider<io.agentscope.core.state.AgentStateStore>
                                      sessionStore,
-                             com.liusongboyy.chatdata.engine.model.ModelPool modelPool) {
+                             com.liusongboyy.chatdata.engine.model.ModelPool modelPool,
+                             com.liusongboyy.chatdata.engine.agent.AskSessionProperties sessionProps) {
         this.mapper = mapper;
-        this.dslSource = dslSource;
         this.sqlExecutor = sqlExecutor;
         this.auditRecorder = auditRecorder;
         this.askEngineModel = askEngineModel;
@@ -96,6 +91,7 @@ public class AskServiceFactory {
         this.rawSchemas = rawSchemas;
         this.sessionStore = sessionStore;
         this.modelPool = modelPool;
+        this.sessionProps = sessionProps;
     }
 
     /** 内部/评测调用：不做角色校验，按域绑定或全局默认解析模型。 */
@@ -158,7 +154,22 @@ public class AskServiceFactory {
                         domainModel, store, null),
                 new com.liusongboyy.chatdata.engine.agent.NarrativeGenerator(domainModel),
                 store, modelKey);
-        return new AskService(model, dialect, dslSource, sqlExecutor, auditRecorder, analysis,
+
+        // **DSL 生成也必须用域模型，不能用注入的单例。**
+        //
+        // 实测踩到：管理台把默认模型换成 dmx，日志显示「构建模型实例：key=dmx」，
+        // 但 HTTP 请求仍然打到方舟（yml 里那个）——因为 `dslSource` 是启动时
+        // 按 `askEngineModel` 建的单例，它内部固定了那个模型。
+        //
+        // 症状极具迷惑性：**分析编排走了新模型，主链路的 DSL 生成还在旧模型**，
+        // 而日志里两者都打印了正确的模型名。
+        //
+        // 所以这里按域模型现场构造。开销很小（DslGenerator 只是个薄壳，
+        // 真正贵的 Model 实例由 ModelPool 按 key 缓存）。
+        DslSource domainDsl = new com.liusongboyy.chatdata.engine.agent.DslGenerator(
+                domainModel, store, sessionProps == null ? null : sessionProps.getConflictPolicy());
+
+        return new AskService(model, dialect, domainDsl, sqlExecutor, auditRecorder, analysis,
                 modelKey);
     }
 
@@ -302,8 +313,8 @@ public class AskServiceFactory {
      * 让模型把它翻译成 SQL 只会得到一个语法正确但没有意义的查询，
      * 然后失败。界面应当直接回答它。
      *
-     * <p>这里复用 {@link #forDomain} 的加载逻辑，只是不调模型——
-     * {@code dslSource} 是惰性代理，传进去不会触发它的创建。
+     * <p>这里复用 {@link #forDomain} 的加载逻辑。它**不调模型**：
+     * DSL 生成器是按需构造的，不走到提问那一步就不会建。
      */
     public Capabilities capabilities(String domainId) {
         // 走 AskFacade：直连模式的 availableFields 是空列表（它没有"登记过的字段"），
