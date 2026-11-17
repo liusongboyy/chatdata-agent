@@ -66,25 +66,28 @@ public class ChannelProperties {
         private String clientSecret;
 
         /**
-         * IAM 的库名。
-         *
-         * <p>channel 直连 IAM 的 {@code iam_user} 查身份绑定，而它的主数据源是
-         * ask 的库（去重表与会话映射在那）。两个库在同一个 MySQL 实例上时，
-         * 用「库名.表名」跨库查询即可。
-         *
-         * <p><strong>IAM 若拆到独立实例，这里就不成立了</strong>——那时要改成
-         * 调 IAM 的 HTTP 接口。为这个场景在 IAM 侧加一个「按 open_id 查用户」的
-         * 端点时要注意：它会把「某个 open_id 是否已注册」变成一个可探测的接口。
-         */
-        private String database = "chatdata_iam";
-
-        /**
          * 令牌提前刷新量。
          *
          * <p>令牌 TTL 只有 5 分钟。卡在到期那一刻去换，会因为时钟偏差与网络往返
          * 换到一张已经过期的令牌——请求随即 401，而错误信息看起来像"权限问题"。
          */
         private Duration refreshAhead = Duration.ofSeconds(30);
+
+        /**
+         * 身份绑定的缓存时长。
+         *
+         * <p>绑定关系极少变（一个人绑一次，之后几年都是同一行），而这条路径在
+         * <b>每条飞书消息</b>上都要走一次。不缓存的话每次问数都多一次往返。
+         *
+         * <p><b>它也是解绑后的窗口期。</b>正结果缓存这么久，解绑后最多这段时间内
+         * 仍按旧身份解析。这期间 IAM 的 channel grant 会拒绝换令牌（它查实时绑定），
+         * 所以后果是"给用户一条没用的消息"，而不是"越权访问"。
+         * 60 秒是可接受的代价；要更严就调小，要更省就调大。
+         *
+         * <p><b>只缓存正结果。</b>未绑定不缓存——管理员刚绑好，
+         * 用户重发一条消息就该成功。
+         */
+        private Duration identityCacheTtl = Duration.ofSeconds(60);
 
         public String getBaseUrl() {
             return baseUrl;
@@ -110,20 +113,20 @@ public class ChannelProperties {
             this.clientSecret = clientSecret;
         }
 
-        public String getDatabase() {
-            return database;
-        }
-
-        public void setDatabase(String database) {
-            this.database = database;
-        }
-
         public Duration getRefreshAhead() {
             return refreshAhead;
         }
 
         public void setRefreshAhead(Duration refreshAhead) {
             this.refreshAhead = refreshAhead;
+        }
+
+        public Duration getIdentityCacheTtl() {
+            return identityCacheTtl;
+        }
+
+        public void setIdentityCacheTtl(Duration identityCacheTtl) {
+            this.identityCacheTtl = identityCacheTtl;
         }
     }
 

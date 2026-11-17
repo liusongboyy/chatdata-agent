@@ -18,7 +18,7 @@ import java.util.Map;
  * 匹配不上。这里返回 username 与显示名，让调用方做"选而不是敲"。
  *
  * <p>与 {@code /iam/policy/roles} 同级：走客户端凭证，由
- * {@link com.liusongboyy.chatdata.iam.config.PolicyClientAuthInterceptor}
+ * {@link com.liusongboyy.chatdata.iam.serviceauth.ClientCredentialInterceptor}
  * 统一鉴权，本类里看不到鉴权代码是故意的。
  *
  * <p><b>包含停用用户。</b>已保存的策略可能引用他们，界面需要能标出

@@ -41,11 +41,11 @@ channel:
   iam:
     base-url: ${IAM_ISSUER:http://127.0.0.1:9000}
     client-id: channel-bot
-    # channel 直连这个库查 iam_user 的绑定关系。与主数据源（ask 的库）同一个实例
-    database: ${IAM_DB:chatdata_iam}
     # 与 IAM 里的 channel-bot 客户端密钥一致。不设默认值
     client-secret: ${IAM_CHANNEL_SECRET:}
     refresh-ahead: 30s
+    # 身份绑定的缓存时长，也是解绑后的窗口期。绑定极少变，而每条消息都要查一次
+    identity-cache-ttl: 60s
 
   ask:
     base-url: ${ASK_URI:http://127.0.0.1:8081}

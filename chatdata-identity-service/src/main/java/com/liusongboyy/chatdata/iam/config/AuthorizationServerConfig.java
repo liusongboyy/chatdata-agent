@@ -182,8 +182,13 @@ public class AuthorizationServerConfig {
      * <p>它只能换「已绑定用户」的令牌——权限边界在
      * {@code ChannelGrantAuthenticationProvider} 里，不在这里。
      *
-     * <p>**只管着 ask.read / ask.feedback**，与 BFF 同权。渠道不该比浏览器多任何能力：
-     * 它能看到的，就是那个人在 Web 上能看到的。
+     * <p>**代表用户时只管着 ask.read / ask.feedback**，与 BFF 同权。渠道不该比浏览器
+     * 多任何能力：它能看到的，就是那个人在 Web 上能看到的。
+     *
+     * <p>除此之外它还有一条 {@code client_credentials}——<b>不是为了代表用户，
+     * 而是为了查"这个 open_id 是谁"</b>。那条路只带 {@code iam.identity}：
+     * 能问单个外部 id 的绑定结果，读不到用户目录（那要 {@code iam.principal}）。
+     * 两者分开是刻意的，见 {@code IamServiceClientAuth} 的说明。
      */
     private static void seedChannel(RegisteredClientRepository clients, IamProperties props,
                                     PasswordEncoder encoder) {
@@ -202,8 +207,11 @@ public class AuthorizationServerConfig {
                 .clientName("渠道机器人")
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .authorizationGrantType(ChannelGrantType.CHANNEL)
+                // 自查身份用。**不给 iam.principal**——渠道不需要读全量用户目录
+                .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .scope("ask.read")
                 .scope("ask.feedback")
+                .scope("iam.identity")
                 // 渠道不签发 refresh token，但 settings 仍是 reference——
                 // 决定 access token 的格式
                 .tokenSettings(TokenSettings.builder()

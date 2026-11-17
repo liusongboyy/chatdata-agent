@@ -89,7 +89,14 @@ public class CardActionHandler {
         AnswerStore.StoredAnswer answer = found.get();
 
         // ★ 点击者必须是提问者本人。否则群里任何人都能替别人反馈
-        Optional<String> actor = identities.resolveUsername("feishu", openId);
+        Optional<String> actor;
+        try {
+            actor = identities.resolveUsername("feishu", openId);
+        } catch (ChannelIdentityService.IdentityUnavailableException e) {
+            // 这里没有"稍后再试"的余地：飞书要求 3 秒内给出结果，
+            // 而用户重试的方式是再点一次——说清楚即可
+            return toast("error", e.getMessage());
+        }
         if (actor.isEmpty() || !actor.get().equals(answer.username())) {
             log.warn("卡片回调被拒：不是本人操作。actor={} owner={} answerId={}",
                     openId, answer.username(), answerId);

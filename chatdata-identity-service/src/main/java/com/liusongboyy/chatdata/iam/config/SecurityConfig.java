@@ -105,10 +105,13 @@ public class SecurityConfig {
                                     "/iam/auth/csrf",
                                     // 令牌换主体：凭据是令牌本身，见 PrincipalController
                                     "/iam/principal",
-                                    // 策略接口：服务间调用，凭据是"客户端"不是"用户"，
+                                    // 服务间调用：凭据是"客户端"不是"用户"，
                                     // 表达不成一条 hasRole 规则，故这里放行、
-                                    // 由 PolicyClientAuthInterceptor 在整个前缀上统一把关
+                                    // 由 ClientCredentialInterceptor 在整个前缀上统一把关。
+                                    // 要加新前缀时，WebMvcConfig.SERVICE_PREFIXES 里也要加
                                     "/iam/policy/**",
+                                    // 外部身份解析（渠道用）。开放出去就是可枚举的探测接口
+                                    "/iam/identity/**",
                                     "/oauth2/**",
                                     "/.well-known/**",
                                     "/error",

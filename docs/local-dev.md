@@ -140,7 +140,7 @@ set -a; . ~/.chatdata-agent.env; set +a
 | `CHATDATA_ENGINE_DS_SECRET` | 数据源密码的加解密密钥，**必填** |
 | `IAM_BFF_SECRET` | 网关 BFF 客户端密钥 |
 | `IAM_RESOURCE_SECRET` | 服务间读取角色/用户目录的密钥 |
-| `IAM_CHANNEL_SECRET` | 渠道换取「代表用户」令牌的客户端密钥 |
+| `IAM_CHANNEL_SECRET` | 渠道的客户端密钥。既用于换「代表用户」的令牌，也用于换「查外部身份」的服务令牌 |
 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | 飞书自建应用凭证 |
 | `FEISHU_ENCRYPT_KEY` | 飞书事件加密密钥。**启用渠道后必填**——不配则事件明文传输 |
 | `FEISHU_VERIFICATION_TOKEN` | 回调地址校验用（选填，配了多一道来源校验） |

@@ -98,7 +98,10 @@ public class MessageHandler {
         // 「新话题」「重置」：显式开新会话。放在身份校验之前——
         // 它不查数据，只动本地的会话映射
         if (isResetCommand(question)) {
-            Optional<String> username = identities.resolveUsername(msg.channel(), msg.senderId());
+            Optional<String> username = resolveUsername(msg, renderer, question);
+            if (username == null) {
+                return;
+            }
             if (username.isEmpty()) {
                 String ticket = bindTickets.issue(msg.channel(), msg.senderId(), question);
                 reply(msg, renderer.renderBindGuide(bindTickets.bindUrl(ticket)));
@@ -111,7 +114,10 @@ public class MessageHandler {
         }
 
         // ① 身份。未绑定 → 给绑定引导，**不发 ask 请求**
-        Optional<String> username = identities.resolveUsername(msg.channel(), msg.senderId());
+        Optional<String> username = resolveUsername(msg, renderer, question);
+        if (username == null) {
+            return;
+        }
         if (username.isEmpty()) {
             // 自助绑定：给一条能点的链接，而不是「请联系管理员」——
             // 后者会让每一次新用户接入都变成一次人工工单
@@ -367,6 +373,35 @@ public class MessageHandler {
         String t = text == null ? "" : text.trim();
         return t.equals("新话题") || t.equals("重置") || t.equals("新的会话")
                 || t.equals("/new") || t.equals("/reset");
+    }
+
+    /**
+     * 解析发送者身份，把「服务不可用」与「未绑定」分开。
+     *
+     * <h2>为什么不能合成一个 empty</h2>
+     *
+     * <p>两者的用户可见后果完全不同：
+     *
+     * <ul>
+     *   <li><b>未绑定</b> → 给绑定引导，用户点一下就成</li>
+     *   <li><b>IAM 不可用</b> → 让用户等一会儿</li>
+     * </ul>
+     *
+     * <p>混成一个会让 IAM 抖动一次就骗一批已绑定的用户去重新绑定——
+     * 他们绑完发现还是不行，因为本来就没坏。
+     *
+     * @return 用户名；未绑定时 {@code Optional.empty()}；
+     *         <b>服务不可用时返回 {@code null}</b>（已回复用户，调用方直接 return）
+     */
+    private Optional<String> resolveUsername(InboundMessage msg, ChannelRenderer renderer,
+                                             String question) {
+        try {
+            return identities.resolveUsername(msg.channel(), msg.senderId());
+        } catch (ChannelIdentityService.IdentityUnavailableException e) {
+            // 消息本身就是给用户看的
+            reply(msg, renderer.renderError(question, e.getMessage()));
+            return null;
+        }
     }
 
     /**

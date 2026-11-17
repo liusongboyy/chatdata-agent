@@ -25,7 +25,7 @@ import java.util.Map;
  *
  * <p>为了这两件事给资源服务器发一份 {@code iam.roles} 管理权限，等于把"读角色清单"
  * 和"改角色"绑成同一把钥匙。所以这里与 {@code /iam/policy/**} 同级：
- * 客户端凭证鉴权，只读，由 {@link PolicyClientAuthInterceptor} 在整个前缀上统一把关
+ * 客户端凭证鉴权，只读，由 {@link com.liusongboyy.chatdata.iam.serviceauth.ClientCredentialInterceptor} 在整个前缀上统一把关
  * ——<b>本类里看不到鉴权代码是故意的</b>。
  *
  * <h2>为什么含已停用的角色</h2>
