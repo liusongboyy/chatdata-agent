@@ -2,8 +2,8 @@ package com.liusongboyy.chatdata.ask.engine;
 
 import com.liusongboyy.chatdata.common.core.result.Result;
 import com.liusongboyy.chatdata.ask.policy.PolicyReferenceValidator;
-import com.liusongboyy.chatdata.iam.client.IamRoleDirectoryClient;
-import com.liusongboyy.chatdata.iam.client.IamUserDirectoryClient;
+import com.liusongboyy.iam.client.IamRoleDirectoryClient;
+import com.liusongboyy.iam.client.IamUserDirectoryClient;
 import com.liusongboyy.chatdata.engine.admin.AdminAssistantService;
 import com.liusongboyy.chatdata.engine.admin.AdminDatasourceService;
 import com.liusongboyy.chatdata.engine.admin.AssistantInput;

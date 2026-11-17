@@ -18,8 +18,6 @@
     <modules>
         <module>chatdata-common</module>
         <module>chatdata-gateway</module>
-        <module>chatdata-identity-service</module>
-        <module>chatdata-identity-client</module>
         <module>chatdata-query-service</module>
         <module>chatdata-query-engine</module>
         <module>chatdata-channel</module>
@@ -52,6 +50,8 @@
         <!-- AI -->
         <!-- 表级白名单校验用（直连模式）。只做"读出 SQL 引用了哪些表"，不改写 SQL -->
         <jsqlparser.version>5.0</jsqlparser.version>
+        <!-- IAM 接入 SDK 的版本。与 iam-platform 仓库的根 pom 保持一致 -->
+        <iam.version>0.1.0-SNAPSHOT</iam.version>
         <agentscope.version>2.0.4</agentscope.version>
     </properties>
 
@@ -82,10 +82,20 @@
                 <artifactId>chatdata-query-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!--
+              IAM 的接入 SDK。**已从本仓库拆出**（见 iam-platform 仓库）。
+
+              坐标换成了独立 groupId：两个仓库用同一个 groupId 发布
+              1.0.0-SNAPSHOT 时，本地仓库里只有一份，后构建的会覆盖先构建的，
+              而依赖方看到的是"版本没变、行为变了"——这类问题排查起来毫无线索。
+
+              当前从本地仓库解析（先构建 iam-platform 再构建本仓库）。
+              要换成分发到私有 maven 仓库时，只改这一处。
+            -->
             <dependency>
-                <groupId>com.liusongboyy.chatdata</groupId>
-                <artifactId>chatdata-identity-client</artifactId>
-                <version>${project.version}</version>
+                <groupId>com.liusongboyy.iam</groupId>
+                <artifactId>iam-client</artifactId>
+                <version>${iam.version}</version>
             </dependency>
             <!--
               Spring Cloud BOM。网关（chatdata-gateway）用 Spring Cloud Gateway，

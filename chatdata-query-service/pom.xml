@@ -36,8 +36,8 @@
         <!-- IAM 客户端：把不透明令牌换成主体（内省 + Redis 缓存）。
              ask 不再自己签发令牌，也不再查用户/角色表——那些都在 IAM。 -->
         <dependency>
-            <groupId>com.liusongboyy.chatdata</groupId>
-            <artifactId>chatdata-identity-client</artifactId>
+            <groupId>com.liusongboyy.iam</groupId>
+            <artifactId>iam-client</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

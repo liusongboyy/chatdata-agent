@@ -267,13 +267,22 @@ mesh 只做「解析出代表谁 → 换令牌 → 转发给 ask」。
 | `chatdata-gateway` | 唯一入口：路由、BFF 会话、令牌中继 |
 | `chatdata-query-service` | 问数服务：SSE、管理台 API、会话历史 |
 | `chatdata-query-engine` | 问数引擎：语义模型、DSL、SQL 渲染、权限执行 |
-| `chatdata-identity-service` | 身份：用户、组织、角色、功能权限、OAuth 2.1 |
-| `chatdata-identity-client` | 服务间读取身份与目录的客户端 |
+| `iam-client`（外部） | IAM 接入 SDK：内省令牌、读角色/用户目录 |
 | `chatdata-channel` | IM 渠道：飞书 webhook 接入、卡片渲染、翻页与反馈 |
 | `chatdata-mesh` | A2A agent：把问数暴露给其他 agent 调用，并接入 agentscope 管理台 |
 | `chatdata-web` | 问数前端（Vue 3，产物打进 `chatdata-query-service`） |
-| `chatdata-identity-web` | 账号中心前端（Vue 3，产物打进 `chatdata-identity-service`） |
 | `chatdata-common` | 公共基础件：core / mybatis / redis（聚合 pom） |
+
+**账号中心（IAM）已拆到独立仓库**：[liusongboyy/iam-platform](https://github.com/liusongboyy/iam-platform)。
+用户、组织、角色、权限与 OAuth 2.1 授权服务器都在那边，本仓库只依赖它的 `iam-client`。
+
+为什么拆：IAM 要服务的不止问数了（数据质量平台也需要同一套账号体系）。
+两个系统共用一个仓库的后果是发布节奏被绑在一起——改 IAM 的一个权限码，
+问数也得跟着发一次版。
+
+拆分的**前提**是先把跨库直连断掉：渠道原来直接查 `chatdata_iam.iam_user`，
+现在调 `GET /iam/identity/resolve`。不先做这一步，拆完渠道就在运行时坏掉，
+而失败表现是「飞书绑定查不到」，与真实原因相距甚远。
 
 ## 文档
 

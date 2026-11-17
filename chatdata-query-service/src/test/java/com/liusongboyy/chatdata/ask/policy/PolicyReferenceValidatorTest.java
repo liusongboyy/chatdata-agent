@@ -1,8 +1,8 @@
 package com.liusongboyy.chatdata.ask.policy;
 
 import com.liusongboyy.chatdata.engine.admin.AdminException;
-import com.liusongboyy.chatdata.iam.client.IamRoleDirectoryClient;
-import com.liusongboyy.chatdata.iam.client.IamUserDirectoryClient;
+import com.liusongboyy.iam.client.IamRoleDirectoryClient;
+import com.liusongboyy.iam.client.IamUserDirectoryClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

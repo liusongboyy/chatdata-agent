@@ -1,8 +1,8 @@
 package com.liusongboyy.chatdata.ask.config;
 
-import com.liusongboyy.chatdata.iam.client.IamIntrospector;
-import com.liusongboyy.chatdata.iam.client.IamRoleDirectoryClient;
-import com.liusongboyy.chatdata.iam.client.IamUserDirectoryClient;
+import com.liusongboyy.iam.client.IamIntrospector;
+import com.liusongboyy.iam.client.IamRoleDirectoryClient;
+import com.liusongboyy.iam.client.IamUserDirectoryClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

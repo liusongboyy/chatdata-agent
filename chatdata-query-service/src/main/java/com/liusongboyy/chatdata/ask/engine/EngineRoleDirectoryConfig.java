@@ -1,7 +1,7 @@
 package com.liusongboyy.chatdata.ask.engine;
 
 import com.liusongboyy.chatdata.engine.startup.RoleDirectory;
-import com.liusongboyy.chatdata.iam.client.IamRoleDirectoryClient;
+import com.liusongboyy.iam.client.IamRoleDirectoryClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;

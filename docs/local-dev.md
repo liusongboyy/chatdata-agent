@@ -161,13 +161,19 @@ set -a; . ~/.chatdata-agent.env; set +a
 | mesh | 20001 | A2A agent。给其他 agent 调用；契约端点另占 18090 |
 
 ```bash
-cd /Users/liusongbo/selfProjects/chatdata-agent
 set -a; . ~/.chatdata-agent.env; set +a
 export JAVA_HOME=/Users/liusongbo/Library/Java/JavaVirtualMachines/azul-21.0.11/Contents/Home
 
-mvn -q -DskipTests install     # 前端产物已打进 ask/iam 的 static，改前端要先 npm run build
+# ① 先起 IAM——它在**另一个仓库**（iam-platform），ask 依赖它的 iam-client。
+#    本地仓库里没有 iam-client 时，下面 ask 的构建会解析失败
+cd /Users/liusongbo/selfProjects/iam-platform
+mvn -q -DskipTests install
+nohup java -jar iam-server/target/iam-server-0.1.0-SNAPSHOT.jar > /tmp/iam.log 2>&1 &
 
-nohup java -jar chatdata-identity-service/target/chatdata-identity-service-1.0.0-SNAPSHOT.jar     > /tmp/iam.log 2>&1 &
+# ② 再构建与启动问数
+cd /Users/liusongbo/selfProjects/chatdata-agent
+mvn -q -DskipTests install     # 前端产物已打进 ask 的 static，改前端要先 npm run build
+
 nohup java -jar chatdata-query-service/target/chatdata-query-service-1.0.0-SNAPSHOT.jar     > /tmp/ask.log 2>&1 &
 nohup java -jar chatdata-gateway/target/chatdata-gateway-1.0.0-SNAPSHOT.jar > /tmp/gw.log 2>&1 &
 
@@ -193,12 +199,14 @@ mesh 需要 `.env` 里有 `IAM_MESH_SECRET`（换代理令牌用）和 Nacos 地
 
 ### 前端
 
-两个前端都是独立 npm 工程（不是 Maven module），构建产物输出到后端 `static/`：
+问数的前端是独立 npm 工程（不是 Maven module），构建产物输出到后端 `static/`：
 
 ```bash
-(cd chatdata-web     && npm run build)   # → chatdata-query-service/src/main/resources/static/app
-(cd chatdata-identity-web && npm run build)   # → chatdata-identity-service/src/main/resources/static/iam/app
+(cd chatdata-web && npm run build)   # → chatdata-query-service/src/main/resources/static/app
 ```
+
+**账号中心的前端在另一个仓库**：`iam-platform/iam-console`。
+改它要切到那个仓库构建（`npm run build` → `iam-server/src/main/resources/static/iam/app`）。
 
 **必须先 build 再 `mvn install`**，否则打进 jar 的是旧产物。
 

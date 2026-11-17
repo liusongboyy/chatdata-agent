@@ -1,6 +1,6 @@
 package com.liusongboyy.chatdata.ask.config;
 
-import com.liusongboyy.chatdata.iam.client.IamIntrospector;
+import com.liusongboyy.iam.client.IamIntrospector;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;

@@ -17,6 +17,21 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      # IAM 已拆到独立仓库（iam-platform），本仓库只依赖它的 iam-client。
+      # CI 里必须先把那个仓库装进本地 maven 仓库，否则解析不到。
+      #
+      # 这是「先本地 install」这个决定的直接代价：两个仓库的 CI 有了顺序依赖。
+      # 要消掉它就得把 iam-client 发到私有 maven 仓库——那是下一步的事，
+      # 现在先让流水线跑起来。
+      - name: Install iam-client from iam-platform
+        run: |
+          set -e
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.IAM_PLATFORM_TOKEN }}@github.com/liusongboyy/iam-platform.git" \
+            /tmp/iam-platform
+          cd /tmp/iam-platform
+          mvn -B -q -DskipTests install -pl iam-client -am
+
       # 单元测试不连库；*RealDbTest 在有库时才跑（Assumptions 跳过），
       # 所以这里不起 MySQL —— 那些真库测试留给本地
       - name: Run tests
@@ -42,6 +57,15 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Install iam-client from iam-platform
+        run: |
+          set -e
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.IAM_PLATFORM_TOKEN }}@github.com/liusongboyy/iam-platform.git" \
+            /tmp/iam-platform
+          cd /tmp/iam-platform
+          mvn -B -q -DskipTests install -pl iam-client -am
+
       - name: Package
         run: mvn -B -DskipTests package
 
@@ -49,8 +73,9 @@ jobs:
       - name: Verify jars
         run: |
           set -e
-          # 只有这三个是可执行服务；engine / client / common 是库
-          for m in chatdata-gateway chatdata-query-service chatdata-identity-service; do
+          # 只有这两个是可执行服务；engine / common 是库。
+          # IAM 已拆到 iam-platform 仓库，它的 jar 在那边校验
+          for m in chatdata-gateway chatdata-query-service; do
             jar=$(ls "$m"/target/"$m"-*-SNAPSHOT.jar 2>/dev/null | grep -v original | head -1)
             [ -n "$jar" ] || { echo "找不到 $m 的 jar"; exit 1; }
             echo "checking $jar"
@@ -58,7 +83,7 @@ jobs:
           done
 
           # 库模块不该产出 fat jar——产出了说明 spring-boot-maven-plugin 的 skip 失效了
-          for m in chatdata-query-engine chatdata-identity-client; do
+          for m in chatdata-query-engine; do
             if unzip -l "$m"/target/"$m"-*-SNAPSHOT.jar 2>/dev/null | grep -q 'BOOT-INF/'; then
               echo "$m 是库，不该是 fat jar"; exit 1
             fi
