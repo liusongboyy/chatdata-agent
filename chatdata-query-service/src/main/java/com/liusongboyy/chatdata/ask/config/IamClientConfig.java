@@ -1,6 +1,7 @@
 package com.liusongboyy.chatdata.ask.config;
 
 import com.liusongboyy.iam.client.IamIntrospector;
+import com.liusongboyy.iam.client.IamPermissionReporter;
 import com.liusongboyy.iam.client.IamRoleDirectoryClient;
 import com.liusongboyy.iam.client.IamUserDirectoryClient;
 import org.springframework.beans.factory.ObjectProvider;
@@ -50,6 +51,28 @@ public class IamClientConfig {
             @Value("${chatdata.iam.client-id:ask-resource-server}") String clientId,
             @Value("${chatdata.iam.client-secret:}") String clientSecret) {
         return new IamRoleDirectoryClient(baseUrl, clientId, clientSecret);
+    }
+
+    /**
+     * 权限上报。
+     *
+     * <p><b>密钥缺失时返回 null</b>，而不是装配一个会在调用时报错的实例：
+     * 本地只跑问数、不连 IAM 是正常场景，那时不该因为"没配上报密钥"
+     * 就让启动日志里多一条告警。
+     *
+     * <p>调用方 {@code PermissionReporter} 用 {@code ObjectProvider} 取它，
+     * 拿不到就跳过。
+     */
+    @Bean
+    public IamPermissionReporter iamPermissionReporter(
+            @Value("${chatdata.iam.base-url:http://127.0.0.1:9000}") String baseUrl,
+            @Value("${chatdata.app-code:ask}") String appCode,
+            @Value("${chatdata.iam.client-id:ask-resource-server}") String clientId,
+            @Value("${chatdata.iam.client-secret:}") String clientSecret) {
+        if (clientSecret == null || clientSecret.isBlank()) {
+            return null;
+        }
+        return new IamPermissionReporter(baseUrl, appCode, clientId, clientSecret);
     }
 
     /**
