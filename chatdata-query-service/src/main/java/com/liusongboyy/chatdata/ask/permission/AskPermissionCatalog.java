@@ -113,6 +113,55 @@ public final class AskPermissionCatalog {
             new Item(UI_FEEDBACK_CORRECT, "提交修正 SQL", Kind.ACTION, UI_FEEDBACK, false)
     );
 
+    /**
+     * 管理页导航：告诉 IAM「问数有哪些管理页、在哪」。
+     *
+     * <h2>path 是浏览器真实路径</h2>
+     *
+     * <p>含 {@code /app} 前缀，因为 IAM 渲染的是 {@code <a href>}——
+     * 它不知道也不该知道问数怎么部署。
+     *
+     * <h2>与前端 {@code router.ts} 的 {@code ADMIN_PAGES} 保持一致</h2>
+     *
+     * <p>两处描述的是同一件事。改这里也要改那里——由
+     * {@code AskPermissionCatalogTest} 扫描前端源码兜住。
+     *
+     * <h2>顺序即导航顺序</h2>
+     *
+     * <p>按「先配什么、再看什么」排：模型 → 数据源 → 建模助手 → 语义域 →
+     * 助理 → 反馈审核 → 健康度 → 用量。模型排第一是因为它是问数能不能
+     * 跑起来的前提；用量排最后因为它前面那些的结果。
+     */
+    public static final List<NavEntry> NAV = List.of(
+            new NavEntry("模型", "/app/admin/models", ADMIN_MODELS, null),
+            new NavEntry("数据源", "/app/admin/datasources", ADMIN_DATASOURCES, null),
+            new NavEntry("建模助手", "/app/admin/modeling", ADMIN_DOMAINS, null),
+            new NavEntry("语义域", "/app/admin/domains", ADMIN_DOMAINS, null),
+            new NavEntry("助理", "/app/admin/assistants", ADMIN_ASSISTANTS, null),
+            new NavEntry("反馈审核", "/app/admin/feedback", ADMIN_FEEDBACK, null),
+            // 与「语义域」同档：看健康度的人就是配域的人
+            new NavEntry("问数健康度", "/app/admin/health", ADMIN_DOMAINS, null),
+            // **两个码任一即可**，与后端 GET /health/cost 的规则一致。
+            // 管模型的人必然要看用量；只有域权限的人也该能看——他配的域在花钱。
+            // 不给 anyPermission 的话，这个页面在合并导航里会对所有人消失
+            new NavEntry("token 用量", "/app/admin/cost", null,
+                    List.of(ADMIN_MODELS, ADMIN_DOMAINS))
+    );
+
+    /**
+     * 一个导航项。
+     *
+     * @param path          浏览器真实路径（含 /app 前缀）
+     * @param permission    单个码。与 {@code anyPermission} 二选一
+     * @param anyPermission 任一即可
+     */
+    public record NavEntry(String label, String path, String permission,
+                           List<String> anyPermission) {
+        public NavEntry {
+            anyPermission = anyPermission == null ? List.of() : List.copyOf(anyPermission);
+        }
+    }
+
     /** 上报的节点类型。与 IAM 的 {@code PermissionKind} 一一对应。 */
     public enum Kind {
         MODULE,

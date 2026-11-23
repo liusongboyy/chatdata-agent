@@ -40,7 +40,7 @@ class PermissionReporterTest {
     @DisplayName("★ IAM 不可用 → 不抛（否则一次抖动会让整个问数起不来）")
     void doesNotThrowWhenIamUnavailable() {
         IamPermissionReporter client = mock(IamPermissionReporter.class);
-        when(client.report(anyString(), any()))
+        when(client.report(anyString(), any(), any()))
                 .thenThrow(new IllegalStateException("权限上报失败：Connection refused"));
 
         var reporter = new PermissionReporter(providerOf(client), "1.4.0");
@@ -52,7 +52,7 @@ class PermissionReporterTest {
     @DisplayName("★ IAM 拒绝（比如前缀不对）→ 也不抛")
     void doesNotThrowWhenIamRejects() {
         IamPermissionReporter client = mock(IamPermissionReporter.class);
-        when(client.report(anyString(), any()))
+        when(client.report(anyString(), any(), any()))
                 .thenThrow(new IllegalStateException(
                         "IAM 拒绝了权限上报（HTTP 400）：权限码必须以「ask.」开头"));
 
@@ -73,14 +73,19 @@ class PermissionReporterTest {
     @DisplayName("正常上报：把清单原样传给客户端")
     void reportsFullCatalog() {
         IamPermissionReporter client = mock(IamPermissionReporter.class);
-        when(client.report(anyString(), any()))
+        when(client.report(anyString(), any(), any()))
                 .thenReturn(new IamPermissionReporter.Result(0, 0, 21));
 
         var reporter = new PermissionReporter(providerOf(client), "1.4.0");
         reporter.run(null);
 
         var items = org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(client).report(org.mockito.ArgumentMatchers.eq("1.4.0"), items.capture());
+        var nav = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(client).report(org.mockito.ArgumentMatchers.eq("1.4.0"),
+                items.capture(), nav.capture());
         assertThat(items.getValue()).hasSize(AskPermissionCatalog.ALL.size());
+        assertThat(nav.getValue())
+                .as("导航与权限一起上报")
+                .hasSize(AskPermissionCatalog.NAV.size());
     }
 }

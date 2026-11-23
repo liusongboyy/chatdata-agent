@@ -87,6 +87,39 @@ class AskPermissionCatalogTest {
     }
 
     @Test
+    @DisplayName("★ 导航项引用的权限码都在清单里")
+    void navCodesAreDeclared() {
+        Set<String> declared = new LinkedHashSet<>();
+        AskPermissionCatalog.ALL.forEach(i -> declared.add(i.code()));
+
+        for (var entry : AskPermissionCatalog.NAV) {
+            java.util.List<String> codes = entry.anyPermission() != null
+                    && !entry.anyPermission().isEmpty()
+                    ? entry.anyPermission()
+                    : (entry.permission() == null
+                            ? java.util.List.of() : java.util.List.of(entry.permission()));
+
+            assertThat(codes)
+                    .as("导航项「%s」必须给 permission 或 anyPermission", entry.label())
+                    .isNotEmpty();
+            assertThat(declared)
+                    .as("导航项「%s」引用了未声明的码——它永远不会显示",
+                            entry.label())
+                    .containsAll(codes);
+        }
+    }
+
+    @Test
+    @DisplayName("★ 导航 path 含 /app 前缀（IAM 渲染的是 <a href>，不知道应用怎么部署）")
+    void navPathsAreAbsoluteAndScoped() {
+        for (var entry : AskPermissionCatalog.NAV) {
+            assertThat(entry.path())
+                    .as("路径必须是浏览器真实路径")
+                    .startsWith("/app/admin/");
+        }
+    }
+
+    @Test
     @DisplayName("★ 管理台页面码都声明为 PAGE")
     void adminPagesArePages() {
         assertThat(AskPermissionCatalog.ALL)

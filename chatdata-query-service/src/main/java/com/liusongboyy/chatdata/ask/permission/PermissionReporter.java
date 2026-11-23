@@ -70,15 +70,21 @@ public class PermissionReporter implements ApplicationRunner {
                         i.code(), i.label(), i.kind().name(), i.parent(), i.sensitive()))
                 .toList();
 
+        // 导航与权限一起上报：两者是同一份代码的产物
+        List<IamPermissionReporter.NavEntry> nav = AskPermissionCatalog.NAV.stream()
+                .map(n -> new IamPermissionReporter.NavEntry(
+                        n.label(), n.path(), n.permission(), n.anyPermission()))
+                .toList();
+
         try {
-            IamPermissionReporter.Result r = client.report(appVersion, items);
+            IamPermissionReporter.Result r = client.report(appVersion, items, nav);
             if (r.pendingAdded() > 0) {
                 // 有待审核的新码：**说清楚要去哪处理**，而不是只报个数字
                 log.warn("权限上报完成：{} 个新权限码待审核，请在 IAM 管理台的「权限审核」页确认",
                         r.pendingAdded());
             } else {
-                log.info("权限上报完成：{} 个权限码，{} 个有变更",
-                        items.size(), r.updated());
+                log.info("权限上报完成：{} 个权限码、{} 个导航项，{} 处变更",
+                        items.size(), nav.size(), r.updated());
             }
         } catch (RuntimeException e) {
             // **不抛。** 见类注释：上报失败不影响已有权限，
